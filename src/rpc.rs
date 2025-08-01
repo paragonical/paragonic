@@ -6,7 +6,7 @@
 use tokio_jsonrpc::{Server, ServerCtl, RpcError, Endpoint, LineCodec};
 use tokio_core::reactor::Core;
 use tokio_core::net::TcpListener;
-use tokio_io::AsyncRead;
+use tokio_codec::Decoder;
 use futures::stream::Stream;
 use serde_json::Value;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ impl ParagonicServer {
         
         let server = self.clone();
         let connections = listener.incoming().for_each(move |(stream, _)| {
-            let (_client, _) = Endpoint::new(stream.framed(LineCodec::new()), server.clone())
+            let (_client, _) = Endpoint::new(LineCodec::new().framed(stream), server.clone())
                 .start(&handle);
             Ok(())
         });

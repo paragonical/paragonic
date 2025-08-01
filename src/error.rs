@@ -56,6 +56,6 @@ impl From<r2d2::Error> for ParagonicError {
 
 impl From<std::net::AddrParseError> for ParagonicError {
     fn from(err: std::net::AddrParseError) -> Self {
-        ParagonicError::Internal(format!("Address parse error: {}", err))
+        ParagonicError::Internal(format!("Address parse error: {err}"))
     }
 } 

@@ -5,7 +5,6 @@
 
 
 use diesel::pg::PgConnection;
-use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use postgresql_embedded::PostgreSQL;
@@ -266,6 +265,7 @@ pub async fn shutdown() -> ParagonicResult<()> {
 mod tests {
     use super::*;
     use crate::config::ConfigManager;
+    use diesel::prelude::*;
 
     /// Test database configuration
     #[test]
