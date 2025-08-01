@@ -15,7 +15,7 @@
 
 ### Decision
 
-Paragonic will be developed as a Neovim extension using Rust for the backend and Lua for Neovim integration, with SQLite as the primary database. The system will focus on local-first AI integration through Ollama, implementing the Model Context Protocol (MCP) for extensibility, and providing both conversational and intentional interfaces for human-AI collaboration.
+Paragonic will be developed as a Neovim extension using Rust for the backend and Lua for Neovim integration, with PostgreSQL Embedded as the primary database to support tens of thousands of users. The system will focus on local-first AI integration through Ollama, implementing the Model Context Protocol (MCP) for extensibility, and providing both conversational and intentional interfaces for human-AI collaboration.
 
 ### Context
 
@@ -27,9 +27,9 @@ The market lacks privacy-focused, local-first AI coding assistants that integrat
    - Pros: Easier implementation, no local resource requirements, instant access to latest models
    - Cons: Privacy concerns, dependency on internet, potential data exposure, limited customization
 
-2. **PostgreSQL over SQLite**
-   - Pros: Better for multi-user scenarios, more advanced features, better for large datasets
-   - Cons: Requires external database server, more complex deployment, overkill for local development
+2. **PostgreSQL Embedded over SQLite**
+   - Pros: Better for multi-user scenarios, more advanced features, better for large datasets, supports tens of thousands of users
+   - Cons: Larger binary size, more complex setup, higher resource requirements
 
 3. **Pure Lua Implementation**
    - Pros: Simpler Neovim integration, no external dependencies
@@ -46,7 +46,7 @@ The chosen architecture prioritizes:
 - **Performance:** Rust backend for efficient AI operations
 - **Integration:** Native Neovim experience with Lua frontend
 - **Extensibility:** MCP protocol for future-proof architecture
-- **Simplicity:** SQLite for easy deployment and maintenance
+- **Scalability:** PostgreSQL Embedded for supporting tens of thousands of users
 
 ### Consequences
 
@@ -72,17 +72,17 @@ The chosen architecture prioritizes:
 
 ### Decision
 
-SQLite will be used as the primary database for Paragonic, with PostgreSQL as an alternative for advanced deployments.
+PostgreSQL Embedded will be used as the primary database for Paragonic to support tens of thousands of users with high concurrency requirements.
 
 ### Context
 
-The system needs a reliable, performant database that can handle local development use cases without external dependencies.
+The system needs a reliable, performant database that can handle tens of thousands of concurrent users while maintaining local-first architecture without external dependencies.
 
 ### Alternatives Considered
 
-1. **PostgreSQL Only**
-   - Pros: Advanced features, better for complex queries, ACID compliance
-   - Cons: Requires external server, more complex deployment
+1. **SQLite Only**
+   - Pros: Simple implementation, small binary size, fast for single-user
+   - Cons: Limited concurrency, not suitable for thousands of users
 
 2. **In-Memory Only (No Persistence)**
    - Pros: Fastest performance, no setup required
@@ -94,24 +94,27 @@ The system needs a reliable, performant database that can handle local developme
 
 ### Rationale
 
-SQLite provides the best balance of:
-- **Simplicity:** No external server required
-- **Performance:** Sufficient for local development workloads
+PostgreSQL Embedded provides the best balance of:
+- **Scalability:** Supports tens of thousands of concurrent users
+- **Performance:** Optimized for complex queries and large datasets
 - **Reliability:** ACID compliance and data integrity
-- **Rust Integration:** Excellent SQLite support in Rust ecosystem
+- **Embedded:** No external server required, bundled with application
+- **Advanced Features:** JSON support, advanced indexing, full PostgreSQL capabilities
 
 ### Consequences
 
 **Positive:**
-- Zero-configuration deployment
+- Supports tens of thousands of concurrent users
+- Full PostgreSQL feature set
 - Excellent Rust ecosystem support
 - Reliable data persistence
 - Easy backup and migration
 
 **Negative:**
-- Limited concurrent access (single-writer)
-- Not suitable for multi-user server deployments
-- May need migration path to PostgreSQL for enterprise use
+- Larger binary size due to embedded PostgreSQL
+- Higher memory requirements
+- More complex initial setup
+- Requires more disk space for PostgreSQL binaries
 
 ## 2024-12-19: Interface Design Philosophy
 
@@ -160,4 +163,55 @@ Dual interfaces provide:
 **Negative:**
 - More complex implementation
 - Potential for interface confusion
-- Higher development effort 
+- Higher development effort
+
+## 2024-12-19: Database Technology Change to PostgreSQL Embedded
+
+**ID:** DEC-004
+**Status:** Accepted
+**Category:** Technical
+**Stakeholders:** Product Owner, Tech Lead, Development Team
+
+### Decision
+
+Changed from SQLite to PostgreSQL Embedded to support tens of thousands of users with high concurrency requirements.
+
+### Context
+
+The original decision to use SQLite was based on simplicity for local development. However, the requirement to support tens of thousands of users necessitates a more robust database solution that can handle high concurrency while maintaining the local-first architecture.
+
+### Alternatives Considered
+
+1. **Keep SQLite**
+   - Pros: Simple implementation, small binary size
+   - Cons: Limited to single-writer, not suitable for thousands of users
+
+2. **External PostgreSQL Server**
+   - Pros: Full PostgreSQL features, proven scalability
+   - Cons: Breaks local-first architecture, requires external dependencies
+
+3. **PostgreSQL Embedded**
+   - Pros: Full PostgreSQL features, embedded deployment, supports high concurrency
+   - Cons: Larger binary size, higher resource requirements
+
+### Rationale
+
+PostgreSQL Embedded provides the optimal balance for the new requirements:
+- **Scalability:** Native support for thousands of concurrent connections
+- **Local-First:** Embedded deployment maintains privacy and control
+- **Advanced Features:** Full PostgreSQL capabilities (JSON, arrays, advanced indexing)
+- **Performance:** Optimized for complex queries and large datasets
+
+### Consequences
+
+**Positive:**
+- Can support tens of thousands of users
+- Full PostgreSQL feature set available
+- Better performance for complex queries
+- Maintains local-first architecture
+
+**Negative:**
+- Larger application binary size
+- Higher memory and disk requirements
+- More complex initial setup
+- Increased development complexity 

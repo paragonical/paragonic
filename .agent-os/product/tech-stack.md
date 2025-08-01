@@ -11,10 +11,11 @@
 - **Plugin Framework:** Neovim plugin architecture
 
 ### Database System
-- **Primary:** SQLite (embedded, Rust-native)
-- **Alternative:** PostgreSQL (for advanced deployments)
+- **Primary:** PostgreSQL Embedded (via [postgresql_embedded crate](https://docs.rs/postgresql_embedded/latest/postgresql_embedded/))
 - **ORM:** SQLx with async/await support
 - **Migrations:** SQLx migrations
+- **Connection Pooling:** SQLx connection pool for high concurrency
+- **Features:** Bundled PostgreSQL binaries, automatic setup and management
 
 ### Neovim Integration
 - **Plugin Language:** Lua
@@ -55,11 +56,13 @@
 
 ## Architecture Decisions
 
-### Why SQLite over PostgreSQL?
-- **Embedded:** No external database server required
-- **Rust Native:** Excellent SQLite support in Rust ecosystem
-- **Performance:** Sufficient for local development use cases
-- **Simplicity:** Easier deployment and maintenance
+### Why PostgreSQL Embedded over SQLite?
+- **Scalability:** Supports tens of thousands of concurrent users
+- **Advanced Features:** Full PostgreSQL features (JSON, arrays, advanced indexing)
+- **Concurrency:** Better handling of multiple simultaneous connections
+- **Performance:** Optimized for complex queries and large datasets
+- **Embedded:** No external server setup required, bundled with application
+- **Automatic Management:** Built-in setup, start, stop, and database management
 
 ### Why Rust + Lua?
 - **Performance:** Rust for heavy computation and AI integration

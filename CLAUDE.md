@@ -38,10 +38,10 @@ When asked to work on this codebase:
 Paragonic is a Neovim extension that provides an agentic system for AI-powered agents and human collaborations. It integrates with Ollama for local AI processing and implements the Model Context Protocol (MCP) for extensibility.
 
 ### Key Technologies
-- **Backend:** Rust with SQLite database
+- **Backend:** Rust with PostgreSQL Embedded database
 - **Frontend:** Lua for Neovim integration
 - **AI Integration:** Ollama with MCP protocol
-- **Architecture:** Local-first, privacy-focused
+- **Architecture:** Local-first, privacy-focused, scalable to tens of thousands of users
 
 ### Current Status
 - **Phase:** Planning (Phase 1: Core Foundation)
@@ -63,7 +63,8 @@ Paragonic is a Neovim extension that provides an agentic system for AI-powered a
 - Follow Neovim plugin conventions
 
 ### Database Design
-- Use SQLite for local development
+- Use PostgreSQL Embedded for scalable local development
 - Implement proper migrations with SQLx
 - Design schema for projects, goals, tasks, and agents
-- Ensure data integrity and backup capabilities 
+- Ensure data integrity and backup capabilities
+- Configure connection pooling for high concurrency 

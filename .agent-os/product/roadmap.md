@@ -13,7 +13,7 @@
 
 - [ ] Basic Neovim plugin structure - Lua plugin with Rust backend `M`
 - [ ] Ollama integration - HTTP client for local AI communication `M`
-- [ ] SQLite database setup - Basic schema and migrations `S`
+- [ ] PostgreSQL Embedded setup - Basic schema and migrations `M`
 - [ ] Simple chat interface - Basic conversational UI in Neovim `M`
 - [ ] Configuration system - User settings and Ollama model selection `S`
 
@@ -51,7 +51,7 @@
 ### Dependencies
 
 - Phase 1 completion
-- Database schema for projects/goals/tasks
+- PostgreSQL Embedded database schema for projects/goals/tasks
 - UI framework for structured interfaces
 
 ## Phase 3: Advanced AI Integration (8-10 weeks)
