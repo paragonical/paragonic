@@ -149,6 +149,20 @@ impl OllamaClient {
         Ok(Self { config, client })
     }
 
+    /// Create a new Ollama client from config manager
+    /// 
+    /// Creates an Ollama client using the configuration from the config module.
+    pub fn from_config_manager(config_manager: &crate::config::ConfigManager) -> ParagonicResult<Self> {
+        let config = config_manager.get_config();
+        
+        let ollama_config = OllamaConfig {
+            base_url: config.ollama.base_url.clone(),
+            timeout_seconds: config.ollama.timeout_seconds,
+        };
+        
+        Self::new(ollama_config)
+    }
+
     /// List available models from Ollama
     /// 
     /// Returns a list of all models currently available on the Ollama server.
@@ -447,6 +461,7 @@ impl OllamaClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ConfigManager;
 
     /// Test Ollama configuration default values
     #[test]
@@ -498,6 +513,49 @@ mod tests {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config);
         assert!(client.is_ok());
+    }
+
+    /// Test Ollama configuration from config module
+    #[test]
+    fn test_ollama_config_from_config_module() {
+        let config_manager = ConfigManager::new();
+        let config = config_manager.get_config();
+        
+        // Verify that the Ollama config from the config module matches our expectations
+        assert_eq!(config.ollama.base_url, "http://localhost:11434");
+        assert_eq!(config.ollama.timeout_seconds, 30);
+    }
+
+    /// Test Ollama client creation from config module
+    #[test]
+    fn test_ollama_client_from_config_module() {
+        let config_manager = ConfigManager::new();
+        
+        // Test that we can create an Ollama client from the config module
+        let client = OllamaClient::from_config_manager(&config_manager);
+        assert!(client.is_ok());
+        
+        let client = client.unwrap();
+        assert_eq!(client.config.base_url, "http://localhost:11434");
+        assert_eq!(client.config.timeout_seconds, 30);
+    }
+
+    /// Test Ollama client creation with custom configuration
+    #[test]
+    fn test_ollama_client_with_custom_config() {
+        let mut config_manager = ConfigManager::new();
+        
+        // Set custom Ollama configuration
+        config_manager.get_config_mut().ollama.base_url = "http://custom-ollama:11435".to_string();
+        config_manager.get_config_mut().ollama.timeout_seconds = 60;
+        
+        // Test that the custom config is used
+        let client = OllamaClient::from_config_manager(&config_manager);
+        assert!(client.is_ok());
+        
+        let client = client.unwrap();
+        assert_eq!(client.config.base_url, "http://custom-ollama:11435");
+        assert_eq!(client.config.timeout_seconds, 60);
     }
 
     /// Test list models with mock server (integration test)
