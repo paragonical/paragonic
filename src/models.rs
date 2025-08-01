@@ -9,6 +9,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
 use crate::schema::*;
+use crate::vector::Vector;
 
 /// Project model representing a high-level project
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
@@ -303,15 +304,14 @@ pub enum RelationshipType {
 }
 
 /// Embedding model for storing vector representations
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
-#[diesel(table_name = embeddings)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Embedding {
     pub id: Uuid,
     pub content_type: String,
     pub content_id: Uuid,
     pub content_text: String,
     pub embedding_model: String,
-    pub embedding_vector: Option<Vec<u8>>,
+    pub embedding_vector: Option<Vector>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -520,7 +520,7 @@ mod tests {
             content_id: Uuid::new_v4(),
             content_text: "Hello, world!".to_string(),
             embedding_model: "nomic-embed-text".to_string(),
-            embedding_vector: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]), // 2 f32 values as bytes
+            embedding_vector: Some(Vector::new(vec![0.0, 0.0])), // 2 f32 values
             metadata: Some(serde_json::json!({"conversation_id": "123"})),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(embedding.content_type, "message");
         assert_eq!(embedding.content_text, "Hello, world!");
         assert_eq!(embedding.embedding_model, "nomic-embed-text");
-        assert_eq!(embedding.embedding_vector.as_ref().unwrap().len(), 8);
+        assert_eq!(embedding.embedding_vector.as_ref().unwrap().values.len(), 2);
         assert!(embedding.metadata.is_some());
     }
 } 

@@ -6,6 +6,7 @@
 use crate::error::{ParagonicError, ParagonicResult};
 use crate::models::{Embedding, CreateEmbeddingRequest};
 use crate::ollama::OllamaClient;
+use crate::vector::Vector;
 use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::Utc;
@@ -23,9 +24,6 @@ pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResul
         .generate_embedding(&request.embedding_model, &request.content_text)
         .await?;
     
-    // Convert embedding vector to bytes for storage
-    let _embedding_bytes = vector_to_bytes(&embedding_response.embedding);
-    
     // Create embedding record
     let embedding = Embedding {
         id: Uuid::new_v4(),
@@ -33,7 +31,7 @@ pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResul
         content_id: request.content_id,
         content_text: request.content_text,
         embedding_model: request.embedding_model,
-        embedding_vector: Some(vector_to_bytes(&embedding_response.embedding)),
+        embedding_vector: Some(Vector::from_slice(&embedding_response.embedding)),
         metadata: request.metadata,
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -45,15 +43,7 @@ pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResul
     Ok(embedding)
 }
 
-/// Convert vector to bytes for storage
-fn vector_to_bytes(vector: &[f32]) -> Vec<u8> {
-    // Simple conversion: each f32 is 4 bytes
-    let mut bytes = Vec::with_capacity(vector.len() * 4);
-    for &value in vector {
-        bytes.extend_from_slice(&value.to_le_bytes());
-    }
-    bytes
-}
+
 
 /// Store embedding in database
 async fn store_embedding(embedding: &Embedding) -> ParagonicResult<()> {
@@ -62,8 +52,23 @@ async fn store_embedding(embedding: &Embedding) -> ParagonicResult<()> {
     let pool = crate::database::get_pool()?;
     let mut conn = pool.get()?;
     
+    // Convert Vector to bytes for storage
+    let embedding_bytes = embedding.embedding_vector.as_ref()
+        .map(|v| v.to_bytes())
+        .unwrap_or_default();
+    
     diesel::insert_into(embeddings::table)
-        .values(embedding)
+        .values((
+            embeddings::id.eq(embedding.id),
+            embeddings::content_type.eq(&embedding.content_type),
+            embeddings::content_id.eq(embedding.content_id),
+            embeddings::content_text.eq(&embedding.content_text),
+            embeddings::embedding_model.eq(&embedding.embedding_model),
+            embeddings::embedding_vector.eq(embedding_bytes),
+            embeddings::metadata.eq(&embedding.metadata),
+            embeddings::created_at.eq(embedding.created_at),
+            embeddings::updated_at.eq(embedding.updated_at),
+        ))
         .execute(&mut conn)
         .map_err(|e| {
             tracing::error!("Failed to store embedding: {}", e);
@@ -108,7 +113,7 @@ mod tests {
                 assert_eq!(embedding.content_type, "message");
                 assert_eq!(embedding.content_text, "Hello, world!");
                 assert_eq!(embedding.embedding_model, "nomic-embed-text");
-                assert!(embedding.embedding_vector.as_ref().unwrap().len() > 0);
+                assert!(embedding.embedding_vector.as_ref().unwrap().values.len() > 0);
                 println!("Test passed: Embedding created successfully!");
             }
             Err(ParagonicError::Ollama(_)) => {

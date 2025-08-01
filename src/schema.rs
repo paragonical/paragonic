@@ -56,7 +56,7 @@ diesel::table! {
         content_text -> Text,
         #[max_length = 100]
         embedding_model -> Varchar,
-        embedding_vector -> Nullable<Bytea>, // Using Bytea for now, will handle vector type separately
+        embedding_vector -> Nullable<Binary>, // Using Binary for Vector type
         metadata -> Nullable<Jsonb>,
         created_at -> Nullable<Timestamptz>,
         updated_at -> Nullable<Timestamptz>,

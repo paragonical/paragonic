@@ -11,6 +11,7 @@ pub mod models;
 pub mod schema;
 pub mod embeddings;
 pub mod rpc;
+pub mod vector;
 
 pub use error::{ParagonicError, ParagonicResult};
 
