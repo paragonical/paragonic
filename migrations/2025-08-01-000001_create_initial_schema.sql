@@ -1,5 +1,5 @@
 -- Migration: Create initial schema
--- Created: 2024-12-19
+-- Created: 2025-08-01
 
 -- Create projects table
 CREATE TABLE projects (

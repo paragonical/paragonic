@@ -1,5 +1,5 @@
 -- Down Migration: Drop initial schema
--- Created: 2024-12-19
+-- Created: 2025-08-01
 
 -- Drop tables in reverse order (respecting foreign key constraints)
 DROP TABLE IF EXISTS messages;

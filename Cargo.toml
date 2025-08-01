@@ -39,6 +39,9 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 
+# Decimal handling for ISRL profiles
+rust_decimal = { version = "1.0", features = ["serde"] }
+
 # CLI argument parsing (for development/testing)
 clap = { version = "4.0", features = ["derive"] }
 

@@ -181,6 +181,127 @@ pub struct ConversationResponse {
     pub messages: Vec<Message>,
 }
 
+// Organizational Structure Models
+
+/// Organization model representing distinct entities
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = organizations)]
+pub struct Organization {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub domain: Option<String>,
+    pub industry: Option<String>,
+    pub size: Option<String>,
+    pub status: OrganizationStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Organization status enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OrganizationStatus {
+    Active,
+    Inactive,
+    Pending,
+    Suspended,
+}
+
+/// Person model representing human experts
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = people)]
+pub struct Person {
+    pub id: Uuid,
+    pub name: String,
+    pub email: Option<String>,
+    pub bio: Option<String>,
+    pub expertise_areas: Option<Vec<String>>,
+    pub location: Option<String>,
+    pub timezone: Option<String>,
+    pub availability_status: AvailabilityStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Availability status enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AvailabilityStatus {
+    Available,
+    Busy,
+    Away,
+    Unavailable,
+}
+
+/// ISRL Profile model for learning and expertise tracking
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = isrl_profiles)]
+pub struct IsrlProfile {
+    pub id: Uuid,
+    pub person_id: Uuid,
+    pub skill_name: String,
+    pub skill_category: Option<String>,
+    pub proficiency_level: i32,
+    pub last_reviewed: DateTime<Utc>,
+    pub next_review: Option<DateTime<Utc>>,
+    pub review_interval_days: i32,
+    pub total_reviews: i32,
+    pub success_rate: rust_decimal::Decimal,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Association model for managing relationships
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = associations)]
+pub struct Association {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub person_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub role: String,
+    pub permissions: Option<serde_json::Value>,
+    pub start_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<chrono::NaiveDate>,
+    pub status: AssociationStatus,
+    pub allocation_percentage: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Association status enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AssociationStatus {
+    Active,
+    Inactive,
+    Pending,
+    Terminated,
+}
+
+/// Organization Hierarchy model for parent-child relationships
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = organization_hierarchies)]
+pub struct OrganizationHierarchy {
+    pub id: Uuid,
+    pub parent_organization_id: Uuid,
+    pub child_organization_id: Uuid,
+    pub relationship_type: RelationshipType,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Relationship type enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelationshipType {
+    Subsidiary,
+    Division,
+    Project,
+    Department,
+    Team,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,5 +375,97 @@ mod tests {
         
         assert_eq!(request.name, "New Project");
         assert_eq!(request.description, Some("A new project".to_string()));
+    }
+
+    /// Test organization creation
+    #[test]
+    fn test_organization_creation() {
+        let org = Organization {
+            id: Uuid::new_v4(),
+            name: "Test Organization".to_string(),
+            description: Some("A test organization".to_string()),
+            domain: Some("test.com".to_string()),
+            industry: Some("Technology".to_string()),
+            size: Some("Medium".to_string()),
+            status: OrganizationStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        assert_eq!(org.name, "Test Organization");
+        assert_eq!(org.domain, Some("test.com".to_string()));
+        matches!(org.status, OrganizationStatus::Active);
+    }
+
+    /// Test person creation
+    #[test]
+    fn test_person_creation() {
+        let person = Person {
+            id: Uuid::new_v4(),
+            name: "John Doe".to_string(),
+            email: Some("john@example.com".to_string()),
+            bio: Some("Expert developer".to_string()),
+            expertise_areas: Some(vec!["Rust".to_string(), "AI".to_string()]),
+            location: Some("San Francisco".to_string()),
+            timezone: Some("PST".to_string()),
+            availability_status: AvailabilityStatus::Available,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        assert_eq!(person.name, "John Doe");
+        assert_eq!(person.email, Some("john@example.com".to_string()));
+        assert_eq!(person.expertise_areas, Some(vec!["Rust".to_string(), "AI".to_string()]));
+        matches!(person.availability_status, AvailabilityStatus::Available);
+    }
+
+    /// Test ISRL profile creation
+    #[test]
+    fn test_isrl_profile_creation() {
+        use rust_decimal::Decimal;
+        
+        let profile = IsrlProfile {
+            id: Uuid::new_v4(),
+            person_id: Uuid::new_v4(),
+            skill_name: "Rust Programming".to_string(),
+            skill_category: Some("Programming".to_string()),
+            proficiency_level: 7,
+            last_reviewed: Utc::now(),
+            next_review: Some(Utc::now() + chrono::Duration::days(30)),
+            review_interval_days: 30,
+            total_reviews: 15,
+            success_rate: Decimal::new(85, 2), // 0.85
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        assert_eq!(profile.skill_name, "Rust Programming");
+        assert_eq!(profile.proficiency_level, 7);
+        assert_eq!(profile.success_rate, Decimal::new(85, 2));
+    }
+
+    /// Test association creation
+    #[test]
+    fn test_association_creation() {
+        let association = Association {
+            id: Uuid::new_v4(),
+            organization_id: Uuid::new_v4(),
+            person_id: Some(Uuid::new_v4()),
+            agent_id: None,
+            role: "Senior Developer".to_string(),
+            permissions: Some(serde_json::json!({"read": true, "write": true})),
+            start_date: Some(chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()),
+            end_date: None,
+            status: AssociationStatus::Active,
+            allocation_percentage: 75,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        assert_eq!(association.role, "Senior Developer");
+        assert_eq!(association.allocation_percentage, 75);
+        assert!(association.person_id.is_some());
+        assert!(association.agent_id.is_none());
+        matches!(association.status, AssociationStatus::Active);
     }
 } 
