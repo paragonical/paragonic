@@ -1,0 +1,7 @@
+-- Busted configuration for Paragonic tests
+return {
+    verbose = true,
+    coverage = true,
+    output = "utfTerminal",
+    runs = 1,
+} 
