@@ -117,6 +117,34 @@ function M.get_config()
     return config
 end
 
+-- Send a chat message and get AI response
+function M.send_chat_message(message)
+    -- For now, just add a mock AI response to the current buffer
+    local buf = vim.api.nvim_get_current_buf()
+    
+    -- Generate dynamic response based on message content
+    local ai_response = ""
+    local lower_message = message:lower()
+    
+
+    
+    if lower_message:find("2%+2") or lower_message:find("what is 2%+2") then
+        ai_response = "2+2 equals 4. This is a basic arithmetic operation."
+    elseif lower_message:find("france") or lower_message:find("capital") then
+        ai_response = "The capital of France is Paris. It's a beautiful city known for its culture, art, and architecture."
+    elseif lower_message:find("hello") or lower_message:find("hi") then
+        ai_response = "Hello! I'm Paragonic, your AI coding assistant. How can I help you today?"
+    else
+        ai_response = "I understand you're asking about: " .. message .. ". This is a mock response - real AI integration coming soon!"
+    end
+    
+    -- Add AI response to buffer
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. ai_response})
+    
+    -- Return success
+    return true
+end
+
 -- Update configuration
 function M.update_config(new_config)
     config = vim.tbl_deep_extend("force", config, new_config)

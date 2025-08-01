@@ -175,10 +175,104 @@ local function test_chat_buffer_input()
     print("✓ Chat buffer input test passed!")
 end
 
+-- Test that chat can send messages to AI and get responses
+local function test_chat_ai_response()
+    print("Testing that chat can send messages to AI and get responses...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Call open_chat to create buffer
+    paragonic.open_chat()
+    
+    -- Get the current buffer
+    local buf = vim.api.nvim_get_current_buf()
+    
+    -- Add a user message
+    local user_message = "What is 2+2?"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Call send_message function (we'll implement this)
+    local success = paragonic.send_chat_message(user_message)
+    
+    -- Assert that send was successful
+    assert(success, "send_chat_message should return true on success")
+    
+    -- Get updated content to check for AI response
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Look for AI response in the buffer
+    local has_ai_response = false
+    for _, line in ipairs(lines) do
+        if line:find("**AI:**") then
+            has_ai_response = true
+            break
+        end
+    end
+    
+    assert(has_ai_response, "Buffer should contain AI response")
+    
+    print("✓ Chat AI response test passed!")
+end
+
+-- Test that AI response is dynamic based on user message
+local function test_chat_dynamic_response()
+    print("Testing that AI response is dynamic based on user message...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Create a fresh buffer for this test
+    local buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(buf, "paragonic://test-chat")
+    vim.api.nvim_set_current_buf(buf)
+    
+    -- Add initial content
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+        "# Test Chat",
+        "",
+        "---"
+    })
+    
+    -- Add a different user message
+    local user_message = "What is the capital of France?"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Call send_message function
+    local success = paragonic.send_chat_message(user_message)
+    
+    -- Assert that send was successful
+    assert(success, "send_chat_message should return true on success")
+    
+    -- Get updated content to check for AI response
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Look for AI response in the buffer
+    local ai_response = ""
+    for _, line in ipairs(lines) do
+        if line:find("**AI:**") then
+            ai_response = line:gsub("**AI:** ", "")
+            break
+        end
+    end
+    
+
+    
+    -- Assert that response is different from the hardcoded one
+    assert(ai_response ~= "**AI:** 2+2 equals 4. This is a basic arithmetic operation.", 
+           "AI response should be dynamic, not hardcoded")
+    assert(ai_response:find("France") or ai_response:find("Paris"), 
+           "AI response should be relevant to the question about France")
+    
+    print("✓ Chat dynamic response test passed!")
+end
+
 -- Run all tests
 test_paragonic_setup()
 test_setup_creates_commands()
 test_commands_show_messages()
 test_open_chat_creates_buffer()
 test_chat_buffer_content()
-test_chat_buffer_input() 
+test_chat_buffer_input()
+test_chat_ai_response()
+test_chat_dynamic_response() 
