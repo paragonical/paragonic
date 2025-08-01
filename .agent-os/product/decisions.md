@@ -268,3 +268,60 @@ Diesel v2.2.12 provides the optimal balance for our requirements:
 - Steeper learning curve for team members
 - Less flexible for dynamic queries
 - Requires more upfront schema design 
+
+## 2024-12-19: Embeddings for Agentic AI Context Management
+
+**ID:** DEC-006
+**Status:** Accepted
+**Category:** Technical
+**Stakeholders:** Tech Lead, Development Team
+
+### Decision
+
+Implement embedding capabilities in Paragonic to enable semantic search, context retrieval, and intelligent memory management for agentic AI interactions.
+
+### Context
+
+Paragonic's mission is to enable agentic AI and human collaboration. Current AI interactions are limited to immediate conversation context, but true agentic behavior requires understanding of historical work, organizational knowledge, and semantic relationships across time and projects.
+
+### Alternatives Considered
+
+1. **Keyword-based search**: Simple text matching, limited semantic understanding
+2. **External vector databases**: Complex integration, potential vendor lock-in
+3. **No memory system**: Continue with conversation-only context, limiting agentic capabilities
+
+### Rationale
+
+Embeddings provide the foundation for:
+- **Semantic Search**: Find relevant historical context beyond exact text matches
+- **Context Management**: Automatically retrieve and include relevant past work
+- **Knowledge Discovery**: Identify patterns and relationships across projects
+- **Expert Matching**: Connect current work to relevant people/agents
+- **Learning Tracking**: Measure expertise evolution through semantic similarity
+
+### Consequences
+
+**Positive:**
+- Enables true agentic AI behavior with memory and context
+- Supports fractional organization network vision
+- Improves AI response quality through relevant context
+- Creates foundation for intelligent workflow management
+
+**Risks:**
+- Additional complexity in data management
+- Storage requirements for embedding vectors
+- Need for embedding model selection and management
+
+**Implementation Plan:**
+1. Add `generate_embedding()` to Ollama integration
+2. Design embedding storage schema in database
+3. Implement semantic search capabilities
+4. Integrate with conversation and project context
+5. Add embedding-based context retrieval to AI interactions
+
+### Technical Details
+
+- **Embedding Model**: Use Ollama's embedding models (e.g., `nomic-embed-text`)
+- **Vector Storage**: PostgreSQL with pgvector extension
+- **Context Retrieval**: Top-k similarity search for relevant content
+- **Integration Points**: Conversations, projects, tasks, people profiles, ISRL data 

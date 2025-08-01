@@ -104,6 +104,20 @@ pub struct DeleteModelResponse {
     pub status: String,
 }
 
+/// Embedding request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingRequest {
+    pub model: String,
+    pub prompt: String,
+    pub options: Option<serde_json::Value>,
+}
+
+/// Embedding response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingResponse {
+    pub embedding: Vec<f32>,
+}
+
 /// Ollama client for API communication
 pub struct OllamaClient {
     config: OllamaConfig,
@@ -307,6 +321,44 @@ impl OllamaClient {
 
         info!("Successfully deleted model from Ollama: {}", model_name);
         Ok(delete_response)
+    }
+
+    /// Generate embeddings for text using Ollama
+    /// 
+    /// Converts text into vector representations for semantic search and similarity.
+    pub async fn generate_embedding(&self, model: &str, prompt: &str) -> ParagonicResult<EmbeddingResponse> {
+        let url = format!("{}/api/embeddings", self.config.base_url);
+        
+        let request_body = EmbeddingRequest {
+            model: model.to_string(),
+            prompt: prompt.to_string(),
+            options: None,
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to generate embedding from Ollama: {e}");
+                ParagonicError::Ollama(format!("Embedding generation failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama embedding API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Embedding API error {status}: {error_text}")));
+        }
+
+        let embedding_response: EmbeddingResponse = response.json().await.map_err(|e| {
+            error!("Failed to parse Ollama embedding response: {e}");
+            ParagonicError::Ollama(format!("Embedding response parsing failed: {e}"))
+        })?;
+
+        info!("Successfully generated embedding from Ollama model: {} (dimensions: {})", model, embedding_response.embedding.len());
+        Ok(embedding_response)
     }
 }
 
@@ -596,6 +648,61 @@ mod tests {
             }
             Err(ParagonicError::Ollama(_)) => {
                 // Expected when Ollama is not running
+                // This is a valid test result
+            }
+            Err(e) => {
+                // Unexpected error type
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    /// Test embedding request structure
+    #[test]
+    fn test_embedding_request_structure() {
+        let request = EmbeddingRequest {
+            model: "nomic-embed-text".to_string(),
+            prompt: "Hello, world!".to_string(),
+            options: None,
+        };
+        
+        assert_eq!(request.model, "nomic-embed-text");
+        assert_eq!(request.prompt, "Hello, world!");
+        assert!(request.options.is_none());
+    }
+
+    /// Test embedding response structure
+    #[test]
+    fn test_embedding_response_structure() {
+        let response = EmbeddingResponse {
+            embedding: vec![0.1, 0.2, 0.3, 0.4, 0.5],
+        };
+        
+        assert_eq!(response.embedding.len(), 5);
+        assert_eq!(response.embedding[0], 0.1);
+        assert_eq!(response.embedding[4], 0.5);
+    }
+
+    /// Test generate embedding function (integration test)
+    #[tokio::test]
+    async fn test_generate_embedding_function() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        
+        // This test requires a running Ollama server with embedding model
+        // If Ollama is not running, we expect a connection error
+        let result = client.generate_embedding("nomic-embed-text", "Hello, world!").await;
+        
+        match result {
+            Ok(response) => {
+                // Ollama is running and responded successfully
+                assert!(!response.embedding.is_empty());
+                // Embeddings should be vectors of reasonable size (typically 384-1536 dimensions)
+                assert!(response.embedding.len() >= 100);
+                assert!(response.embedding.len() <= 2000);
+            }
+            Err(ParagonicError::Ollama(_)) => {
+                // Expected when Ollama is not running or embedding model not available
                 // This is a valid test result
             }
             Err(e) => {
