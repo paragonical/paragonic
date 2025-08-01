@@ -147,9 +147,38 @@ local function test_chat_buffer_content()
     print("✓ Chat buffer content test passed!")
 end
 
+-- Test that chat buffer can handle user input
+local function test_chat_buffer_input()
+    print("Testing that chat buffer can handle user input...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Call open_chat to create buffer
+    paragonic.open_chat()
+    
+    -- Get the current buffer
+    local buf = vim.api.nvim_get_current_buf()
+    
+    -- Add a user message to the buffer
+    local user_message = "Hello, can you help me with this code?"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Get updated content
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Assert that user message was added
+    local last_line = lines[#lines]
+    assert(last_line:find(user_message), "User message should be in buffer")
+    assert(last_line:find("**User:**"), "User message should be properly formatted")
+    
+    print("✓ Chat buffer input test passed!")
+end
+
 -- Run all tests
 test_paragonic_setup()
 test_setup_creates_commands()
 test_commands_show_messages()
 test_open_chat_creates_buffer()
-test_chat_buffer_content() 
+test_chat_buffer_content()
+test_chat_buffer_input() 
