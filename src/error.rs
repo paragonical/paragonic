@@ -46,4 +46,10 @@ impl From<anyhow::Error> for ParagonicError {
     fn from(err: anyhow::Error) -> Self {
         ParagonicError::Internal(err.to_string())
     }
+}
+
+impl From<r2d2::Error> for ParagonicError {
+    fn from(err: r2d2::Error) -> Self {
+        ParagonicError::Database(format!("Connection pool error: {}", err))
+    }
 } 
