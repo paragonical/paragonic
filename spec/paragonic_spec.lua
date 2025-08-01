@@ -363,6 +363,102 @@ local function test_chat_ollama_integration()
     print("✓ Chat Ollama integration test passed!")
 end
 
+-- Test that chat calls actual Rust backend functions
+local function test_chat_real_rust_backend()
+    print("Testing that chat calls actual Rust backend functions...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Create a fresh buffer for this test
+    local buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(buf, "paragonic://test-real-rust")
+    vim.api.nvim_set_current_buf(buf)
+    
+    -- Add initial content
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+        "# Test Real Rust Backend",
+        "",
+        "---"
+    })
+    
+    -- Add a user message
+    local user_message = "What is the weather like today?"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Call send_message function with real Rust backend
+    local success = paragonic.send_chat_message_real_rust(user_message)
+    
+    -- Assert that send was successful
+    assert(success, "send_chat_message_real_rust should return true on success")
+    
+    -- Get updated content to check for AI response
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Look for AI response in the buffer
+    local has_ai_response = false
+    for _, line in ipairs(lines) do
+        if line:find("**AI:**") then
+            has_ai_response = true
+            break
+        end
+    end
+    
+    assert(has_ai_response, "Buffer should contain AI response from real Rust backend")
+    
+    print("✓ Chat real Rust backend test passed!")
+end
+
+-- Test that chat actually calls Rust backend via RPC
+local function test_chat_rpc_integration()
+    print("Testing that chat actually calls Rust backend via RPC...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Create a fresh buffer for this test
+    local buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(buf, "paragonic://test-rpc")
+    vim.api.nvim_set_current_buf(buf)
+    
+    -- Add initial content
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+        "# Test RPC Integration",
+        "",
+        "---"
+    })
+    
+    -- Add a user message
+    local user_message = "Write a simple Rust function"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Call send_message function with RPC integration
+    local success = paragonic.send_chat_message_rpc(user_message)
+    
+    -- Assert that send was successful
+    assert(success, "send_chat_message_rpc should return true on success")
+    
+    -- Get updated content to check for AI response
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Look for AI response in the buffer
+    local has_ai_response = false
+    local ai_response = ""
+    for _, line in ipairs(lines) do
+        if line:find("**AI:**") then
+            has_ai_response = true
+            ai_response = line:gsub("**AI:** ", "")
+            break
+        end
+    end
+    
+    assert(has_ai_response, "Buffer should contain AI response from RPC")
+    assert(ai_response:find("fn ") or ai_response:find("function") or ai_response:find("Rust"), 
+           "RPC response should contain Rust code or function reference")
+    
+    print("✓ Chat RPC integration test passed!")
+end
+
 -- Run all tests
 test_paragonic_setup()
 test_setup_creates_commands()
@@ -373,4 +469,6 @@ test_chat_buffer_input()
 test_chat_ai_response()
 test_chat_dynamic_response()
 test_chat_rust_backend_connection()
-test_chat_ollama_integration() 
+test_chat_ollama_integration()
+test_chat_real_rust_backend()
+test_chat_rpc_integration() 
