@@ -1972,6 +1972,7 @@ dependencies = [
  "config",
  "diesel",
  "diesel_migrations",
+ "futures-util",
  "mockall",
  "postgresql_embedded",
  "reqwest",

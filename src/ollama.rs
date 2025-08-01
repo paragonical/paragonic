@@ -6,6 +6,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, error};
+use futures_util::StreamExt;
 
 use crate::error::{ParagonicError, ParagonicResult};
 
@@ -116,6 +117,16 @@ pub struct EmbeddingRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub embedding: Vec<f32>,
+}
+
+/// Streaming chat completion response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamChatCompletionResponse {
+    pub model: String,
+    pub created_at: String,
+    pub done: bool,
+    pub message: Option<ChatMessage>,
+    pub response: Option<String>,
 }
 
 /// Ollama client for API communication
@@ -360,6 +371,77 @@ impl OllamaClient {
         info!("Successfully generated embedding from Ollama model: {} (dimensions: {})", model, embedding_response.embedding.len());
         Ok(embedding_response)
     }
+
+    /// Stream chat completion from Ollama
+    /// 
+    /// Sends a list of messages to the specified model and returns a stream
+    /// of responses for real-time interaction.
+    pub async fn stream_chat_completion(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+    ) -> ParagonicResult<impl futures_util::Stream<Item = ParagonicResult<StreamChatCompletionResponse>>> {
+        let url = format!("{}/api/chat", self.config.base_url);
+        
+        let request_body = ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: Some(true),
+            options: None,
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to send streaming chat completion to Ollama: {e}");
+                ParagonicError::Ollama(format!("Streaming chat completion failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama streaming chat API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Streaming chat API error {status}: {error_text}")));
+        }
+
+        let stream = response
+            .bytes_stream()
+            .flat_map(|chunk_result| {
+                match chunk_result {
+                    Ok(chunk) => {
+                        let chunk_str = String::from_utf8_lossy(&chunk);
+                        let lines: Vec<&str> = chunk_str.lines().collect();
+                        
+                        let mut responses = Vec::new();
+                        for line in lines {
+                            if line.trim().is_empty() {
+                                continue;
+                            }
+                            
+                            match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                                Ok(stream_response) => responses.push(Ok(stream_response)),
+                                Err(e) => {
+                                    error!("Failed to parse streaming response: {}", e);
+                                    responses.push(Err(ParagonicError::Ollama(format!("Response parsing failed: {e}"))));
+                                }
+                            }
+                        }
+                        
+                        futures_util::stream::iter(responses)
+                    }
+                    Err(e) => {
+                        error!("Failed to read streaming chunk: {}", e);
+                        futures_util::stream::iter(vec![Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")))])
+                    }
+                }
+            });
+
+        info!("Successfully started streaming chat completion from Ollama model: {}", model);
+        Ok(stream)
+    }
 }
 
 #[cfg(test)]
@@ -501,7 +583,7 @@ mod tests {
             }
             Err(e) => {
                 // Unexpected error type
-                panic!("Unexpected error type: {:?}", e);
+                panic!("Unexpected error type: {e:?}");
             }
         }
     }
@@ -556,7 +638,7 @@ mod tests {
             }
             Err(e) => {
                 // Unexpected error type
-                panic!("Unexpected error type: {:?}", e);
+                panic!("Unexpected error type: {e:?}");
             }
         }
     }
@@ -605,7 +687,7 @@ mod tests {
             }
             Err(e) => {
                 // Unexpected error type
-                panic!("Unexpected error type: {:?}", e);
+                panic!("Unexpected error type: {e:?}");
             }
         }
     }
@@ -652,7 +734,7 @@ mod tests {
             }
             Err(e) => {
                 // Unexpected error type
-                panic!("Unexpected error type: {:?}", e);
+                panic!("Unexpected error type: {e:?}");
             }
         }
     }
@@ -707,7 +789,91 @@ mod tests {
             }
             Err(e) => {
                 // Unexpected error type
-                panic!("Unexpected error type: {:?}", e);
+                panic!("Unexpected error type: {e:?}");
+            }
+        }
+    }
+
+    /// Test streaming chat completion response structure
+    #[test]
+    fn test_stream_chat_completion_response_structure() {
+        let response = StreamChatCompletionResponse {
+            model: "llama2:7b".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            done: false,
+            message: Some(ChatMessage {
+                role: "assistant".to_string(),
+                content: "Hello".to_string(),
+            }),
+            response: Some("Hello".to_string()),
+        };
+        
+        assert_eq!(response.model, "llama2:7b");
+        assert!(!response.done);
+        assert!(response.message.is_some());
+        assert!(response.response.is_some());
+        assert_eq!(response.message.as_ref().unwrap().role, "assistant");
+        assert_eq!(response.response.as_ref().unwrap(), "Hello");
+    }
+
+    /// Test streaming chat completion function (integration test)
+    #[tokio::test]
+    async fn test_stream_chat_completion_function() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        
+        let messages = vec![
+            ChatMessage {
+                role: "user".to_string(),
+                content: "Say hello".to_string(),
+            },
+        ];
+        
+        // This test requires a running Ollama server
+        // If Ollama is not running, we expect a connection error
+        let result = client.stream_chat_completion("llama2:7b", messages).await;
+        
+        match result {
+            Ok(mut stream) => {
+                // Ollama is running and responded successfully
+                // Collect a few responses from the stream
+                let mut responses = Vec::new();
+                let mut count = 0;
+                
+                while let Some(response_result) = stream.next().await {
+                    match response_result {
+                        Ok(response) => {
+                            responses.push(response);
+                            count += 1;
+                            
+                            // Limit to first few responses to avoid infinite loop
+                            if count >= 5 {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Stream response error: {:?}", e);
+                            break;
+                        }
+                    }
+                }
+                
+                // Should have received some responses
+                assert!(!responses.is_empty());
+                
+                // Check that responses have expected structure
+                for response in responses {
+                    assert_eq!(response.model, "llama2:7b");
+                    assert!(!response.created_at.is_empty());
+                }
+            }
+            Err(ParagonicError::Ollama(_)) => {
+                // Expected when Ollama is not running
+                // This is a valid test result
+            }
+            Err(e) => {
+                // Unexpected error type
+                panic!("Unexpected error type: {e:?}");
             }
         }
     }
