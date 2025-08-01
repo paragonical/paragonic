@@ -1,0 +1,50 @@
+[package]
+name = "paragonic"
+version = "0.1.0"
+edition = "2021"
+authors = ["Paragonic Team"]
+description = "Agentic Neovim Extension with Rust backend"
+license = "MIT"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# HTTP client for Ollama integration
+reqwest = { version = "0.12.22", features = ["json"] }
+
+# Database
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+postgresql_embedded = "0.19.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0.12"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+config = "0.15.13"
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# CLI argument parsing (for development/testing)
+clap = { version = "4.0", features = ["derive"] }
+
+[dev-dependencies]
+# Testing
+tokio-test = "0.4"
+mockall = "0.13.1"
+
+# Test database
+testcontainers = "0.25" 
