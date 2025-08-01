@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
+use std::fs;
+use std::path::Path;
 use tracing::debug;
 
 use crate::error::{ParagonicError, ParagonicResult};
@@ -107,6 +109,77 @@ impl ConfigManager {
         debug!("Configuration loaded from environment variables");
         Ok(())
     }
+
+    /// Load configuration from a TOML file
+    /// 
+    /// This function reads a TOML configuration file and merges it with
+    /// the current configuration. File values take precedence over defaults
+    /// but environment variables will override file values.
+    pub fn load_from_toml<P: AsRef<Path>>(&mut self, path: P) -> ParagonicResult<()> {
+        debug!("Loading configuration from TOML file: {:?}", path.as_ref());
+        
+        let content = fs::read_to_string(path.as_ref()).map_err(|e| {
+            ParagonicError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Configuration file not found: {e}")
+            ))
+        })?;
+        
+        // Parse TOML as a generic value first to handle partial configurations
+        let toml_value: toml::Value = toml::from_str(&content).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Invalid TOML configuration: {e}"))
+        })?;
+        
+        // Apply TOML values to current configuration
+        self.apply_toml_value(&toml_value);
+        
+        debug!("Configuration loaded from TOML file");
+        Ok(())
+    }
+
+    /// Apply TOML values to the current configuration
+    fn apply_toml_value(&mut self, toml_value: &toml::Value) {
+        if let Some(database) = toml_value.get("database") {
+            if let Some(host) = database.get("host").and_then(|v| v.as_str()) {
+                self.config.database.host = host.to_string();
+            }
+            if let Some(port) = database.get("port").and_then(|v| v.as_integer()) {
+                self.config.database.port = port as u16;
+            }
+            if let Some(username) = database.get("username").and_then(|v| v.as_str()) {
+                self.config.database.username = username.to_string();
+            }
+            if let Some(password) = database.get("password").and_then(|v| v.as_str()) {
+                self.config.database.password = password.to_string();
+            }
+            if let Some(database_name) = database.get("database").and_then(|v| v.as_str()) {
+                self.config.database.database = database_name.to_string();
+            }
+            if let Some(max_connections) = database.get("max_connections").and_then(|v| v.as_integer()) {
+                self.config.database.max_connections = max_connections as u32;
+            }
+        }
+        
+        if let Some(ollama) = toml_value.get("ollama") {
+            if let Some(base_url) = ollama.get("base_url").and_then(|v| v.as_str()) {
+                self.config.ollama.base_url = base_url.to_string();
+            }
+            if let Some(timeout_seconds) = ollama.get("timeout_seconds").and_then(|v| v.as_integer()) {
+                self.config.ollama.timeout_seconds = timeout_seconds as u64;
+            }
+        }
+        
+        if let Some(logging) = toml_value.get("logging") {
+            if let Some(level) = logging.get("level").and_then(|v| v.as_str()) {
+                self.config.logging.level = level.to_string();
+            }
+            if let Some(format) = logging.get("format").and_then(|v| v.as_str()) {
+                self.config.logging.format = format.to_string();
+            }
+        }
+    }
+
+
 
     /// Apply a single environment variable to the configuration
     fn apply_env_var(&mut self, key: &str, value: &str) -> ParagonicResult<()> {
@@ -211,6 +284,14 @@ mod tests {
         // Clean up any existing environment variables first
         env::remove_var("PARAGONIC_DATABASE_HOST");
         env::remove_var("PARAGONIC_DATABASE_PORT");
+        env::remove_var("PARAGONIC_DATABASE_USERNAME");
+        env::remove_var("PARAGONIC_DATABASE_PASSWORD");
+        env::remove_var("PARAGONIC_DATABASE_DATABASE");
+        env::remove_var("PARAGONIC_DATABASE_MAX_CONNECTIONS");
+        env::remove_var("PARAGONIC_OLLAMA_BASE_URL");
+        env::remove_var("PARAGONIC_OLLAMA_TIMEOUT_SECONDS");
+        env::remove_var("PARAGONIC_LOGGING_LEVEL");
+        env::remove_var("PARAGONIC_LOGGING_FORMAT");
         
         let mut manager = ConfigManager::new();
         
@@ -345,9 +426,22 @@ mod tests {
         env::remove_var("OTHER_VAR");
         env::remove_var("PARAGONIC_DATABASE_HOST");
         env::remove_var("PARAGONIC_DATABASE_PORT");
+        env::remove_var("PARAGONIC_DATABASE_USERNAME");
+        env::remove_var("PARAGONIC_DATABASE_PASSWORD");
+        env::remove_var("PARAGONIC_DATABASE_DATABASE");
+        env::remove_var("PARAGONIC_DATABASE_MAX_CONNECTIONS");
         env::remove_var("PARAGONIC_OLLAMA_BASE_URL");
+        env::remove_var("PARAGONIC_OLLAMA_TIMEOUT_SECONDS");
+        env::remove_var("PARAGONIC_LOGGING_LEVEL");
+        env::remove_var("PARAGONIC_LOGGING_FORMAT");
         
+        // Create a fresh manager with default values
         let mut manager = ConfigManager::new();
+        
+        // Verify we start with default values
+        let config = manager.get_config();
+        assert_eq!(config.database.host, "localhost");
+        assert_eq!(config.ollama.base_url, "http://localhost:11434");
         
         // Set non-Paragonic environment variable
         env::set_var("OTHER_VAR", "other-value");
@@ -355,12 +449,106 @@ mod tests {
         // Load from environment
         manager.load_from_env().unwrap();
         
-        // Verify default values are unchanged
+        // Verify default values are still unchanged
         let config = manager.get_config();
         assert_eq!(config.database.host, "localhost");
         assert_eq!(config.ollama.base_url, "http://localhost:11434");
         
         // Clean up
         env::remove_var("OTHER_VAR");
+    }
+
+    #[test]
+    fn test_load_from_toml_file() {
+        let mut manager = ConfigManager::new();
+        
+        // Create a temporary TOML file
+        let toml_content = r#"
+[database]
+host = "toml-host"
+port = 5433
+username = "toml-user"
+password = "toml-pass"
+database = "toml-db"
+max_connections = 15
+
+[ollama]
+base_url = "http://toml-ollama:11435"
+timeout_seconds = 45
+
+[logging]
+level = "debug"
+format = "text"
+"#;
+        
+        let temp_dir = std::env::temp_dir();
+        let config_path = temp_dir.join("test_config.toml");
+        
+        // Write TOML content to file
+        fs::write(&config_path, toml_content).unwrap();
+        
+        // Load from TOML file
+        manager.load_from_toml(&config_path).unwrap();
+        
+        // Verify TOML values are loaded
+        let config = manager.get_config();
+        assert_eq!(config.database.host, "toml-host");
+        assert_eq!(config.database.port, 5433);
+        assert_eq!(config.database.username, "toml-user");
+        assert_eq!(config.database.password, "toml-pass");
+        assert_eq!(config.database.database, "toml-db");
+        assert_eq!(config.database.max_connections, 15);
+        assert_eq!(config.ollama.base_url, "http://toml-ollama:11435");
+        assert_eq!(config.ollama.timeout_seconds, 45);
+        assert_eq!(config.logging.level, "debug");
+        assert_eq!(config.logging.format, "text");
+        
+        // Clean up
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_toml_and_env_precedence() {
+        // Clean up any existing environment variables first
+        env::remove_var("PARAGONIC_DATABASE_HOST");
+        env::remove_var("PARAGONIC_DATABASE_PORT");
+        
+        let mut manager = ConfigManager::new();
+        
+        // Create a TOML file with some values
+        let toml_content = r#"
+[database]
+host = "toml-host"
+port = 5433
+"#;
+        
+        let temp_dir = std::env::temp_dir();
+        let config_path = temp_dir.join("test_precedence.toml");
+        
+        // Write TOML content to file
+        fs::write(&config_path, toml_content).unwrap();
+        
+        // Load from TOML file first
+        manager.load_from_toml(&config_path).unwrap();
+        
+        // Verify TOML values are loaded
+        let config = manager.get_config();
+        assert_eq!(config.database.host, "toml-host");
+        assert_eq!(config.database.port, 5433);
+        
+        // Set environment variable to override TOML
+        env::set_var("PARAGONIC_DATABASE_HOST", "env-host");
+        
+        // Load from environment (should override TOML)
+        manager.load_from_env().unwrap();
+        
+        // Verify environment variable takes precedence
+        let config = manager.get_config();
+        assert_eq!(config.database.host, "env-host"); // Environment overrides TOML
+        assert_eq!(config.database.port, 5433); // TOML value remains for non-overridden field
+        
+        // Clean up
+        env::remove_var("PARAGONIC_DATABASE_HOST");
+        let _ = fs::remove_file(&config_path);
     }
 } 
