@@ -92,6 +92,18 @@ pub struct ModelInfoResponse {
     pub details: Option<serde_json::Value>,
 }
 
+/// Delete model request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteModelRequest {
+    pub name: String,
+}
+
+/// Delete model response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteModelResponse {
+    pub status: String,
+}
+
 /// Ollama client for API communication
 pub struct OllamaClient {
     config: OllamaConfig,
@@ -259,6 +271,42 @@ impl OllamaClient {
 
         info!("Successfully retrieved model info from Ollama: {}", model_name);
         Ok(model_info)
+    }
+
+    /// Delete a model from Ollama
+    /// 
+    /// Removes the specified model from the local Ollama server.
+    pub async fn delete_model(&self, model_name: &str) -> ParagonicResult<DeleteModelResponse> {
+        let url = format!("{}/api/delete", self.config.base_url);
+        
+        let request_body = DeleteModelRequest {
+            name: model_name.to_string(),
+        };
+
+        let response = self.client
+            .delete(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to delete model from Ollama: {e}");
+                ParagonicError::Ollama(format!("Model deletion failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama delete API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Delete API error {status}: {error_text}")));
+        }
+
+        let delete_response: DeleteModelResponse = response.json().await.map_err(|e| {
+            error!("Failed to parse Ollama delete response: {e}");
+            ParagonicError::Ollama(format!("Delete response parsing failed: {e}"))
+        })?;
+
+        info!("Successfully deleted model from Ollama: {}", model_name);
+        Ok(delete_response)
     }
 }
 
@@ -498,6 +546,53 @@ mod tests {
                 // Ollama is running and responded successfully
                 // The response should have some fields populated
                 assert!(response.license.is_some() || response.modelfile.is_some() || response.parameters.is_some());
+            }
+            Err(ParagonicError::Ollama(_)) => {
+                // Expected when Ollama is not running
+                // This is a valid test result
+            }
+            Err(e) => {
+                // Unexpected error type
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    /// Test delete model request structure
+    #[test]
+    fn test_delete_model_request_structure() {
+        let request = DeleteModelRequest {
+            name: "llama2:7b".to_string(),
+        };
+        
+        assert_eq!(request.name, "llama2:7b");
+    }
+
+    /// Test delete model response structure
+    #[test]
+    fn test_delete_model_response_structure() {
+        let response = DeleteModelResponse {
+            status: "success".to_string(),
+        };
+        
+        assert_eq!(response.status, "success");
+    }
+
+    /// Test delete model function (integration test)
+    #[tokio::test]
+    async fn test_delete_model_function() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        
+        // This test requires a running Ollama server
+        // If Ollama is not running, we expect a connection error
+        let result = client.delete_model("llama2:7b").await;
+        
+        match result {
+            Ok(response) => {
+                // Ollama is running and responded successfully
+                assert!(!response.status.is_empty());
+                // The status could be "success", "error", etc.
             }
             Err(ParagonicError::Ollama(_)) => {
                 // Expected when Ollama is not running
