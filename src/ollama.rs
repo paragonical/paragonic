@@ -64,6 +64,22 @@ pub struct ChatCompletionResponse {
     pub done: bool,
 }
 
+/// Pull model request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullModelRequest {
+    pub name: String,
+    pub insecure: Option<bool>,
+}
+
+/// Pull model response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullModelResponse {
+    pub status: String,
+    pub digest: Option<String>,
+    pub total: Option<u64>,
+    pub completed: Option<u64>,
+}
+
 /// Ollama client for API communication
 pub struct OllamaClient {
     config: OllamaConfig,
@@ -157,6 +173,43 @@ impl OllamaClient {
 
         info!("Successfully received chat completion from Ollama model: {}", model);
         Ok(chat_response)
+    }
+
+    /// Pull a model from Ollama
+    /// 
+    /// Downloads the specified model to the local Ollama server.
+    pub async fn pull_model(&self, model_name: &str, insecure: bool) -> ParagonicResult<PullModelResponse> {
+        let url = format!("{}/api/pull", self.config.base_url);
+        
+        let request_body = PullModelRequest {
+            name: model_name.to_string(),
+            insecure: Some(insecure),
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to pull model from Ollama: {e}");
+                ParagonicError::Ollama(format!("Model pull failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama pull API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Pull API error {status}: {error_text}")));
+        }
+
+        let pull_response: PullModelResponse = response.json().await.map_err(|e| {
+            error!("Failed to parse Ollama pull response: {e}");
+            ParagonicError::Ollama(format!("Pull response parsing failed: {e}"))
+        })?;
+
+        info!("Successfully pulled model from Ollama: {}", model_name);
+        Ok(pull_response)
     }
 }
 
@@ -292,6 +345,61 @@ mod tests {
                 assert_eq!(response.model, "llama2:7b");
                 assert_eq!(response.message.role, "assistant");
                 assert!(!response.message.content.is_empty());
+            }
+            Err(ParagonicError::Ollama(_)) => {
+                // Expected when Ollama is not running
+                // This is a valid test result
+            }
+            Err(e) => {
+                // Unexpected error type
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    /// Test pull model request structure
+    #[test]
+    fn test_pull_model_request_structure() {
+        let request = PullModelRequest {
+            name: "llama2:7b".to_string(),
+            insecure: Some(false),
+        };
+        
+        assert_eq!(request.name, "llama2:7b");
+        assert_eq!(request.insecure, Some(false));
+    }
+
+    /// Test pull model response structure
+    #[test]
+    fn test_pull_model_response_structure() {
+        let response = PullModelResponse {
+            status: "downloading".to_string(),
+            digest: Some("sha256:abc123".to_string()),
+            total: Some(4096),
+            completed: Some(2048),
+        };
+        
+        assert_eq!(response.status, "downloading");
+        assert_eq!(response.digest, Some("sha256:abc123".to_string()));
+        assert_eq!(response.total, Some(4096));
+        assert_eq!(response.completed, Some(2048));
+    }
+
+    /// Test pull model function (integration test)
+    #[tokio::test]
+    async fn test_pull_model_function() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        
+        // This test requires a running Ollama server
+        // If Ollama is not running, we expect a connection error
+        let result = client.pull_model("llama2:7b", false).await;
+        
+        match result {
+            Ok(response) => {
+                // Ollama is running and responded successfully
+                assert!(!response.status.is_empty());
+                // The status could be "downloading", "success", etc.
             }
             Err(ParagonicError::Ollama(_)) => {
                 // Expected when Ollama is not running
