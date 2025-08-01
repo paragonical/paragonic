@@ -66,8 +66,7 @@ local function test_commands_show_messages()
         print("  Notify: " .. msg)
     end
     
-    -- Call the command functions directly
-    paragonic.open_chat()
+    -- Call the command functions directly (skip open_chat since it now creates a buffer)
     paragonic.open_projects()
     paragonic.open_config()
     
@@ -75,15 +74,82 @@ local function test_commands_show_messages()
     vim.notify = original_notify
     
     -- Assert that appropriate messages were shown
-    assert(#notify_calls >= 3, "Should show at least 3 notification messages")
-    assert(notify_calls[1].msg:find("not yet implemented"), "Chat should show not implemented message")
-    assert(notify_calls[2].msg:find("not yet implemented"), "Projects should show not implemented message")
-    assert(notify_calls[3].msg:find("not yet implemented"), "Config should show not implemented message")
+    assert(#notify_calls >= 2, "Should show at least 2 notification messages")
+    assert(notify_calls[1].msg:find("not yet implemented"), "Projects should show not implemented message")
+    assert(notify_calls[2].msg:find("not yet implemented"), "Config should show not implemented message")
     
     print("✓ Command message test passed!")
+end
+
+-- Test that open_chat creates a chat buffer
+local function test_open_chat_creates_buffer()
+    print("Testing that open_chat creates a chat buffer...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Track buffer creation
+    local buffers_before = vim.api.nvim_list_bufs()
+    local original_new_buf = vim.api.nvim_create_buf
+    local created_buffers = {}
+    
+    vim.api.nvim_create_buf = function(listed, scratch)
+        local buf = original_new_buf(listed, scratch)
+        table.insert(created_buffers, buf)
+        return buf
+    end
+    
+    -- Call open_chat
+    paragonic.open_chat()
+    
+    -- Restore original function
+    vim.api.nvim_create_buf = original_new_buf
+    
+    -- Assert that a buffer was created
+    assert(#created_buffers > 0, "open_chat should create at least one buffer")
+    
+    -- Check if the buffer has the right name
+    local chat_buffer = created_buffers[1]
+    local buf_name = vim.api.nvim_buf_get_name(chat_buffer)
+    assert(buf_name:find("paragonic") or buf_name:find("chat"), "Chat buffer should have appropriate name")
+    
+    print("✓ Chat buffer creation test passed!")
+end
+
+-- Test that chat buffer has correct initial content
+local function test_chat_buffer_content()
+    print("Testing that chat buffer has correct initial content...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Call open_chat to create buffer
+    paragonic.open_chat()
+    
+    -- Get the current buffer (should be the chat buffer)
+    local buf = vim.api.nvim_get_current_buf()
+    
+    -- Get buffer content
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Assert that content is correct
+    assert(lines[1] == "# Paragonic Chat", "First line should be header")
+    assert(lines[3] == "Type your message below and press Enter to send:", "Should have instructions")
+    assert(lines[5] == "---", "Should have separator")
+    
+    -- Check buffer options
+    local buftype = vim.api.nvim_buf_get_option(buf, "buftype")
+    local filetype = vim.api.nvim_buf_get_option(buf, "filetype")
+    
+    assert(buftype == "nofile", "Buffer should be nofile type")
+    assert(filetype == "markdown", "Buffer should have markdown filetype")
+    
+    print("✓ Chat buffer content test passed!")
 end
 
 -- Run all tests
 test_paragonic_setup()
 test_setup_creates_commands()
-test_commands_show_messages() 
+test_commands_show_messages()
+test_open_chat_creates_buffer()
+test_chat_buffer_content() 

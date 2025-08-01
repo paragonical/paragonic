@@ -60,8 +60,44 @@ end
 
 -- Open chat interface
 function M.open_chat()
-    -- TODO: Implement chat interface
-    vim.notify("Chat interface not yet implemented", vim.log.levels.WARN)
+    -- Check if chat buffer already exists
+    local chat_buf = nil
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        local name = vim.api.nvim_buf_get_name(buf)
+        if name == "paragonic://chat" then
+            chat_buf = buf
+            break
+        end
+    end
+    
+    -- Create new buffer if it doesn't exist
+    if not chat_buf then
+        chat_buf = vim.api.nvim_create_buf(true, true)
+        
+        -- Set buffer name
+        vim.api.nvim_buf_set_name(chat_buf, "paragonic://chat")
+        
+        -- Set buffer options
+        vim.api.nvim_buf_set_option(chat_buf, "buftype", "nofile")
+        vim.api.nvim_buf_set_option(chat_buf, "swapfile", false)
+        vim.api.nvim_buf_set_option(chat_buf, "modifiable", true)
+        
+        -- Add initial content
+        vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
+            "# Paragonic Chat",
+            "",
+            "Type your message below and press Enter to send:",
+            "",
+            "---"
+        })
+        
+        -- Set filetype for syntax highlighting
+        vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
+    end
+    
+    -- Open the buffer in a new window
+    vim.api.nvim_command("split")
+    vim.api.nvim_set_current_buf(chat_buf)
 end
 
 -- Open projects interface
