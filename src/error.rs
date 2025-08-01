@@ -50,6 +50,6 @@ impl From<anyhow::Error> for ParagonicError {
 
 impl From<r2d2::Error> for ParagonicError {
     fn from(err: r2d2::Error) -> Self {
-        ParagonicError::Database(format!("Connection pool error: {}", err))
+        ParagonicError::Database(format!("Connection pool error: {err}"))
     }
 } 
