@@ -256,6 +256,81 @@ impl ConfigManager {
     pub fn get_config_mut(&mut self) -> &mut Config {
         &mut self.config
     }
+
+    /// Load configuration from all sources with proper precedence
+    /// 
+    /// This function loads configuration in the following order:
+    /// 1. Default values (lowest priority)
+    /// 2. TOML configuration file (if exists)
+    /// 3. Environment variables (highest priority)
+    /// 
+    /// The precedence order ensures that environment variables can override
+    /// file settings, and file settings can override defaults.
+    pub fn load_configuration<P: AsRef<Path>>(&mut self, config_path: Option<P>) -> ParagonicResult<()> {
+        debug!("Loading configuration from all sources");
+        
+        // Start with default values (already set in ConfigManager::new())
+        
+        // Load from TOML file if provided
+        if let Some(path) = config_path {
+            if path.as_ref().exists() {
+                self.load_from_toml(path)?;
+            } else {
+                debug!("Configuration file not found, skipping: {:?}", path.as_ref());
+            }
+        }
+        
+        // Load from environment variables (highest priority)
+        self.load_from_env()?;
+        
+        debug!("Configuration loaded from all sources successfully");
+        Ok(())
+    }
+
+    /// Load configuration from standard locations
+    /// 
+    /// This function looks for configuration files in standard locations:
+    /// 1. Current directory: `paragonic.toml`
+    /// 2. User config directory: `~/.config/paragonic/config.toml`
+    /// 3. System config directory: `/etc/paragonic/config.toml`
+    pub fn load_from_standard_locations(&mut self) -> ParagonicResult<()> {
+        debug!("Loading configuration from standard locations");
+        
+        // Try current directory first
+        let current_dir_config = std::env::current_dir()
+            .map(|dir| dir.join("paragonic.toml"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("paragonic.toml"));
+        
+        if current_dir_config.exists() {
+            debug!("Loading configuration from current directory: {:?}", current_dir_config);
+            self.load_from_toml(&current_dir_config)?;
+        }
+        
+        // Try user config directory
+        if let Some(user_config_dir) = dirs::config_dir() {
+            let user_config = user_config_dir.join("paragonic").join("config.toml");
+            if user_config.exists() {
+                debug!("Loading configuration from user config: {:?}", user_config);
+                self.load_from_toml(&user_config)?;
+            }
+        }
+        
+        // Try system config directory (Unix-like systems)
+        #[cfg(unix)]
+        {
+            let system_config = std::path::PathBuf::from("/etc/paragonic/config.toml");
+            if system_config.exists() {
+                debug!("Loading configuration from system config: {:?}", system_config);
+                self.load_from_toml(&system_config)?;
+            }
+        }
+        
+        // Load environment variables (highest priority)
+        self.load_from_env()?;
+        
+        debug!("Configuration loaded from standard locations");
+        Ok(())
+    }
 }
 
 impl Default for ConfigManager {
@@ -550,5 +625,74 @@ port = 5433
         // Clean up
         env::remove_var("PARAGONIC_DATABASE_HOST");
         let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_load_configuration_with_file_and_env() {
+        // Clean up any existing environment variables first
+        env::remove_var("PARAGONIC_DATABASE_HOST");
+        env::remove_var("PARAGONIC_DATABASE_PORT");
+        
+        let mut manager = ConfigManager::new();
+        
+        // Create a TOML file
+        let toml_content = r#"
+[database]
+host = "toml-host"
+port = 5433
+"#;
+        
+        let temp_dir = std::env::temp_dir();
+        let config_path = temp_dir.join("test_comprehensive.toml");
+        
+        // Write TOML content to file
+        fs::write(&config_path, toml_content).unwrap();
+        
+        // Set environment variable to override TOML
+        env::set_var("PARAGONIC_DATABASE_HOST", "env-host");
+        
+        // Load configuration from all sources
+        manager.load_configuration(Some(&config_path)).unwrap();
+        
+        // Verify environment variable takes precedence over TOML
+        let config = manager.get_config();
+        assert_eq!(config.database.host, "env-host"); // Environment overrides TOML
+        assert_eq!(config.database.port, 5433); // TOML value for non-overridden field
+        assert_eq!(config.database.username, "paragonic"); // Default value
+        
+        // Clean up
+        env::remove_var("PARAGONIC_DATABASE_HOST");
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn test_load_configuration_without_file() {
+        // Clean up any existing environment variables first
+        env::remove_var("PARAGONIC_DATABASE_HOST");
+        env::remove_var("PARAGONIC_DATABASE_PORT");
+        env::remove_var("PARAGONIC_DATABASE_USERNAME");
+        env::remove_var("PARAGONIC_DATABASE_PASSWORD");
+        env::remove_var("PARAGONIC_DATABASE_DATABASE");
+        env::remove_var("PARAGONIC_DATABASE_MAX_CONNECTIONS");
+        env::remove_var("PARAGONIC_OLLAMA_BASE_URL");
+        env::remove_var("PARAGONIC_OLLAMA_TIMEOUT_SECONDS");
+        env::remove_var("PARAGONIC_LOGGING_LEVEL");
+        env::remove_var("PARAGONIC_LOGGING_FORMAT");
+        
+        let mut manager = ConfigManager::new();
+        
+        // Set environment variable
+        env::set_var("PARAGONIC_DATABASE_HOST", "env-only-host");
+        
+        // Load configuration without file
+        manager.load_configuration::<std::path::PathBuf>(None).unwrap();
+        
+        // Verify environment variable is applied
+        let config = manager.get_config();
+        assert_eq!(config.database.host, "env-only-host");
+        assert_eq!(config.database.port, 5432); // Default value
+        
+        // Clean up
+        env::remove_var("PARAGONIC_DATABASE_HOST");
     }
 } 
