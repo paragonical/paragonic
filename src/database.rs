@@ -264,7 +264,7 @@ pub async fn shutdown() -> ParagonicResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, ConfigManager};
+    use crate::config::ConfigManager;
 
     /// Test database configuration
     #[test]
