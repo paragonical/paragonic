@@ -80,6 +80,18 @@ pub struct PullModelResponse {
     pub completed: Option<u64>,
 }
 
+/// Model info response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfoResponse {
+    pub license: Option<String>,
+    pub modelfile: Option<String>,
+    pub parameters: Option<String>,
+    pub template: Option<String>,
+    pub system: Option<String>,
+    pub digest: Option<String>,
+    pub details: Option<serde_json::Value>,
+}
+
 /// Ollama client for API communication
 pub struct OllamaClient {
     config: OllamaConfig,
@@ -210,6 +222,43 @@ impl OllamaClient {
 
         info!("Successfully pulled model from Ollama: {}", model_name);
         Ok(pull_response)
+    }
+
+    /// Get detailed information about a model
+    /// 
+    /// Returns detailed information about the specified model including
+    /// license, modelfile, parameters, template, system prompt, and more.
+    pub async fn model_info(&self, model_name: &str) -> ParagonicResult<ModelInfoResponse> {
+        let url = format!("{}/api/show", self.config.base_url);
+        
+        let request_body = serde_json::json!({
+            "name": model_name
+        });
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to get model info from Ollama: {e}");
+                ParagonicError::Ollama(format!("Model info failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama model info API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Model info API error {status}: {error_text}")));
+        }
+
+        let model_info: ModelInfoResponse = response.json().await.map_err(|e| {
+            error!("Failed to parse Ollama model info response: {e}");
+            ParagonicError::Ollama(format!("Model info response parsing failed: {e}"))
+        })?;
+
+        info!("Successfully retrieved model info from Ollama: {}", model_name);
+        Ok(model_info)
     }
 }
 
@@ -400,6 +449,55 @@ mod tests {
                 // Ollama is running and responded successfully
                 assert!(!response.status.is_empty());
                 // The status could be "downloading", "success", etc.
+            }
+            Err(ParagonicError::Ollama(_)) => {
+                // Expected when Ollama is not running
+                // This is a valid test result
+            }
+            Err(e) => {
+                // Unexpected error type
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    /// Test model info response structure
+    #[test]
+    fn test_model_info_response_structure() {
+        let response = ModelInfoResponse {
+            license: Some("MIT".to_string()),
+            modelfile: Some("FROM llama2:7b".to_string()),
+            parameters: Some("7B".to_string()),
+            template: Some("{{ .Prompt }}".to_string()),
+            system: Some("You are a helpful assistant.".to_string()),
+            digest: Some("sha256:abc123".to_string()),
+            details: Some(serde_json::json!({
+                "format": "gguf",
+                "family": "llama"
+            })),
+        };
+        
+        assert_eq!(response.license, Some("MIT".to_string()));
+        assert_eq!(response.parameters, Some("7B".to_string()));
+        assert_eq!(response.system, Some("You are a helpful assistant.".to_string()));
+        assert!(response.details.is_some());
+    }
+
+    /// Test model info function (integration test)
+    #[tokio::test]
+    async fn test_model_info_function() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        
+        // This test requires a running Ollama server
+        // If Ollama is not running, we expect a connection error
+        let result = client.model_info("llama2:7b").await;
+        
+        match result {
+            Ok(response) => {
+                // Ollama is running and responded successfully
+                // The response should have some fields populated
+                assert!(response.license.is_some() || response.modelfile.is_some() || response.parameters.is_some());
             }
             Err(ParagonicError::Ollama(_)) => {
                 // Expected when Ollama is not running
