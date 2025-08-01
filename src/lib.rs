@@ -10,6 +10,7 @@ pub mod error;
 pub mod models;
 pub mod schema;
 pub mod embeddings;
+pub mod rpc;
 
 pub use error::{ParagonicError, ParagonicResult};
 
@@ -25,6 +26,24 @@ pub async fn initialize() -> ParagonicResult<()> {
     database::initialize().await?;
     
     tracing::info!("Paragonic backend initialized successfully");
+    Ok(())
+}
+
+/// Start the JSON-RPC server
+/// 
+/// This function starts the JSON-RPC server that exposes Ollama functions
+/// to the Lua Neovim plugin.
+pub async fn start_rpc_server(addr: &str) -> ParagonicResult<()> {
+    tracing::info!("Starting JSON-RPC server on {}", addr);
+    
+    // Create Ollama client
+    let config_manager = crate::config::ConfigManager::new();
+    let ollama_client = crate::ollama::OllamaClient::from_config_manager(&config_manager)?;
+    
+    // Create and start RPC server
+    let rpc_server = crate::rpc::ParagonicRpcServer::new(ollama_client);
+    rpc_server.start(addr)?;
+    
     Ok(())
 }
 

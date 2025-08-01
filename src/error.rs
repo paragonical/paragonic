@@ -52,4 +52,10 @@ impl From<r2d2::Error> for ParagonicError {
     fn from(err: r2d2::Error) -> Self {
         ParagonicError::Database(format!("Connection pool error: {err}"))
     }
+}
+
+impl From<std::net::AddrParseError> for ParagonicError {
+    fn from(err: std::net::AddrParseError) -> Self {
+        ParagonicError::Internal(format!("Address parse error: {}", err))
+    }
 } 

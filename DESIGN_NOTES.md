@@ -42,4 +42,35 @@
 **References**:
 - [pgvector documentation](https://github.com/pgvector/pgvector)
 - [Diesel custom types](https://diesel.rs/guides/custom_types)
-- [Diesel pgvector example](https://github.com/diesel-rs/diesel/issues/3558) 
+- [Diesel pgvector example](https://github.com/diesel-rs/diesel/issues/3558)
+
+## Lua-Rust Integration Design Decisions
+
+### JSON-RPC for Lua-Rust Communication
+
+**Decision**: Use JSON-RPC for communication between Lua Neovim plugin and Rust backend, aligning with Model Context Protocol (MCP) standards.
+
+**Rationale**:
+- **MCP Alignment**: JSON-RPC is the standard protocol used by MCP, ensuring compatibility with the broader AI ecosystem
+- **Simplicity**: JSON-RPC is lightweight and easy to implement in both Lua and Rust
+- **Extensibility**: Easy to add new methods and parameters without breaking changes
+- **Debugging**: Human-readable JSON messages for easier debugging and development
+- **Standards Compliance**: Follows established RPC standards used by many AI tools
+
+**Implementation Plan**:
+1. **Rust JSON-RPC Server**: Create a JSON-RPC server that exposes Ollama client functions
+2. **Lua JSON-RPC Client**: Implement JSON-RPC client in Lua to call Rust methods
+3. **Method Definitions**: Define RPC methods for chat completion, model management, etc.
+4. **Error Handling**: Implement proper error handling for network and RPC failures
+5. **Configuration**: Allow configuration of RPC server address and timeouts
+
+**RPC Methods to Implement**:
+- `chat_completion(message: string, model: string) -> string`
+- `list_models() -> array`
+- `model_info(model: string) -> object`
+- `generate_embedding(text: string, model: string) -> array`
+
+**References**:
+- [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
+- [Rust JSON-RPC crates](https://crates.io/crates/jsonrpc-core) 
