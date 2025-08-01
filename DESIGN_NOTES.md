@@ -58,11 +58,12 @@
 - **Standards Compliance**: Follows established RPC standards used by many AI tools
 
 **Implementation Plan**:
-1. **Rust JSON-RPC Server**: Create a JSON-RPC server that exposes Ollama client functions
+1. **Rust JSON-RPC Server**: Use `tokio_jsonrpc` for async JSON-RPC server implementation
 2. **Lua JSON-RPC Client**: Implement JSON-RPC client in Lua to call Rust methods
 3. **Method Definitions**: Define RPC methods for chat completion, model management, etc.
 4. **Error Handling**: Implement proper error handling for network and RPC failures
 5. **Configuration**: Allow configuration of RPC server address and timeouts
+6. **MCP Integration**: Enable Rust to initiate calls to external MCP servers
 
 **RPC Methods to Implement**:
 - `chat_completion(message: string, model: string) -> string`
@@ -70,7 +71,31 @@
 - `model_info(model: string) -> object`
 - `generate_embedding(text: string, model: string) -> array`
 
+**Server Implementation**:
+```rust
+struct ParagonicServer {
+    ollama_client: Arc<OllamaClient>,
+}
+
+impl Server for ParagonicServer {
+    type Success = String;
+    type RpcCallResult = Result<String, RpcError>;
+    type NotificationResult = Result<(), ()>;
+    
+    fn rpc(&self, ctl: &ServerCtl, method: &str, params: &Option<Value>) 
+        -> Option<Self::RpcCallResult> {
+        match method {
+            "chat_completion" => Some(self.handle_chat_completion(params)),
+            "list_models" => Some(self.handle_list_models()),
+            "model_info" => Some(self.handle_model_info(params)),
+            "generate_embedding" => Some(self.handle_generate_embedding(params)),
+            _ => None
+        }
+    }
+}
+```
+
 **References**:
 - [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
-- [Rust JSON-RPC crates](https://crates.io/crates/jsonrpc-core) 
+- [tokio_jsonrpc crate](https://crates.io/crates/tokio_jsonrpc) 

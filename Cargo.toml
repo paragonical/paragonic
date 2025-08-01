@@ -52,10 +52,10 @@ futures-util = "0.3"
 # CLI argument parsing (for development/testing)
 clap = { version = "4.0", features = ["derive"] }
 
-# JSON-RPC for Lua-Rust communication
-jsonrpc-core = "18.0"
-jsonrpc-http-server = "18.0"
-jsonrpc-derive = "18.0"
+# JSON-RPC for Lua-Rust communication and MCP
+tokio-jsonrpc = "0.9.1"
+tokio-core = "0.1"
+futures = "0.1"
 
 [dev-dependencies]
 # Testing

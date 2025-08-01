@@ -33,7 +33,7 @@ pub async fn initialize() -> ParagonicResult<()> {
 /// 
 /// This function starts the JSON-RPC server that exposes Ollama functions
 /// to the Lua Neovim plugin.
-pub async fn start_rpc_server(addr: &str) -> ParagonicResult<()> {
+pub fn start_rpc_server(addr: &str) -> ParagonicResult<()> {
     tracing::info!("Starting JSON-RPC server on {}", addr);
     
     // Create Ollama client
@@ -41,7 +41,7 @@ pub async fn start_rpc_server(addr: &str) -> ParagonicResult<()> {
     let ollama_client = crate::ollama::OllamaClient::from_config_manager(&config_manager)?;
     
     // Create and start RPC server
-    let rpc_server = crate::rpc::ParagonicRpcServer::new(ollama_client);
+    let rpc_server = crate::rpc::ParagonicServer::new(ollama_client);
     rpc_server.start(addr)?;
     
     Ok(())
