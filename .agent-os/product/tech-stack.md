@@ -30,7 +30,7 @@
 
 ### Development Tools
 - **Build System:** Cargo (Rust)
-- **Testing:** Cargo test + Neovim plugin testing
+- **Testing:** Cargo test + Neovim plugin testing. Tests are written for one function in a module at a time for very small batches of work.
 - **Linting:** Clippy (Rust), LuaCheck (Lua)
 - **Documentation:** Rust doc, LuaDoc
 

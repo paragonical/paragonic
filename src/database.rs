@@ -141,6 +141,46 @@ pub async fn initialize() -> ParagonicResult<()> {
     Ok(())
 }
 
+/// Initialize the database connection pool with configuration from config manager
+/// 
+/// This function sets up the PostgreSQL Embedded database and creates
+/// the connection pool for the application using the provided configuration.
+pub async fn initialize_with_config(config_manager: &crate::config::ConfigManager) -> ParagonicResult<()> {
+    // Initialize embedded database first
+    initialize_embedded_db().await?;
+    
+    let config = get_database_config_from_manager(config_manager);
+    
+    // Create connection string
+    let connection_string = format!(
+        "postgresql://{}:{}@{}:{}/{}",
+        config.username, config.password, config.host, config.port, config.database
+    );
+    
+    // Create connection manager
+    let manager = ConnectionManager::<PgConnection>::new(&connection_string);
+    
+    // Create connection pool
+    let pool = Pool::builder()
+        .max_size(config.max_connections)
+        .build(manager)
+        .map_err(|e| {
+            error!("Failed to create database pool: {}", e);
+            ParagonicError::Internal(format!("Database pool creation failed: {e}"))
+        })?;
+    
+    // Store pool globally
+    DB_POOL.set(Arc::new(pool)).map_err(|_| {
+        ParagonicError::Internal("Database pool already initialized".to_string())
+    })?;
+    
+    // Run migrations
+    run_migrations().await?;
+    
+    info!("Database initialized successfully with custom configuration");
+    Ok(())
+}
+
 /// Get the database connection pool
 /// 
 /// Returns a reference to the global database pool.
@@ -159,6 +199,28 @@ pub fn get_connection() -> ParagonicResult<r2d2::PooledConnection<ConnectionMana
         error!("Failed to get database connection: {}", e);
         ParagonicError::Internal(format!("Database connection failed: {e}"))
     })
+}
+
+/// Get database configuration from config manager
+/// 
+/// Converts the database configuration from the config module
+/// to the database module's DatabaseConfig structure.
+pub fn get_database_config_from_manager(config_manager: &crate::config::ConfigManager) -> DatabaseConfig {
+    let config = config_manager.get_config();
+    
+    let mut data_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    data_dir.push(".paragonic");
+    data_dir.push("db");
+    
+    DatabaseConfig {
+        host: config.database.host.clone(),
+        port: config.database.port,
+        username: config.database.username.clone(),
+        password: config.database.password.clone(),
+        database: config.database.database.clone(),
+        max_connections: config.database.max_connections,
+        data_dir,
+    }
 }
 
 /// Run database migrations using Diesel
@@ -202,6 +264,7 @@ pub async fn shutdown() -> ParagonicResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Config, ConfigManager};
 
     /// Test database configuration
     #[test]
@@ -215,6 +278,104 @@ mod tests {
         assert_eq!(config.max_connections, 10);
         assert!(config.data_dir.ends_with(".paragonic/db"));
     }
+
+    /// Test database configuration from config module
+    #[test]
+    fn test_database_config_from_config_module() {
+        let config_manager = ConfigManager::new();
+        let config = config_manager.get_config();
+        
+        // Verify that the database config from the config module matches our expectations
+        assert_eq!(config.database.host, "localhost");
+        assert_eq!(config.database.port, 5432);
+        assert_eq!(config.database.username, "paragonic");
+        assert_eq!(config.database.password, "paragonic");
+        assert_eq!(config.database.database, "paragonic");
+        assert_eq!(config.database.max_connections, 10);
+    }
+
+    /// Test database initialization with custom configuration
+    #[test]
+    fn test_database_initialization_with_config() {
+        let config_manager = ConfigManager::new();
+        let config = config_manager.get_config();
+        
+        // Test that we can create a database config from the config module
+        let db_config = DatabaseConfig {
+            host: config.database.host.clone(),
+            port: config.database.port,
+            username: config.database.username.clone(),
+            password: config.database.password.clone(),
+            database: config.database.database.clone(),
+            max_connections: config.database.max_connections,
+            data_dir: DatabaseConfig::default().data_dir,
+        };
+        
+        assert_eq!(db_config.host, "localhost");
+        assert_eq!(db_config.port, 5432);
+        assert_eq!(db_config.max_connections, 10);
+    }
+
+    /// Test database initialization with config manager
+    #[test]
+    fn test_database_initialization_with_config_manager() {
+        let config_manager = ConfigManager::new();
+        
+        // Test that we can get database config from config manager
+        let db_config = get_database_config_from_manager(&config_manager);
+        
+        assert_eq!(db_config.host, "localhost");
+        assert_eq!(db_config.port, 5432);
+        assert_eq!(db_config.max_connections, 10);
+    }
+
+    /// Test database initialization with custom config manager
+    #[test]
+    fn test_database_initialization_with_custom_config() {
+        let mut config_manager = ConfigManager::new();
+        
+        // Set custom database configuration
+        config_manager.get_config_mut().database.host = "custom-host".to_string();
+        config_manager.get_config_mut().database.port = 5433;
+        config_manager.get_config_mut().database.max_connections = 20;
+        
+        // Test that the custom config is used
+        let db_config = get_database_config_from_manager(&config_manager);
+        
+        assert_eq!(db_config.host, "custom-host");
+        assert_eq!(db_config.port, 5433);
+        assert_eq!(db_config.max_connections, 20);
+    }
+
+    /// Test database initialization with config manager parameter
+    #[test]
+    fn test_initialize_with_config_manager_configuration() {
+        let config_manager = ConfigManager::new();
+        
+        // Test that we can get the configuration correctly
+        let db_config = get_database_config_from_manager(&config_manager);
+        
+        // Verify the configuration is correct
+        assert_eq!(db_config.host, "localhost");
+        assert_eq!(db_config.port, 5432);
+        assert_eq!(db_config.username, "paragonic");
+        assert_eq!(db_config.password, "paragonic");
+        assert_eq!(db_config.database, "paragonic");
+        assert_eq!(db_config.max_connections, 10);
+        
+        // Test that the connection string would be correct
+        let connection_string = format!(
+            "postgresql://{}:{}@{}:{}/{}",
+            db_config.username, db_config.password, db_config.host, db_config.port, db_config.database
+        );
+        
+        assert_eq!(
+            connection_string,
+            "postgresql://paragonic:paragonic@localhost:5432/paragonic"
+        );
+    }
+
+
 
     /// Test connection string generation
     #[test]
