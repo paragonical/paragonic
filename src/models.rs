@@ -302,6 +302,48 @@ pub enum RelationshipType {
     Team,
 }
 
+/// Embedding model for storing vector representations
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = embeddings)]
+pub struct Embedding {
+    pub id: Uuid,
+    pub content_type: String,
+    pub content_id: Uuid,
+    pub content_text: String,
+    pub embedding_model: String,
+    pub embedding_vector: Vec<f32>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Create embedding request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateEmbeddingRequest {
+    pub content_type: String,
+    pub content_id: Uuid,
+    pub content_text: String,
+    pub embedding_model: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Search embeddings request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchEmbeddingsRequest {
+    pub query_text: String,
+    pub embedding_model: String,
+    pub content_types: Option<Vec<String>>,
+    pub limit: Option<i32>,
+    pub similarity_threshold: Option<f32>,
+}
+
+/// Search result with similarity score
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingSearchResult {
+    pub embedding: Embedding,
+    pub similarity_score: f32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,5 +509,28 @@ mod tests {
         assert!(association.person_id.is_some());
         assert!(association.agent_id.is_none());
         matches!(association.status, AssociationStatus::Active);
+    }
+
+    /// Test embedding creation
+    #[test]
+    fn test_embedding_creation() {
+        let embedding = Embedding {
+            id: Uuid::new_v4(),
+            content_type: "message".to_string(),
+            content_id: Uuid::new_v4(),
+            content_text: "Hello, world!".to_string(),
+            embedding_model: "nomic-embed-text".to_string(),
+            embedding_vector: vec![0.1, 0.2, 0.3, 0.4, 0.5],
+            metadata: Some(serde_json::json!({"conversation_id": "123"})),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        assert_eq!(embedding.content_type, "message");
+        assert_eq!(embedding.content_text, "Hello, world!");
+        assert_eq!(embedding.embedding_model, "nomic-embed-text");
+        assert_eq!(embedding.embedding_vector.len(), 5);
+        assert_eq!(embedding.embedding_vector[0], 0.1);
+        assert!(embedding.metadata.is_some());
     }
 } 

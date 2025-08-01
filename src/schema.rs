@@ -1,130 +1,170 @@
 // @generated automatically by Diesel CLI.
 
+// Custom types will be handled separately
+
 diesel::table! {
     agents (id) {
         id -> Uuid,
+        #[max_length = 255]
         name -> Varchar,
         description -> Nullable<Text>,
+        #[max_length = 255]
         model_name -> Varchar,
         configuration -> Nullable<Jsonb>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     associations (id) {
         id -> Uuid,
-        organization_id -> Uuid,
+        organization_id -> Nullable<Uuid>,
         person_id -> Nullable<Uuid>,
         agent_id -> Nullable<Uuid>,
+        #[max_length = 100]
         role -> Varchar,
         permissions -> Nullable<Jsonb>,
         start_date -> Nullable<Date>,
         end_date -> Nullable<Date>,
-        status -> Varchar,
-        allocation_percentage -> Int4,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        #[max_length = 50]
+        status -> Nullable<Varchar>,
+        allocation_percentage -> Nullable<Int4>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     conversations (id) {
         id -> Uuid,
-        agent_id -> Uuid,
+        agent_id -> Nullable<Uuid>,
+        #[max_length = 255]
         title -> Nullable<Varchar>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
         organization_id -> Nullable<Uuid>,
+    }
+}
+
+diesel::table! {
+    embeddings (id) {
+        id -> Uuid,
+        #[max_length = 50]
+        content_type -> Varchar,
+        content_id -> Uuid,
+        content_text -> Text,
+        #[max_length = 100]
+        embedding_model -> Varchar,
+        embedding_vector -> Nullable<Bytea>, // Using Bytea for now, will handle vector type separately
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     goals (id) {
         id -> Uuid,
-        project_id -> Uuid,
+        project_id -> Nullable<Uuid>,
+        #[max_length = 255]
         name -> Varchar,
         description -> Nullable<Text>,
-        status -> Varchar,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        #[max_length = 50]
+        status -> Nullable<Varchar>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     isrl_profiles (id) {
         id -> Uuid,
-        person_id -> Uuid,
+        person_id -> Nullable<Uuid>,
+        #[max_length = 255]
         skill_name -> Varchar,
+        #[max_length = 100]
         skill_category -> Nullable<Varchar>,
-        proficiency_level -> Int4,
-        last_reviewed -> Timestamptz,
+        proficiency_level -> Nullable<Int4>,
+        last_reviewed -> Nullable<Timestamptz>,
         next_review -> Nullable<Timestamptz>,
-        review_interval_days -> Int4,
-        total_reviews -> Int4,
-        success_rate -> Numeric,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        review_interval_days -> Nullable<Int4>,
+        total_reviews -> Nullable<Int4>,
+        success_rate -> Nullable<Numeric>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     messages (id) {
         id -> Uuid,
-        conversation_id -> Uuid,
+        conversation_id -> Nullable<Uuid>,
+        #[max_length = 50]
         role -> Varchar,
         content -> Text,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    organizations (id) {
-        id -> Uuid,
-        name -> Varchar,
-        description -> Nullable<Text>,
-        domain -> Nullable<Varchar>,
-        industry -> Nullable<Varchar>,
-        size -> Nullable<Varchar>,
-        status -> Varchar,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        created_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     organization_hierarchies (id) {
         id -> Uuid,
-        parent_organization_id -> Uuid,
-        child_organization_id -> Uuid,
-        relationship_type -> Varchar,
-        created_at -> Timestamptz,
+        parent_organization_id -> Nullable<Uuid>,
+        child_organization_id -> Nullable<Uuid>,
+        #[max_length = 50]
+        relationship_type -> Nullable<Varchar>,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    organizations (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        #[max_length = 255]
+        domain -> Nullable<Varchar>,
+        #[max_length = 100]
+        industry -> Nullable<Varchar>,
+        #[max_length = 50]
+        size -> Nullable<Varchar>,
+        #[max_length = 50]
+        status -> Nullable<Varchar>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     people (id) {
         id -> Uuid,
+        #[max_length = 255]
         name -> Varchar,
+        #[max_length = 255]
         email -> Nullable<Varchar>,
         bio -> Nullable<Text>,
-        expertise_areas -> Nullable<Array<Text>>,
+        expertise_areas -> Nullable<Array<Nullable<Text>>>,
+        #[max_length = 255]
         location -> Nullable<Varchar>,
+        #[max_length = 50]
         timezone -> Nullable<Varchar>,
-        availability_status -> Varchar,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        #[max_length = 50]
+        availability_status -> Nullable<Varchar>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     projects (id) {
         id -> Uuid,
+        #[max_length = 255]
         name -> Varchar,
         description -> Nullable<Text>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
         organization_id -> Nullable<Uuid>,
     }
 }
@@ -132,13 +172,15 @@ diesel::table! {
 diesel::table! {
     tasks (id) {
         id -> Uuid,
-        goal_id -> Uuid,
+        goal_id -> Nullable<Uuid>,
+        #[max_length = 255]
         name -> Varchar,
         description -> Nullable<Text>,
-        status -> Varchar,
-        priority -> Int4,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
+        #[max_length = 50]
+        status -> Nullable<Varchar>,
+        priority -> Nullable<Int4>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -150,8 +192,6 @@ diesel::joinable!(conversations -> organizations (organization_id));
 diesel::joinable!(goals -> projects (project_id));
 diesel::joinable!(isrl_profiles -> people (person_id));
 diesel::joinable!(messages -> conversations (conversation_id));
-// Note: Organization hierarchies have self-referential relationships
-// These are handled manually in queries rather than through joinable macros
 diesel::joinable!(projects -> organizations (organization_id));
 diesel::joinable!(tasks -> goals (goal_id));
 
@@ -159,12 +199,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     agents,
     associations,
     conversations,
+    embeddings,
     goals,
     isrl_profiles,
     messages,
-    organizations,
     organization_hierarchies,
+    organizations,
     people,
     projects,
     tasks,
-); 
+);

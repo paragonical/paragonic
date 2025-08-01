@@ -5,6 +5,7 @@
 
 
 use diesel::pg::PgConnection;
+use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use postgresql_embedded::PostgreSQL;
@@ -418,14 +419,69 @@ mod tests {
         }
     }
 
-    /// Test database initialization (mock test)
+    /// Test database initialization
     #[tokio::test]
     async fn test_database_initialization() {
-        // This test would require a test database setup
-        // For now, we'll test the configuration
-        let config = DatabaseConfig::default();
-        assert_eq!(config.host, "localhost");
-        assert_eq!(config.port, 5432);
-        assert_eq!(config.database, "paragonic");
+        // This test verifies that the database can be initialized
+        // and that the connection pool is created successfully
+        let result = initialize().await;
+        assert!(result.is_ok());
+        
+        // Test that we can get a connection from the pool
+        let pool_result = get_pool();
+        assert!(pool_result.is_ok());
+        
+        // Test that we can get a connection
+        let connection_result = get_connection();
+        assert!(connection_result.is_ok());
+    }
+
+    /// Test embeddings migration
+    #[tokio::test]
+    async fn test_embeddings_migration() {
+        // Initialize database first
+        let result = initialize().await;
+        assert!(result.is_ok());
+        
+        // Get a connection to verify the embeddings table exists
+        let pool = get_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        
+        // Check if embeddings table exists
+        #[derive(QueryableByName)]
+        struct TableExists {
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            exists: bool,
+        }
+        
+        let table_exists: TableExists = diesel::sql_query(
+            "SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'embeddings'
+            ) as exists"
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        
+        assert!(table_exists.exists, "Embeddings table should exist after migration");
+        
+        // Check if pgvector extension is enabled
+        #[derive(QueryableByName)]
+        struct ExtensionExists {
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            exists: bool,
+        }
+        
+        let extension_exists: ExtensionExists = diesel::sql_query(
+            "SELECT EXISTS (
+                SELECT FROM pg_extension 
+                WHERE extname = 'vector'
+            ) as exists"
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        
+        assert!(extension_exists.exists, "pgvector extension should be enabled");
     }
 } 
