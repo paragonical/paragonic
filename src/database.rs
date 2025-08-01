@@ -171,8 +171,8 @@ pub async fn shutdown() -> ParagonicResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::Row;
-    use uuid::Uuid;
+    
+    
 
     /// Test database initialization
     #[tokio::test]
