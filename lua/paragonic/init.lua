@@ -45,6 +45,9 @@ function M._setup_commands()
     vim.api.nvim_create_user_command('ParagonicConfig', function()
         M.open_config()
     end, { desc = 'Open Paragonic configuration' })
+    
+    -- Load RPC test module
+    require('paragonic.rpc_test')
 end
 
 -- Set up autocommands
