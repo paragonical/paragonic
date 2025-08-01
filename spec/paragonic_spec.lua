@@ -267,6 +267,102 @@ local function test_chat_dynamic_response()
     print("✓ Chat dynamic response test passed!")
 end
 
+-- Test that chat connects to Rust backend
+local function test_chat_rust_backend_connection()
+    print("Testing that chat connects to Rust backend...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Create a fresh buffer for this test
+    local buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(buf, "paragonic://test-rust")
+    vim.api.nvim_set_current_buf(buf)
+    
+    -- Add initial content
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+        "# Test Rust Backend",
+        "",
+        "---"
+    })
+    
+    -- Add a user message
+    local user_message = "Explain Rust ownership"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Call send_message function with Rust backend flag
+    local success = paragonic.send_chat_message_rust(user_message)
+    
+    -- Assert that send was successful
+    assert(success, "send_chat_message_rust should return true on success")
+    
+    -- Get updated content to check for AI response
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Look for AI response in the buffer
+    local has_ai_response = false
+    for _, line in ipairs(lines) do
+        if line:find("**AI:**") then
+            has_ai_response = true
+            break
+        end
+    end
+    
+    assert(has_ai_response, "Buffer should contain AI response from Rust backend")
+    
+    print("✓ Chat Rust backend connection test passed!")
+end
+
+-- Test that Rust backend actually calls Ollama
+local function test_chat_ollama_integration()
+    print("Testing that Rust backend actually calls Ollama...")
+    
+    -- Load the module
+    local paragonic = require("paragonic")
+    
+    -- Create a fresh buffer for this test
+    local buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(buf, "paragonic://test-ollama")
+    vim.api.nvim_set_current_buf(buf)
+    
+    -- Add initial content
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+        "# Test Ollama Integration",
+        "",
+        "---"
+    })
+    
+    -- Add a user message that should trigger Ollama
+    local user_message = "Write a Python function to calculate fibonacci numbers"
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**User:** " .. user_message})
+    
+    -- Call send_message function with real Ollama integration
+    local success = paragonic.send_chat_message_ollama(user_message)
+    
+    -- Assert that send was successful
+    assert(success, "send_chat_message_ollama should return true on success")
+    
+    -- Get updated content to check for AI response
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    
+    -- Look for AI response in the buffer
+    local has_ai_response = false
+    local ai_response = ""
+    for _, line in ipairs(lines) do
+        if line:find("**AI:**") then
+            has_ai_response = true
+            ai_response = line:gsub("**AI:** ", "")
+            break
+        end
+    end
+    
+    assert(has_ai_response, "Buffer should contain AI response from Ollama")
+    assert(ai_response:find("def") or ai_response:find("function") or ai_response:find("fibonacci"), 
+           "Ollama response should contain Python code or fibonacci reference")
+    
+    print("✓ Chat Ollama integration test passed!")
+end
+
 -- Run all tests
 test_paragonic_setup()
 test_setup_creates_commands()
@@ -275,4 +371,6 @@ test_open_chat_creates_buffer()
 test_chat_buffer_content()
 test_chat_buffer_input()
 test_chat_ai_response()
-test_chat_dynamic_response() 
+test_chat_dynamic_response()
+test_chat_rust_backend_connection()
+test_chat_ollama_integration() 

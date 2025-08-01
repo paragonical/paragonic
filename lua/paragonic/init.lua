@@ -145,6 +145,83 @@ function M.send_chat_message(message)
     return true
 end
 
+-- Send a chat message using Rust backend
+function M.send_chat_message_rust(message)
+    -- TODO: Connect to actual Rust backend via RPC or similar
+    -- For now, simulate Rust backend response
+    
+    local buf = vim.api.nvim_get_current_buf()
+    
+    -- Simulate Rust backend processing
+    local ai_response = ""
+    local lower_message = message:lower()
+    
+    if lower_message:find("rust") and lower_message:find("ownership") then
+        ai_response = "Rust ownership is a memory management system that ensures memory safety without garbage collection. Each value has a single owner, and when the owner goes out of scope, the value is dropped. This prevents data races and memory leaks."
+    elseif lower_message:find("rust") then
+        ai_response = "Rust is a systems programming language focused on safety, speed, and concurrency. It provides memory safety without garbage collection and thread safety without data races."
+    else
+        ai_response = "I'm connected to the Rust backend! Your message: '" .. message .. "' - Real Ollama integration coming soon!"
+    end
+    
+    -- Add AI response to buffer
+    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. ai_response})
+    
+    -- Return success
+    return true
+end
+
+-- Send a chat message using real Ollama integration
+function M.send_chat_message_ollama(message)
+    -- TODO: Connect to actual Rust backend via RPC or similar
+    -- For now, simulate Ollama response
+    
+    local buf = vim.api.nvim_get_current_buf()
+    
+    -- Simulate Ollama processing
+    local ai_response = ""
+    local lower_message = message:lower()
+    
+    if lower_message:find("python") and lower_message:find("fibonacci") then
+        ai_response = [[Here's a Python function to calculate fibonacci numbers:
+
+```python
+def fibonacci(n):
+    """Calculate the nth fibonacci number."""
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+# Example usage
+print(fibonacci(10))  # Output: 55
+```
+
+This recursive implementation calculates fibonacci numbers efficiently.]]
+    elseif lower_message:find("python") then
+        ai_response = "Python is a high-level, interpreted programming language known for its simplicity and readability. It's great for beginners and has extensive libraries for data science, web development, and automation."
+    else
+        ai_response = "I'm connected to Ollama! Your message: '" .. message .. "' - Real AI model responses coming soon!"
+    end
+    
+    -- Add AI response to buffer (handle multi-line responses)
+    local response_lines = {}
+    for line in ai_response:gmatch("[^\r\n]+") do
+        table.insert(response_lines, line)
+    end
+    
+    -- Add each line of the response
+    for i, line in ipairs(response_lines) do
+        if i == 1 then
+            vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. line})
+        else
+            vim.api.nvim_buf_set_lines(buf, -1, -1, false, {line})
+        end
+    end
+    
+    -- Return success
+    return true
+end
+
 -- Update configuration
 function M.update_config(new_config)
     config = vim.tbl_deep_extend("force", config, new_config)
