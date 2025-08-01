@@ -9,7 +9,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ParagonicError {
     #[error("Database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(String),
     
     #[error("Ollama API error: {0}")]
     Ollama(String),

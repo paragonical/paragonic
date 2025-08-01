@@ -4,12 +4,15 @@
 //! including projects, goals, tasks, agents, and conversations.
 
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
+use crate::schema::*;
+
 /// Project model representing a high-level project
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = projects)]
 pub struct Project {
     pub id: Uuid,
     pub name: String,
@@ -19,7 +22,8 @@ pub struct Project {
 }
 
 /// Goal model representing objectives within a project
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = goals)]
 pub struct Goal {
     pub id: Uuid,
     pub project_id: Uuid,
@@ -31,8 +35,7 @@ pub struct Goal {
 }
 
 /// Goal status enumeration
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "VARCHAR", rename_all = "lowercase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GoalStatus {
     Active,
@@ -42,7 +45,8 @@ pub enum GoalStatus {
 }
 
 /// Task model representing individual work items
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = tasks)]
 pub struct Task {
     pub id: Uuid,
     pub goal_id: Uuid,
@@ -55,8 +59,7 @@ pub struct Task {
 }
 
 /// Task status enumeration
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "VARCHAR", rename_all = "lowercase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
     Pending,
@@ -67,7 +70,8 @@ pub enum TaskStatus {
 }
 
 /// Agent model representing AI agents
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = agents)]
 pub struct Agent {
     pub id: Uuid,
     pub name: String,
@@ -79,7 +83,8 @@ pub struct Agent {
 }
 
 /// Conversation model representing chat sessions
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = conversations)]
 pub struct Conversation {
     pub id: Uuid,
     pub agent_id: Uuid,
@@ -89,7 +94,8 @@ pub struct Conversation {
 }
 
 /// Message model representing individual messages in conversations
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[diesel(table_name = messages)]
 pub struct Message {
     pub id: Uuid,
     pub conversation_id: Uuid,
@@ -99,8 +105,7 @@ pub struct Message {
 }
 
 /// Message role enumeration
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "VARCHAR", rename_all = "lowercase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
     User,
@@ -109,7 +114,7 @@ pub enum MessageRole {
 }
 
 /// Request/Response models for API operations
-
+///
 /// Create project request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProjectRequest {

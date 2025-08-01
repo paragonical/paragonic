@@ -12,10 +12,10 @@
 
 ### Database System
 - **Primary:** PostgreSQL Embedded (via [postgresql_embedded crate](https://docs.rs/postgresql_embedded/latest/postgresql_embedded/))
-- **ORM:** SQLx with async/await support
-- **Migrations:** SQLx migrations
-- **Connection Pooling:** SQLx connection pool for high concurrency
-- **Features:** Bundled PostgreSQL binaries, automatic setup and management
+- **ORM:** Diesel v2.2.12 with compile-time query checking
+- **Migrations:** Diesel migrations with CLI tooling
+- **Connection Pooling:** Diesel connection pool for high concurrency
+- **Features:** Bundled PostgreSQL binaries, automatic setup and management, type-safe queries
 
 ### Neovim Integration
 - **Plugin Language:** Lua
@@ -24,8 +24,8 @@
 - **Configuration:** Lua-based configuration system
 
 ### AI Integration
-- **Local AI:** Ollama integration
-- **Protocol:** Model Context Protocol (MCP)
+- **Local AI:** Ollama integration via @references/ollama-api.md
+- **Protocol:** Model Context Protocol (MCP) via @references/mcp.md
 - **Communication:** HTTP/WebSocket for Ollama, MCP for external tools
 
 ### Development Tools

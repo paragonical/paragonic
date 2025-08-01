@@ -214,4 +214,57 @@ PostgreSQL Embedded provides the optimal balance for the new requirements:
 - Larger application binary size
 - Higher memory and disk requirements
 - More complex initial setup
-- Increased development complexity 
+- Increased development complexity
+
+## 2024-12-19: ORM Technology Change from SQLx to Diesel
+
+**ID:** DEC-005
+**Status:** Accepted
+**Category:** Technical
+**Stakeholders:** Tech Lead, Development Team
+
+### Decision
+
+Changed from SQLx to Diesel v2.2.12 as the primary ORM for better compile-time safety and more mature ecosystem.
+
+### Context
+
+The initial choice of SQLx was based on its async/await support and simplicity. However, Diesel provides better compile-time query checking, more mature tooling, and stronger type safety which aligns better with Rust's philosophy of catching errors at compile time.
+
+### Alternatives Considered
+
+1. **Keep SQLx**
+   - Pros: Async/await support, runtime query building, simpler initial setup
+   - Cons: Runtime query errors, less mature ecosystem, fewer compile-time guarantees
+
+2. **Diesel v2.2.12**
+   - Pros: Compile-time query checking, mature ecosystem, strong type safety, excellent CLI tooling
+   - Cons: More complex setup, learning curve for macros, less flexible runtime query building
+
+3. **SeaORM**
+   - Pros: Async/await support, modern design, good documentation
+   - Cons: Less mature than Diesel, smaller ecosystem, newer project
+
+### Rationale
+
+Diesel v2.2.12 provides the optimal balance for our requirements:
+- **Compile-time Safety:** Catches SQL errors at compile time rather than runtime
+- **Mature Ecosystem:** Well-established with extensive documentation and community support
+- **Type Safety:** Strong typing prevents many common database errors
+- **Tooling:** Excellent CLI tools for migrations and schema management
+- **Performance:** Efficient query generation and execution
+
+### Consequences
+
+**Positive:**
+- Better compile-time error detection
+- More mature and stable ecosystem
+- Stronger type safety
+- Excellent migration tooling
+- Better long-term maintainability
+
+**Negative:**
+- More complex initial setup
+- Steeper learning curve for team members
+- Less flexible for dynamic queries
+- Requires more upfront schema design 
