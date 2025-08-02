@@ -74,9 +74,11 @@ impl ParagonicServer {
         
         // Make actual Ollama API call
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            // We're in a runtime context, use the current handle
-            handle.block_on(async {
-                self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                })
             })
         } else {
             // We're not in a runtime context, create a new one
@@ -105,10 +107,14 @@ impl ParagonicServer {
     pub fn handle_list_models(&self) -> Result<String, RpcError> {
         // Make actual Ollama API call
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.block_on(async {
-                self.ollama_client.list_models().await
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.list_models().await
+                })
             })
         } else {
+            // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
                 .block_on(async {
@@ -145,10 +151,14 @@ impl ParagonicServer {
         
         // Make actual Ollama API call
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.block_on(async {
-                self.ollama_client.model_info(&model).await
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.model_info(&model).await
+                })
             })
         } else {
+            // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
                 .block_on(async {
@@ -190,10 +200,14 @@ impl ParagonicServer {
         
         // Make actual Ollama API call
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.block_on(async {
-                self.ollama_client.generate_embedding(&model, &text).await
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.generate_embedding(&model, &text).await
+                })
             })
         } else {
+            // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
                 .block_on(async {
