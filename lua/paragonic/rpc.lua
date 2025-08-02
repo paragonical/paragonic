@@ -56,11 +56,67 @@ function M:is_connected()
     return self.connected
 end
 
+-- Simple JSON encoding for basic objects
+local function encode_json(obj)
+    if type(obj) == "table" then
+        local parts = {}
+        for k, v in pairs(obj) do
+            if type(k) == "string" then
+                table.insert(parts, string.format('"%s":%s', k, encode_json(v)))
+            else
+                table.insert(parts, encode_json(v))
+            end
+        end
+        return "{" .. table.concat(parts, ",") .. "}"
+    elseif type(obj) == "string" then
+        return string.format('"%s"', obj)
+    elseif type(obj) == "number" then
+        return tostring(obj)
+    elseif type(obj) == "boolean" then
+        return obj and "true" or "false"
+    else
+        return "null"
+    end
+end
+
+-- Make a JSON-RPC call
+function M:call(method, params)
+    -- Check if connected
+    if not self:is_connected() then
+        return nil, "Not connected to server"
+    end
+    
+    -- Create JSON-RPC request
+    local request = {
+        jsonrpc = "2.0",
+        method = method,
+        params = params or {},
+        id = 1
+    }
+    
+    local request_json = encode_json(request)
+    
+    -- Add Content-Length header for JSON-RPC
+    local message = "Content-Length: " .. #request_json .. "\r\n\r\n" .. request_json
+    
+    -- Send request through socket
+    -- For now, simulate sending and receiving
+    -- TODO: Replace with actual socket send/receive when available
+    self.socket.last_request = message
+    
+    -- Simulate JSON-RPC response
+    local response = {
+        jsonrpc = "2.0",
+        result = "mock_response",
+        id = 1
+    }
+    
+    return encode_json(response)
+end
+
 -- Send hello method to server
 function M:hello()
-    -- TODO: Implement actual RPC call
-    -- For now, return mock response
-    return "world"
+    return self:call("hello", {})
 end
 
 return M
