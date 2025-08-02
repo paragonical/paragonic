@@ -174,4 +174,24 @@ function M:list_models()
     end
 end
 
+-- Get detailed information about a specific model from server
+function M:model_info(model_name)
+    -- Parameter validation
+    if not model_name or model_name == "" then
+        return nil, "Model name parameter is required"
+    end
+    
+    if not self.connected then
+        return nil, "Not connected to server"
+    end
+    
+    -- Send model_info request with model name as parameter
+    local result, error_msg = send_jsonrpc_request(self.server_address, "model_info", {model_name})
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
 return M 
