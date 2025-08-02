@@ -24,16 +24,16 @@ pub struct Project {
 }
 
 /// Goal model representing objectives within a project
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = goals)]
 pub struct Goal {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
-    pub status: GoalStatus,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub status: Option<String>, // Store as string in database, convert to enum in application
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// Goal status enumeration

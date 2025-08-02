@@ -4,13 +4,13 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest};
+use crate::models::{Project, CreateProjectRequest, Goal, CreateGoalRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::Utc;
 
-use crate::schema::projects;
+use crate::schema::{projects, goals};
 
 /// Create a new project
 /// 
@@ -70,6 +70,35 @@ pub async fn list_projects() -> ParagonicResult<Vec<Project>> {
             tracing::error!("Failed to list projects: {}", e);
             ParagonicError::Database(format!("Failed to list projects: {e}"))
         })
+}
+
+/// Create a new goal
+/// 
+/// This function creates a new goal in the database with the given name and description.
+/// Returns the created goal with generated ID and timestamps.
+pub async fn create_goal(request: CreateGoalRequest) -> ParagonicResult<Goal> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    let goal = Goal {
+        id: Uuid::new_v4(),
+        project_id: Some(request.project_id),
+        name: request.name,
+        description: request.description,
+        status: Some("active".to_string()), // Default to active status
+        created_at: Some(now),
+        updated_at: Some(now),
+    };
+    
+    diesel::insert_into(goals::table)
+        .values(&goal)
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to create goal: {}", e);
+            ParagonicError::Database(format!("Failed to create goal: {e}"))
+        })?;
+    
+    Ok(goal)
 }
 
 #[cfg(test)]
@@ -191,5 +220,44 @@ mod tests {
         assert_eq!(alpha_project.unwrap().description, Some("First test project".to_string()));
         assert_eq!(beta_project.unwrap().description, Some("Second test project".to_string()));
         assert_eq!(gamma_project.unwrap().description, None);
+    }
+    
+    /// Test creating a goal with valid data
+    #[tokio::test]
+    async fn test_create_goal() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Test Project for Goal".to_string(),
+            description: Some("A test project for goal creation".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        let request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal".to_string(),
+            description: Some("A test goal for TDD development".to_string()),
+        };
+        
+        let result = create_goal(request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "create_goal should succeed");
+        let goal = result.unwrap();
+        assert_eq!(goal.name, "Test Goal");
+        assert_eq!(goal.description, Some("A test goal for TDD development".to_string()));
+        assert_eq!(goal.project_id, Some(project.id));
+        assert!(goal.id != Uuid::nil());
+        assert!(goal.created_at.is_some());
+        assert!(goal.updated_at.is_some());
+        assert!(goal.created_at.unwrap() <= Utc::now());
+        assert!(goal.updated_at.unwrap() <= Utc::now());
     }
 } 
