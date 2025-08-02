@@ -638,6 +638,81 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         serde_json::to_string(&mock_task)
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize task: {e}"))))
     }
+    
+    /// Handle delete project requests
+    /// 
+    /// This function deletes a project from the database.
+    /// For now, returns a mock response to test the RPC infrastructure.
+    pub fn handle_delete_project(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let project_id = params.get("project_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_response = serde_json::json!({
+            "success": true,
+            "message": "Project deleted successfully",
+            "project_id": project_id
+        });
+        
+        serde_json::to_string(&mock_response)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+    }
+    
+    /// Handle delete goal requests
+    /// 
+    /// This function deletes a goal from the database.
+    /// For now, returns a mock response to test the RPC infrastructure.
+    pub fn handle_delete_goal(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let goal_id = params.get("goal_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_response = serde_json::json!({
+            "success": true,
+            "message": "Goal deleted successfully",
+            "goal_id": goal_id
+        });
+        
+        serde_json::to_string(&mock_response)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+    }
+    
+    /// Handle delete task requests
+    /// 
+    /// This function deletes a task from the database.
+    /// For now, returns a mock response to test the RPC infrastructure.
+    pub fn handle_delete_task(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let task_id = params.get("task_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_response = serde_json::json!({
+            "success": true,
+            "message": "Task deleted successfully",
+            "task_id": task_id
+        });
+        
+        serde_json::to_string(&mock_response)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+    }
 }
 
 impl Server for ParagonicServer {
@@ -687,6 +762,12 @@ impl Server for ParagonicServer {
             "list_tasks" => Some(self.handle_list_tasks(params)),
             // Handle update task requests
             "update_task" => Some(self.handle_update_task(params)),
+            // Handle delete project requests
+            "delete_project" => Some(self.handle_delete_project(params)),
+            // Handle delete goal requests
+            "delete_goal" => Some(self.handle_delete_goal(params)),
+            // Handle delete task requests
+            "delete_task" => Some(self.handle_delete_task(params)),
             _ => None
         }
     }
@@ -1322,5 +1403,71 @@ mod tests {
         assert_eq!(response_json.get("status").unwrap().as_str(), Some("in_progress"));
         assert_eq!(response_json.get("priority").unwrap().as_i64(), Some(5));
         assert!(response_json.get("updated_at").is_some());
+    }
+    
+    /// Test that the server can handle delete project requests
+    #[test]
+    fn test_server_delete_project() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test delete project with mock parameters
+        let params = Some(serde_json::json!({
+            "project_id": "123e4567-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_delete_project(&params);
+        assert!(result.is_ok(), "handle_delete_project should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("success").unwrap().as_bool(), Some(true));
+        assert_eq!(response_json.get("message").unwrap().as_str(), Some("Project deleted successfully"));
+    }
+    
+    /// Test that the server can handle delete goal requests
+    #[test]
+    fn test_server_delete_goal() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test delete goal with mock parameters
+        let params = Some(serde_json::json!({
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_delete_goal(&params);
+        assert!(result.is_ok(), "handle_delete_goal should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("success").unwrap().as_bool(), Some(true));
+        assert_eq!(response_json.get("message").unwrap().as_str(), Some("Goal deleted successfully"));
+    }
+    
+    /// Test that the server can handle delete task requests
+    #[test]
+    fn test_server_delete_task() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test delete task with mock parameters
+        let params = Some(serde_json::json!({
+            "task_id": "789e0123-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_delete_task(&params);
+        assert!(result.is_ok(), "handle_delete_task should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("success").unwrap().as_bool(), Some(true));
+        assert_eq!(response_json.get("message").unwrap().as_str(), Some("Task deleted successfully"));
     }
 } 
