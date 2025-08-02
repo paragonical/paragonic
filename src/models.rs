@@ -12,7 +12,7 @@ use crate::schema::*;
 use crate::vector::Vector;
 
 /// Project model representing a high-level project
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = projects)]
 pub struct Project {
     pub id: Uuid,
