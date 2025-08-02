@@ -181,16 +181,36 @@ impl ParagonicServer {
             return Err(RpcError::invalid_params(None));
         }
         
-        let _text = params[0].as_str()
+        let text = params[0].as_str()
             .ok_or_else(|| RpcError::invalid_params(None))?
             .to_string();
-        let _model = params[1].as_str()
+        let model = params[1].as_str()
             .ok_or_else(|| RpcError::invalid_params(None))?
             .to_string();
         
-        // For now, return a mock response
-        // TODO: Implement actual Ollama call
-        Ok(serde_json::json!([0.1, 0.2, 0.3]).to_string())
+        // Make actual Ollama API call
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.block_on(async {
+                self.ollama_client.generate_embedding(&model, &text).await
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .block_on(async {
+                    self.ollama_client.generate_embedding(&model, &text).await
+                })
+        };
+        match response {
+            Ok(embedding_response) => {
+                // Return the embeddings as JSON
+                serde_json::to_string(&embedding_response.embedding)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+            }
+            Err(e) => {
+                error!("Ollama generate_embedding failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+            }
+        }
     }
 }
 
@@ -494,5 +514,36 @@ mod tests {
         assert!(response.contains("0.1"));
         assert!(response.contains("0.2"));
         assert!(response.contains("0.3"));
+    }
+
+    /// Test that the server can handle generate embedding requests with real Ollama output
+    #[test]
+    fn test_handle_generate_embedding_actual_ollama_call() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Use a model that should exist (from list_models)
+        let list_result = server.handle_list_models();
+        assert!(list_result.is_ok(), "list_models should succeed");
+        let models: Vec<String> = serde_json::from_str(&list_result.unwrap()).expect("Should be valid JSON");
+        assert!(!models.is_empty(), "Should have at least one model");
+        let model = &models[0];
+        let text = "Hello, this is a test for embedding generation";
+        let params = Some(serde_json::json!([text, model]));
+        
+        let result = server.handle_generate_embedding(&params);
+        assert!(result.is_ok(), "handle_generate_embedding should return Ok");
+        let response = result.unwrap();
+        // Should be valid JSON
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        // Should be an array of numbers (embeddings)
+        assert!(response_json.is_array(), "Response should be an array");
+        let embeddings = response_json.as_array().unwrap();
+        assert!(!embeddings.is_empty(), "Should have at least one embedding value");
+        // Should not be the mock response
+        let mock_response = serde_json::json!([0.1, 0.2, 0.3]);
+        assert!(response_json != mock_response, "Should not be the mock response, got: {}", response_json);
     }
 } 
