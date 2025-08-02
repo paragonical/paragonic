@@ -57,10 +57,43 @@ function M._setup_autocommands()
     -- Add any autocommands here as needed
 end
 
+-- Get RPC client, initializing backend if needed
+function M._get_rpc_client()
+    if not M._rpc_client then
+        M._initialize_backend()
+    end
+    return M._rpc_client
+end
+
 -- Initialize Rust backend
 function M._initialize_backend()
-    -- TODO: Initialize Rust backend via RPC or similar
-    -- This will be implemented as we build the integration
+    -- Only initialize once
+    if M._rpc_client then
+        return
+    end
+    
+    -- Create RPC client
+    local rpc = require("paragonic.rpc")
+    M._rpc_client = rpc.new("127.0.0.1:3000")
+    
+    -- Connect to the Rust backend
+    local success, err = M._rpc_client:connect()
+    if not success then
+        vim.notify("Failed to connect to Paragonic backend: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        M._rpc_client = nil
+        return
+    end
+    
+    -- Test connection with hello call
+    local response = M._rpc_client:hello()
+    if not response then
+        vim.notify("Failed to communicate with Paragonic backend", vim.log.levels.ERROR)
+        M._rpc_client:disconnect()
+        M._rpc_client = nil
+        return
+    end
+    
+    vim.notify("Paragonic backend connected successfully", vim.log.levels.INFO)
 end
 
 -- Open chat interface
