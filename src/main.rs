@@ -13,7 +13,7 @@ async fn main() {
     } else {
         // Initialize the backend
         if let Err(e) = initialize().await {
-            eprintln!("Failed to initialize Paragonic backend: {}", e);
+            eprintln!("Failed to initialize Paragonic backend: {e}");
             process::exit(1);
         }
         println!("Paragonic backend initialized successfully");
@@ -23,7 +23,7 @@ async fn main() {
 
     // Start the RPC server (this is not async, it just sets up the server)
     if let Err(e) = start_rpc_server("127.0.0.1:3000") {
-        eprintln!("Failed to start RPC server: {}", e);
+        eprintln!("Failed to start RPC server: {e}");
         process::exit(1);
     }
 
