@@ -4,6 +4,8 @@ Test for RPC connect() function - one-by-one TDD flow
 
 -- Add lua directory to package path
 package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
+-- Add luarocks path for cjson
+package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/?.so"
 
 -- Test that connect() attempts real socket connection
 local function test_rpc_connect_attempts_real_connection()
