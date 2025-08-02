@@ -512,9 +512,132 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     ]);
     
-    serde_json::to_string(&mock_tasks)
-        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize tasks: {e}"))))
-}
+            serde_json::to_string(&mock_tasks)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize tasks: {e}"))))
+    }
+    
+    /// Handle update project requests
+    /// 
+    /// This function updates a project in the database with the given fields.
+    /// For now, returns a mock response to test the RPC infrastructure.
+    pub fn handle_update_project(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let project_id = params.get("project_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let name = params.get("name")
+            .and_then(|n| n.as_str())
+            .map(|n| n.to_string());
+        
+        let description = params.get("description")
+            .and_then(|d| d.as_str())
+            .map(|d| d.to_string());
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_project = serde_json::json!({
+            "id": project_id,
+            "name": name.unwrap_or_else(|| "Updated Project".to_string()),
+            "description": description,
+            "organization_id": null,
+            "created_at": null,
+            "updated_at": "2025-08-02T20:00:00Z"
+        });
+        
+        serde_json::to_string(&mock_project)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize project: {e}"))))
+    }
+    
+    /// Handle update goal requests
+    /// 
+    /// This function updates a goal in the database with the given fields.
+    /// For now, returns a mock response to test the RPC infrastructure.
+    pub fn handle_update_goal(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let goal_id = params.get("goal_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let name = params.get("name")
+            .and_then(|n| n.as_str())
+            .map(|n| n.to_string());
+        
+        let description = params.get("description")
+            .and_then(|d| d.as_str())
+            .map(|d| d.to_string());
+        
+        let status = params.get("status")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_goal = serde_json::json!({
+            "id": goal_id,
+            "project_id": "123e4567-e89b-12d3-a456-426614174000",
+            "name": name.unwrap_or_else(|| "Updated Goal".to_string()),
+            "description": description,
+            "status": status,
+            "created_at": null,
+            "updated_at": "2025-08-02T20:00:00Z"
+        });
+        
+        serde_json::to_string(&mock_goal)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goal: {e}"))))
+    }
+    
+    /// Handle update task requests
+    /// 
+    /// This function updates a task in the database with the given fields.
+    /// For now, returns a mock response to test the RPC infrastructure.
+    pub fn handle_update_task(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let task_id = params.get("task_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let name = params.get("name")
+            .and_then(|n| n.as_str())
+            .map(|n| n.to_string());
+        
+        let description = params.get("description")
+            .and_then(|d| d.as_str())
+            .map(|d| d.to_string());
+        
+        let status = params.get("status")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+        
+        let priority = params.get("priority")
+            .and_then(|p| p.as_i64())
+            .map(|p| p as i32);
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_task = serde_json::json!({
+            "id": task_id,
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000",
+            "name": name.unwrap_or_else(|| "Updated Task".to_string()),
+            "description": description,
+            "status": status,
+            "priority": priority,
+            "created_at": null,
+            "updated_at": "2025-08-02T20:00:00Z"
+        });
+        
+        serde_json::to_string(&mock_task)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize task: {e}"))))
+    }
 }
 
 impl Server for ParagonicServer {
@@ -546,18 +669,24 @@ impl Server for ParagonicServer {
             "get_project" => Some(self.handle_get_project(params)),
             // Handle list projects requests
             "list_projects" => Some(self.handle_list_projects()),
+            // Handle update project requests
+            "update_project" => Some(self.handle_update_project(params)),
             // Handle create goal requests
             "create_goal" => Some(self.handle_create_goal(params)),
             // Handle get goal requests
             "get_goal" => Some(self.handle_get_goal(params)),
             // Handle list goals requests
             "list_goals" => Some(self.handle_list_goals(params)),
+            // Handle update goal requests
+            "update_goal" => Some(self.handle_update_goal(params)),
             // Handle create task requests
             "create_task" => Some(self.handle_create_task(params)),
             // Handle get task requests
             "get_task" => Some(self.handle_get_task(params)),
             // Handle list tasks requests
             "list_tasks" => Some(self.handle_list_tasks(params)),
+            // Handle update task requests
+            "update_task" => Some(self.handle_update_task(params)),
             _ => None
         }
     }
@@ -1109,5 +1238,89 @@ mod tests {
         
         assert_eq!(task1.get("name").unwrap().as_str(), Some("Mock Task 1"));
         assert_eq!(task2.get("name").unwrap().as_str(), Some("Mock Task 2"));
+    }
+    
+    /// Test that the server can handle update project requests
+    #[test]
+    fn test_server_update_project() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test update project with mock parameters
+        let params = Some(serde_json::json!({
+            "project_id": "123e4567-e89b-12d3-a456-426614174000",
+            "name": "Updated Project Name",
+            "description": "Updated project description"
+        }));
+        let result = server.handle_update_project(&params);
+        assert!(result.is_ok(), "handle_update_project should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("id").unwrap().as_str(), Some("123e4567-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Updated Project Name"));
+        assert_eq!(response_json.get("description").unwrap().as_str(), Some("Updated project description"));
+        assert!(response_json.get("updated_at").is_some());
+    }
+    
+    /// Test that the server can handle update goal requests
+    #[test]
+    fn test_server_update_goal() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test update goal with mock parameters
+        let params = Some(serde_json::json!({
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000",
+            "name": "Updated Goal Name",
+            "description": "Updated goal description",
+            "status": "completed"
+        }));
+        let result = server.handle_update_goal(&params);
+        assert!(result.is_ok(), "handle_update_goal should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("id").unwrap().as_str(), Some("456e7890-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Updated Goal Name"));
+        assert_eq!(response_json.get("description").unwrap().as_str(), Some("Updated goal description"));
+        assert_eq!(response_json.get("status").unwrap().as_str(), Some("completed"));
+        assert!(response_json.get("updated_at").is_some());
+    }
+    
+    /// Test that the server can handle update task requests
+    #[test]
+    fn test_server_update_task() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test update task with mock parameters
+        let params = Some(serde_json::json!({
+            "task_id": "789e0123-e89b-12d3-a456-426614174000",
+            "name": "Updated Task Name",
+            "description": "Updated task description",
+            "status": "in_progress",
+            "priority": 5
+        }));
+        let result = server.handle_update_task(&params);
+        assert!(result.is_ok(), "handle_update_task should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("id").unwrap().as_str(), Some("789e0123-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Updated Task Name"));
+        assert_eq!(response_json.get("description").unwrap().as_str(), Some("Updated task description"));
+        assert_eq!(response_json.get("status").unwrap().as_str(), Some("in_progress"));
+        assert_eq!(response_json.get("priority").unwrap().as_i64(), Some(5));
+        assert!(response_json.get("updated_at").is_some());
     }
 } 
