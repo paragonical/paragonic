@@ -20,16 +20,33 @@ end
 
 -- Connect to the RPC server
 function M:connect()
-    -- TODO: Implement actual connection logic
-    -- For now, just mark as connected
+    -- Parse server address
+    local host, port = self.server_address:match("([^:]+):?(%d*)")
+    port = port or "3000" -- Default port if not specified
+    
+    -- Use Neovim's built-in socket capabilities
+    -- For now, create a mock socket object that simulates connection
+    -- TODO: Replace with actual Neovim socket implementation when available
+    self.socket = {
+        connected = true,
+        host = host,
+        port = tonumber(port),
+        close = function(self)
+            self.connected = false
+        end
+    }
+    
+    -- Mark as connected
     self.connected = true
     return true
 end
 
 -- Disconnect from the RPC server
 function M:disconnect()
-    -- TODO: Implement actual disconnection logic
-    -- For now, just mark as disconnected
+    if self.socket then
+        self.socket:close()
+        self.socket = nil
+    end
     self.connected = false
     return true
 end
