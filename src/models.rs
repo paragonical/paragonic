@@ -47,17 +47,17 @@ pub enum GoalStatus {
 }
 
 /// Task model representing individual work items
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = tasks)]
 pub struct Task {
     pub id: Uuid,
-    pub goal_id: Uuid,
+    pub goal_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
-    pub status: TaskStatus,
-    pub priority: i32,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub status: Option<String>, // Store as string in database, convert to enum in application
+    pub priority: Option<i32>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// Task status enumeration
@@ -381,17 +381,17 @@ mod tests {
     fn test_task_priority() {
         let task = Task {
             id: Uuid::new_v4(),
-            goal_id: Uuid::new_v4(),
+            goal_id: Some(Uuid::new_v4()),
             name: "Test Task".to_string(),
             description: None,
-            status: TaskStatus::Pending,
-            priority: 5,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            status: Some("pending".to_string()),
+            priority: Some(5),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
         };
         
-        assert_eq!(task.priority, 5);
-        matches!(task.status, TaskStatus::Pending);
+        assert_eq!(task.priority, Some(5));
+        assert_eq!(task.status, Some("pending".to_string()));
     }
 
     /// Test message role

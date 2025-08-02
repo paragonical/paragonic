@@ -4,13 +4,13 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, Goal, CreateGoalRequest};
+use crate::models::{Project, CreateProjectRequest, Goal, CreateGoalRequest, Task, CreateTaskRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::Utc;
 
-use crate::schema::{projects, goals};
+use crate::schema::{projects, goals, tasks};
 
 /// Create a new project
 /// 
@@ -132,6 +132,36 @@ pub async fn list_goals(project_id: Uuid) -> ParagonicResult<Vec<Goal>> {
             tracing::error!("Failed to list goals for project {}: {}", project_id, e);
             ParagonicError::Database(format!("Failed to list goals: {e}"))
         })
+}
+
+/// Create a new task
+/// 
+/// This function creates a new task in the database with the given name, description, and priority.
+/// Returns the created task with generated ID and timestamps.
+pub async fn create_task(request: CreateTaskRequest) -> ParagonicResult<Task> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    let task = Task {
+        id: Uuid::new_v4(),
+        goal_id: Some(request.goal_id),
+        name: request.name,
+        description: request.description,
+        status: Some("pending".to_string()), // Default to pending status
+        priority: Some(request.priority.unwrap_or(0)), // Default to 0 if not provided
+        created_at: Some(now),
+        updated_at: Some(now),
+    };
+    
+    diesel::insert_into(tasks::table)
+        .values(&task)
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to create task: {}", e);
+            ParagonicError::Database(format!("Failed to create task: {e}"))
+        })?;
+    
+    Ok(task)
 }
 
 #[cfg(test)]
@@ -401,5 +431,54 @@ mod tests {
         assert_eq!(alpha_goal.unwrap().project_id, Some(project.id));
         assert_eq!(beta_goal.unwrap().project_id, Some(project.id));
         assert_eq!(gamma_goal.unwrap().project_id, Some(project.id));
+    }
+    
+    /// Test creating a task with valid data
+    #[tokio::test]
+    async fn test_create_task() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Test Project for Task".to_string(),
+            description: Some("A test project for task creation".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create a goal
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal for Task".to_string(),
+            description: Some("A test goal for task creation".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        let request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Test Task".to_string(),
+            description: Some("A test task for TDD development".to_string()),
+            priority: Some(1),
+        };
+        
+        let result = create_task(request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "create_task should succeed");
+        let task = result.unwrap();
+        assert_eq!(task.name, "Test Task");
+        assert_eq!(task.description, Some("A test task for TDD development".to_string()));
+        assert_eq!(task.goal_id, Some(goal.id));
+        assert_eq!(task.priority, Some(1));
+        assert!(task.id != Uuid::nil());
+        assert!(task.created_at.is_some());
+        assert!(task.updated_at.is_some());
+        assert!(task.created_at.unwrap() <= Utc::now());
+        assert!(task.updated_at.unwrap() <= Utc::now());
     }
 } 
