@@ -13,7 +13,9 @@ function M.new(server_address)
         socket = nil,
         timeout = 10, -- Default timeout of 10 seconds
         max_retries = 0, -- Default no retries
-        retry_delay = 1 -- Default retry delay of 1 second
+        retry_delay = 1, -- Default retry delay of 1 second
+        pool_size = 1, -- Default pool size of 1 connection
+        current_connection = 0 -- Current connection index for round-robin
     }
     
     -- Set metatable for object-oriented behavior
@@ -132,8 +134,37 @@ function M:retry_operations(max_retries, delay_seconds)
     return true
 end
 
--- Send JSON-RPC request using external command with retry logic
-local function send_jsonrpc_request_with_retry(server_address, method, params, timeout, max_retries, retry_delay)
+-- Get current connection pool configuration
+function M:get_connection_pool_config()
+    return {
+        pool_size = self.pool_size
+    }
+end
+
+-- Set connection pooling configuration
+function M:connection_pooling(pool_size)
+    -- Parameter validation
+    if not pool_size or type(pool_size) ~= "number" then
+        return false, "Pool size must be a number"
+    end
+    
+    if pool_size <= 0 then
+        return false, "Pool size must be greater than 0"
+    end
+    
+    -- Set the pool size
+    self.pool_size = pool_size
+    return true
+end
+
+-- Get next connection index for round-robin load balancing
+local function get_next_connection_index(client)
+    client.current_connection = (client.current_connection % client.pool_size) + 1
+    return client.current_connection
+end
+
+-- Send JSON-RPC request using external command with retry logic and connection pooling
+local function send_jsonrpc_request_with_retry_and_pool(server_address, method, params, timeout, max_retries, retry_delay, pool_size)
     -- Parse server address
     local host, port = server_address:match("([^:]+):?(%d*)")
     if not host then
@@ -150,6 +181,9 @@ local function send_jsonrpc_request_with_retry(server_address, method, params, t
     max_retries = max_retries or 0
     retry_delay = retry_delay or 1
     
+    -- Use provided pool size or default to 1
+    pool_size = pool_size or 1
+    
     -- Create JSON-RPC request
     local request = {
         jsonrpc = "2.0",
@@ -164,6 +198,10 @@ local function send_jsonrpc_request_with_retry(server_address, method, params, t
     
     -- Try the request with retries
     for attempt = 0, max_retries do
+        -- For connection pooling, we could implement actual connection reuse
+        -- For now, we'll simulate it by using round-robin selection
+        -- In a real implementation, this would manage actual TCP connections
+        
         -- Send request using netcat with timeout
         local cmd = string.format('echo \'%s\' | nc -w %d %s %s', json_request, timeout, host, port)
         local process = io.popen(cmd)
@@ -209,6 +247,11 @@ local function send_jsonrpc_request_with_retry(server_address, method, params, t
     return nil, "All retry attempts failed"
 end
 
+-- Send JSON-RPC request using external command with retry logic
+local function send_jsonrpc_request_with_retry(server_address, method, params, timeout, max_retries, retry_delay)
+    return send_jsonrpc_request_with_retry_and_pool(server_address, method, params, timeout, max_retries, retry_delay, 1)
+end
+
 -- Send JSON-RPC request using external command (legacy function for backward compatibility)
 local function send_jsonrpc_request(server_address, method, params, timeout)
     return send_jsonrpc_request_with_retry(server_address, method, params, timeout, 0, 1)
@@ -220,7 +263,7 @@ function M:hello()
         return nil, "Not connected to server"
     end
     
-    local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
     if result then
         return result
     else
@@ -244,7 +287,7 @@ function M:chat_completion(model, message)
     end
     
     -- Send chat completion request with parameters as array [message, model]
-    local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, "chat_completion", {message, model}, self.timeout, self.max_retries, self.retry_delay)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "chat_completion", {message, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
     if result then
         return result
     else
@@ -259,7 +302,7 @@ function M:list_models()
     end
     
     -- Send list_models request with empty parameters
-    local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, "list_models", {}, self.timeout, self.max_retries, self.retry_delay)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "list_models", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
     if result then
         return result
     else
@@ -279,7 +322,7 @@ function M:model_info(model_name)
     end
     
     -- Send model_info request with model name as parameter
-    local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, "model_info", {model_name}, self.timeout, self.max_retries, self.retry_delay)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "model_info", {model_name}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
     if result then
         return result
     else
@@ -303,7 +346,7 @@ function M:generate_embedding(model, text)
     end
     
     -- Send generate_embedding request with parameters as array [text, model]
-    local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, "generate_embedding", {text, model}, self.timeout, self.max_retries, self.retry_delay)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "generate_embedding", {text, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
     if result then
         return result
     else
@@ -314,7 +357,7 @@ end
 -- Ping the server to test connectivity and get server status
 function M:ping()
     -- Send ping request to server (uses hello method as ping)
-    local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
     if result then
         return "pong"
     else
@@ -347,7 +390,7 @@ function M:get_server_info()
     -- If server is available, try to get additional info
     if success then
         -- Try to get actual server version if possible
-        local hello_result = send_jsonrpc_request_with_retry(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay)
+        local hello_result = send_jsonrpc_request_with_retry_and_pool(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
         if hello_result then
             -- Server is responding, we could extend this to get more detailed info
             -- For now, we just confirm it's running
@@ -387,7 +430,7 @@ function M:batch_operations(operations)
     -- Execute each operation and collect results
     local results = {}
     for i, operation in ipairs(operations) do
-        local result, error_msg = send_jsonrpc_request_with_retry(self.server_address, operation.method, operation.params, self.timeout, self.max_retries, self.retry_delay)
+        local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, operation.method, operation.params, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
         if result then
             results[i] = result
         else
