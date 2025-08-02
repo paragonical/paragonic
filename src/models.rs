@@ -182,6 +182,12 @@ pub struct CreateConversationRequest {
     pub title: Option<String>,
 }
 
+/// Update conversation request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateConversationRequest {
+    pub title: Option<String>,
+}
+
 /// Send message request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {

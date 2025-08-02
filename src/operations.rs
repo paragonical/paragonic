@@ -4,7 +4,7 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult, Agent, CreateAgentRequest, Conversation, CreateConversationRequest};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult, Agent, CreateAgentRequest, Conversation, CreateConversationRequest, UpdateConversationRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
@@ -811,6 +811,46 @@ pub async fn list_conversations() -> ParagonicResult<Vec<Conversation>> {
         .map_err(|e| {
             tracing::error!("Failed to list conversations: {}", e);
             ParagonicError::Database(format!("Failed to list conversations: {e}"))
+        })
+}
+
+/// Update a conversation
+/// 
+/// This function updates a conversation in the database with the given fields.
+/// Returns the updated conversation with new timestamps.
+pub async fn update_conversation(conversation_id: Uuid, request: UpdateConversationRequest) -> ParagonicResult<Conversation> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    
+    // Execute the update based on what fields are provided
+    match request.title {
+        Some(title) => {
+            diesel::update(conversations::table.filter(conversations::id.eq(conversation_id)))
+                .set((
+                    conversations::title.eq(title),
+                    conversations::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        None => {
+            diesel::update(conversations::table.filter(conversations::id.eq(conversation_id)))
+                .set(conversations::updated_at.eq(now))
+                .execute(&mut conn)
+        }
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to update conversation {}: {}", conversation_id, e);
+        ParagonicError::Database(format!("Failed to update conversation: {e}"))
+    })?;
+    
+    // Return the updated conversation
+    conversations::table
+        .filter(conversations::id.eq(conversation_id))
+        .first::<Conversation>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get updated conversation {}: {}", conversation_id, e);
+            ParagonicError::Database(format!("Failed to get updated conversation: {e}"))
         })
 }
 
@@ -1776,6 +1816,53 @@ mod tests {
         assert_eq!(conv1.title, Some("Test Conversation 1".to_string()));
         assert_eq!(conv2.agent_id, Some(agent.id));
         assert_eq!(conv2.title, Some("Test Conversation 2".to_string()));
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test updating a conversation
+    #[tokio::test]
+    async fn test_update_conversation() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for conversation updates".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create a conversation to update
+        let conversation_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Original Title".to_string()),
+        };
+        let created_conversation = create_conversation(conversation_request).await.unwrap();
+        
+        // Test updating the conversation
+        let update_request = UpdateConversationRequest {
+            title: Some("Updated Title".to_string()),
+        };
+        
+        let result = update_conversation(created_conversation.id, update_request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "update_conversation should succeed");
+        let updated_conversation = result.unwrap();
+        assert_eq!(updated_conversation.id, created_conversation.id);
+        assert_eq!(updated_conversation.agent_id, Some(agent.id));
+        assert_eq!(updated_conversation.title, Some("Updated Title".to_string()));
+        assert!(updated_conversation.updated_at.is_some());
+        assert!(updated_conversation.updated_at.unwrap() >= created_conversation.updated_at.unwrap());
         
         // Clean up
         delete_agent(agent.id).await.unwrap();
