@@ -103,9 +103,30 @@ impl ParagonicServer {
     
     /// Handle list models request
     pub fn handle_list_models(&self) -> Result<String, RpcError> {
-        // For now, return a mock response
-        // TODO: Implement actual Ollama call
-        Ok(serde_json::json!(["llama3.2:3b", "nomic-embed-text"]).to_string())
+        // Make actual Ollama API call
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.block_on(async {
+                self.ollama_client.list_models().await
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .block_on(async {
+                    self.ollama_client.list_models().await
+                })
+        };
+        match response {
+            Ok(models) => {
+                // Return the models as a JSON array of model names
+                let names: Vec<String> = models.into_iter().map(|m| m.name).collect();
+                serde_json::to_string(&names)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+            }
+            Err(e) => {
+                error!("Ollama list_models failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+            }
+        }
     }
     
     /// Handle model info request
@@ -370,17 +391,24 @@ mod tests {
     
     /// Test that the server can handle list models requests
     #[test]
-    fn test_server_list_models() {
+    fn test_handle_list_models_actual_ollama_call() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
         let server = ParagonicServer::new(client);
         
-        // Test that server can handle list models
         let result = server.handle_list_models();
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "handle_list_models should return Ok");
         let response = result.unwrap();
-        assert!(response.contains("llama3.2:3b"));
-        assert!(response.contains("nomic-embed-text"));
+        // Should be valid JSON
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        // Should be an array of models
+        assert!(response_json.is_array(), "Response should be an array");
+        // Should contain at least one model
+        assert!(!response_json.as_array().unwrap().is_empty(), "Should contain at least one model");
+        // Should not be the mock response
+        let mock_response = serde_json::json!(["llama3.2:3b", "nomic-embed-text"]);
+        assert!(response_json != mock_response, "Should not be the mock response, got: {}", response_json);
     }
     
     /// Test that the server can handle model info requests
