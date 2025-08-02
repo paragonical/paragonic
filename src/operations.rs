@@ -764,10 +764,11 @@ pub async fn create_conversation(request: CreateConversationRequest) -> Paragoni
     let now = Utc::now();
     let conversation = Conversation {
         id: Uuid::new_v4(),
-        agent_id: request.agent_id,
+        agent_id: Some(request.agent_id),
         title: request.title,
-        created_at: now,
-        updated_at: now,
+        created_at: Some(now),
+        updated_at: Some(now),
+        organization_id: None, // TODO: Add organization_id support later
     };
     
     diesel::insert_into(conversations::table)
@@ -779,6 +780,22 @@ pub async fn create_conversation(request: CreateConversationRequest) -> Paragoni
         })?;
     
     Ok(conversation)
+}
+
+/// Get a conversation by ID
+/// 
+/// This function retrieves a conversation from the database by its ID.
+/// Returns the conversation if found, or an error if not found.
+pub async fn get_conversation(conversation_id: Uuid) -> ParagonicResult<Conversation> {
+    let mut conn = get_connection()?;
+    
+    conversations::table
+        .filter(conversations::id.eq(conversation_id))
+        .first::<Conversation>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get conversation {}: {}", conversation_id, e);
+            ParagonicError::Database(format!("Failed to get conversation: {e}"))
+        })
 }
 
 #[cfg(test)]
@@ -1629,11 +1646,58 @@ mod tests {
         // Test should now pass (green phase)
         assert!(result.is_ok(), "create_conversation should succeed");
         let conversation = result.unwrap();
-        assert_eq!(conversation.agent_id, agent.id);
+        assert_eq!(conversation.agent_id, Some(agent.id));
         assert_eq!(conversation.title, Some("Test Conversation".to_string()));
         assert!(conversation.id != Uuid::nil());
-        assert!(conversation.created_at <= Utc::now());
-        assert!(conversation.updated_at <= Utc::now());
+        assert!(conversation.created_at.is_some());
+        assert!(conversation.updated_at.is_some());
+        assert!(conversation.created_at.unwrap() <= Utc::now());
+        assert!(conversation.updated_at.unwrap() <= Utc::now());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test getting a conversation by ID
+    #[tokio::test]
+    async fn test_get_conversation() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for conversation retrieval".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create a conversation to retrieve
+        let conversation_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation for Retrieval".to_string()),
+        };
+        let created_conversation = create_conversation(conversation_request).await.unwrap();
+        
+        // Test getting the conversation
+        let result = get_conversation(created_conversation.id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "get_conversation should succeed");
+        let conversation = result.unwrap();
+        assert_eq!(conversation.id, created_conversation.id);
+        assert_eq!(conversation.agent_id, Some(agent.id));
+        assert_eq!(conversation.title, Some("Test Conversation for Retrieval".to_string()));
+        assert!(conversation.created_at.is_some());
+        assert!(conversation.updated_at.is_some());
+        assert!(conversation.created_at.unwrap() <= Utc::now());
+        assert!(conversation.updated_at.unwrap() <= Utc::now());
         
         // Clean up
         delete_agent(agent.id).await.unwrap();

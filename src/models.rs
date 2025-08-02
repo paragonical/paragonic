@@ -89,10 +89,11 @@ pub struct Agent {
 #[diesel(table_name = conversations)]
 pub struct Conversation {
     pub id: Uuid,
-    pub agent_id: Uuid,
+    pub agent_id: Option<Uuid>,
     pub title: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub organization_id: Option<Uuid>,
 }
 
 /// Message model representing individual messages in conversations
