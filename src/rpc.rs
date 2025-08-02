@@ -83,7 +83,7 @@ impl ParagonicServer {
         } else {
             // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
                     self.ollama_client.chat_completion(&model, vec![chat_message], false).await
                 })
@@ -93,12 +93,12 @@ impl ParagonicServer {
             Ok(chat_response) => {
                 // Return the response as JSON
                 serde_json::to_string(&chat_response)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
             }
             Err(e) => {
                 // Log the error and return a user-friendly error message
                 error!("Ollama chat completion failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
     }
@@ -116,7 +116,7 @@ impl ParagonicServer {
         } else {
             // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
                     self.ollama_client.list_models().await
                 })
@@ -126,11 +126,11 @@ impl ParagonicServer {
                 // Return the models as a JSON array of model names
                 let names: Vec<String> = models.into_iter().map(|m| m.name).collect();
                 serde_json::to_string(&names)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
             }
             Err(e) => {
                 error!("Ollama list_models failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
     }
@@ -160,7 +160,7 @@ impl ParagonicServer {
         } else {
             // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
                     self.ollama_client.model_info(&model).await
                 })
@@ -169,14 +169,14 @@ impl ParagonicServer {
             Ok(info) => {
                 // Add the model name to the response for compatibility
                 let mut info_json = serde_json::to_value(info)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))?;
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))?;
                 info_json["name"] = serde_json::Value::String(model);
                 serde_json::to_string(&info_json)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
             }
             Err(e) => {
                 error!("Ollama model_info failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
     }
@@ -209,7 +209,7 @@ impl ParagonicServer {
         } else {
             // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
                     self.ollama_client.generate_embedding(&model, &text).await
                 })
@@ -218,11 +218,11 @@ impl ParagonicServer {
             Ok(embedding_response) => {
                 // Return the embeddings as JSON
                 serde_json::to_string(&embedding_response.embedding)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
             }
             Err(e) => {
                 error!("Ollama generate_embedding failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
     }
