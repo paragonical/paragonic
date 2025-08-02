@@ -117,6 +117,23 @@ pub async fn get_goal(goal_id: Uuid) -> ParagonicResult<Goal> {
         })
 }
 
+/// List all goals for a project
+/// 
+/// This function retrieves all goals from the database for a specific project.
+/// Returns a vector of goals ordered by creation date (newest first).
+pub async fn list_goals(project_id: Uuid) -> ParagonicResult<Vec<Goal>> {
+    let mut conn = get_connection()?;
+    
+    goals::table
+        .filter(goals::project_id.eq(project_id))
+        .order(goals::created_at.desc())
+        .load::<Goal>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to list goals for project {}: {}", project_id, e);
+            ParagonicError::Database(format!("Failed to list goals: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,5 +331,75 @@ mod tests {
         assert_eq!(goal.name, "Test Goal for Get");
         assert_eq!(goal.description, Some("A test goal for get operation".to_string()));
         assert_eq!(goal.project_id, Some(project.id));
+    }
+    
+    /// Test listing all goals for a project
+    #[tokio::test]
+    async fn test_list_goals() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Test Project for List Goals".to_string(),
+            description: Some("A test project for list goals operation".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create multiple goals for this project
+        let goal1_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Goal Alpha".to_string(),
+            description: Some("First test goal".to_string()),
+        };
+        
+        let goal2_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Goal Beta".to_string(),
+            description: Some("Second test goal".to_string()),
+        };
+        
+        let goal3_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Goal Gamma".to_string(),
+            description: None,
+        };
+        
+        let _goal1 = create_goal(goal1_request).await.unwrap();
+        let _goal2 = create_goal(goal2_request).await.unwrap();
+        let _goal3 = create_goal(goal3_request).await.unwrap();
+        
+        // List all goals for the project
+        let result = list_goals(project.id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "list_goals should succeed");
+        let goals = result.unwrap();
+        
+        // Should have at least 3 goals (our test goals)
+        assert!(goals.len() >= 3, "Should have at least 3 goals");
+        
+        // Find our test goals
+        let alpha_goal = goals.iter().find(|g| g.name == "Goal Alpha");
+        let beta_goal = goals.iter().find(|g| g.name == "Goal Beta");
+        let gamma_goal = goals.iter().find(|g| g.name == "Goal Gamma");
+        
+        assert!(alpha_goal.is_some(), "Goal Alpha should be found");
+        assert!(beta_goal.is_some(), "Goal Beta should be found");
+        assert!(gamma_goal.is_some(), "Goal Gamma should be found");
+        
+        assert_eq!(alpha_goal.unwrap().description, Some("First test goal".to_string()));
+        assert_eq!(beta_goal.unwrap().description, Some("Second test goal".to_string()));
+        assert_eq!(gamma_goal.unwrap().description, None);
+        
+        // All goals should belong to the same project
+        assert_eq!(alpha_goal.unwrap().project_id, Some(project.id));
+        assert_eq!(beta_goal.unwrap().project_id, Some(project.id));
+        assert_eq!(gamma_goal.unwrap().project_id, Some(project.id));
     }
 } 
