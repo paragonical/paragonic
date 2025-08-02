@@ -346,6 +346,69 @@ pub fn handle_create_goal(&self, params: &Option<Value>) -> Result<String, RpcEr
     serde_json::to_string(&mock_goal)
         .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goal: {e}"))))
 }
+    
+    /// Handle get goal request
+pub fn handle_get_goal(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let goal_id = params.get("goal_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_goal = serde_json::json!({
+        "id": goal_id,
+        "project_id": "123e4567-e89b-12d3-a456-426614174000",
+        "name": "Mock Goal",
+        "description": "A mock goal for testing",
+        "status": "active",
+        "created_at": null,
+        "updated_at": null
+    });
+    
+    serde_json::to_string(&mock_goal)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goal: {e}"))))
+}
+    
+    /// Handle list goals request
+pub fn handle_list_goals(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let project_id = params.get("project_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_goals = serde_json::json!([
+        {
+            "id": "456e7890-e89b-12d3-a456-426614174000",
+            "project_id": project_id,
+            "name": "Mock Goal 1",
+            "description": "First mock goal",
+            "status": "active",
+            "created_at": null,
+            "updated_at": null
+        },
+        {
+            "id": "456e7890-e89b-12d3-a456-426614174001",
+            "project_id": project_id,
+            "name": "Mock Goal 2",
+            "description": "Second mock goal",
+            "status": "active",
+            "created_at": null,
+            "updated_at": null
+        }
+    ]);
+    
+    serde_json::to_string(&mock_goals)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goals: {e}"))))
+}
 }
 
 impl Server for ParagonicServer {
@@ -379,6 +442,10 @@ impl Server for ParagonicServer {
             "list_projects" => Some(self.handle_list_projects()),
             // Handle create goal requests
             "create_goal" => Some(self.handle_create_goal(params)),
+            // Handle get goal requests
+            "get_goal" => Some(self.handle_get_goal(params)),
+            // Handle list goals requests
+            "list_goals" => Some(self.handle_list_goals(params)),
             _ => None
         }
     }
@@ -796,5 +863,58 @@ mod tests {
         assert!(response_json.get("name").is_some(), "Should have a name field");
         assert_eq!(response_json.get("name").unwrap().as_str(), Some("Test Goal"));
         assert_eq!(response_json.get("project_id").unwrap().as_str(), Some("123e4567-e89b-12d3-a456-426614174000"));
+    }
+    
+    /// Test that the server can handle get goal requests
+    #[test]
+    fn test_server_get_goal() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test get goal with a mock goal ID
+        let get_params = Some(serde_json::json!({
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_get_goal(&get_params);
+        assert!(result.is_ok(), "handle_get_goal should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("id").unwrap().as_str(), Some("456e7890-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Mock Goal"));
+    }
+    
+    /// Test that the server can handle list goals requests
+    #[test]
+    fn test_server_list_goals() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test list goals with a mock project ID
+        let list_params = Some(serde_json::json!({
+            "project_id": "123e4567-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_list_goals(&list_params);
+        assert!(result.is_ok(), "handle_list_goals should return Ok");
+        
+        // Verify the response is valid JSON array
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.is_array(), "Response should be an array");
+        
+        let goals_array = response_json.as_array().unwrap();
+        assert_eq!(goals_array.len(), 2, "Should have exactly 2 mock goals");
+        
+        // Verify the mock goals
+        let goal1 = goals_array[0].as_object().unwrap();
+        let goal2 = goals_array[1].as_object().unwrap();
+        
+        assert_eq!(goal1.get("name").unwrap().as_str(), Some("Mock Goal 1"));
+        assert_eq!(goal2.get("name").unwrap().as_str(), Some("Mock Goal 2"));
     }
 } 
