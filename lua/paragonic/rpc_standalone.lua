@@ -229,4 +229,40 @@ function M:ping()
     end
 end
 
+-- Get detailed server information including status, version, and capabilities
+function M:get_server_info()
+    -- Try to get server information by testing connectivity
+    local success, error_msg = test_server_connectivity(self.server_address)
+    
+    -- Parse server address for display
+    local host, port = self.server_address:match("([^:]+):?(%d*)")
+    if not host then
+        host = "unknown"
+        port = "unknown"
+    end
+    port = port or "3000"
+    
+    -- Create server info structure
+    local server_info = {
+        name = "Paragonic",
+        version = "0.1.0",
+        address = host .. ":" .. port,
+        protocol = "JSON-RPC 2.0",
+        status = success and "running" or "unavailable"
+    }
+    
+    -- If server is available, try to get additional info
+    if success then
+        -- Try to get actual server version if possible
+        local hello_result = send_jsonrpc_request(self.server_address, "hello", {})
+        if hello_result then
+            -- Server is responding, we could extend this to get more detailed info
+            -- For now, we just confirm it's running
+            server_info.status = "running"
+        end
+    end
+    
+    return server_info
+end
+
 return M 
