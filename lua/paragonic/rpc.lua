@@ -163,5 +163,18 @@ function M:model_info(model)
     })
 end
 
+-- Get list of projects
+function M:get_projects()
+    return self:call("get_projects", {})
+end
+
+-- Create a new project
+function M:create_project(name, description)
+    return self:call("create_project", {
+        name = name,
+        description = description
+    })
+end
+
 return M
  

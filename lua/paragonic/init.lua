@@ -24,6 +24,7 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
     vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
     vim.api.nvim_create_user_command("ParagonicSend", M.send_message_command, {})
+    vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
     
     -- Initialize backend
     M._initialize_backend()
@@ -69,6 +70,38 @@ function M.get_available_models()
     local response = rpc_client:list_models()
     if not response then
         return nil, "Failed to get models list"
+    end
+    
+    return response
+end
+
+-- Get list of projects
+function M.get_projects()
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Get projects list
+    local response = rpc_client:get_projects()
+    if not response then
+        return nil, "Failed to get projects list"
+    end
+    
+    return response
+end
+
+-- Create a new project
+function M.create_project(name, description)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Create project
+    local response = rpc_client:create_project(name, description)
+    if not response then
+        return nil, "Failed to create project"
     end
     
     return response
@@ -184,17 +217,43 @@ function M.open_projects()
         vim.api.nvim_buf_set_option(projects_buf, "swapfile", false)
         vim.api.nvim_buf_set_option(projects_buf, "modifiable", true)
         
-        -- Add initial content
-        vim.api.nvim_buf_set_lines(projects_buf, 0, -1, false, {
+        -- Get projects from backend
+        local projects_content = {
             "# Paragonic Projects",
             "",
-            "Your projects will be listed here:",
-            "",
-            "---"
-        })
+            "Loading projects..."
+        }
+        
+        local projects_response = M.get_projects()
+        if projects_response then
+            -- TODO: Parse JSON response to show actual projects
+            projects_content = {
+                "# Paragonic Projects",
+                "",
+                "Projects loaded from backend:",
+                "",
+                "---"
+            }
+        else
+            projects_content = {
+                "# Paragonic Projects",
+                "",
+                "No projects found or backend unavailable.",
+                "",
+                "Use :ParagonicCreateProject to create a new project.",
+                "",
+                "---"
+            }
+        end
+        
+        -- Add content to buffer
+        vim.api.nvim_buf_set_lines(projects_buf, 0, -1, false, projects_content)
         
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(projects_buf, "filetype", "markdown")
+        
+        -- Set up buffer-local commands
+        vim.api.nvim_buf_set_keymap(projects_buf, "n", "<CR>", ":ParagonicCreateProject<CR>", {noremap = true, silent = true})
     end
     
     -- Open the buffer in a new window
@@ -493,6 +552,50 @@ function M.send_message_command()
     
     -- Move cursor to end of response
     vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 1, 0})
+end
+
+-- Create project command
+function M.create_project_command()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    -- Only work in projects buffer
+    if buf_name ~= "paragonic://projects" then
+        vim.notify("This command only works in the projects buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get project name from user input
+    local project_name = vim.fn.input("Project name: ")
+    if project_name == "" then
+        vim.notify("Project name cannot be empty", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get project description from user input
+    local project_description = vim.fn.input("Project description: ")
+    
+    -- Create the project
+    local response, err = M.create_project(project_name, project_description)
+    if not response then
+        vim.notify("Failed to create project: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Add the new project to the buffer
+    local project_lines = {
+        "",
+        "## " .. project_name,
+        project_description ~= "" and project_description or "No description provided",
+        "",
+        "---"
+    }
+    
+    -- Insert project at the end of the buffer
+    local last_line = vim.api.nvim_buf_line_count(current_buf)
+    vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, project_lines)
+    
+    vim.notify("Project '" .. project_name .. "' created successfully", vim.log.levels.INFO)
 end
 
 return M 
