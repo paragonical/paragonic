@@ -15,7 +15,9 @@ function M.new(server_address)
         max_retries = 0, -- Default no retries
         retry_delay = 1, -- Default retry delay of 1 second
         pool_size = 1, -- Default pool size of 1 connection
-        current_connection = 0 -- Current connection index for round-robin
+        current_connection = 0, -- Current connection index for round-robin
+        logging_enabled = false, -- Default logging disabled
+        log_level = "info" -- Default log level
     }
     
     -- Set metatable for object-oriented behavior
@@ -157,17 +159,88 @@ function M:connection_pooling(pool_size)
     return true
 end
 
+-- Get current logging configuration
+function M:get_logging_config()
+    return {
+        enabled = self.logging_enabled,
+        level = self.log_level
+    }
+end
+
+-- Set logging configuration
+function M:logging(enabled, level)
+    -- Parameter validation
+    if type(enabled) ~= "boolean" then
+        return false, "Enabled must be a boolean"
+    end
+    
+    -- Set the logging enabled flag
+    self.logging_enabled = enabled
+    
+    -- If level is provided, validate and set it
+    if level then
+        if type(level) ~= "string" then
+            return false, "Log level must be a string"
+        end
+        
+        -- Validate log level
+        local valid_levels = {"debug", "info", "warn", "error"}
+        local is_valid = false
+        for _, valid_level in ipairs(valid_levels) do
+            if level == valid_level then
+                is_valid = true
+                break
+            end
+        end
+        
+        if not is_valid then
+            return false, "Invalid log level. Must be one of: debug, info, warn, error"
+        end
+        
+        self.log_level = level
+    end
+    
+    return true
+end
+
+-- Log message with current configuration
+local function log_message(client, level, message)
+    if not client.logging_enabled then
+        return
+    end
+    
+    -- Check if the message level should be logged based on current log level
+    local level_priority = {
+        debug = 1,
+        info = 2,
+        warn = 3,
+        error = 4
+    }
+    
+    local current_priority = level_priority[client.log_level] or 2
+    local message_priority = level_priority[level] or 2
+    
+    if message_priority >= current_priority then
+        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+        local log_entry = string.format("[%s] [%s] %s", timestamp, level:upper(), message)
+        print(log_entry)
+    end
+end
+
 -- Get next connection index for round-robin load balancing
 local function get_next_connection_index(client)
     client.current_connection = (client.current_connection % client.pool_size) + 1
     return client.current_connection
 end
 
--- Send JSON-RPC request using external command with retry logic and connection pooling
-local function send_jsonrpc_request_with_retry_and_pool(server_address, method, params, timeout, max_retries, retry_delay, pool_size)
+-- Send JSON-RPC request using external command with retry logic, connection pooling, and logging
+local function send_jsonrpc_request_with_retry_and_pool_and_log(server_address, method, params, timeout, max_retries, retry_delay, pool_size, client)
     -- Parse server address
     local host, port = server_address:match("([^:]+):?(%d*)")
     if not host then
+        if client then
+            log_message(client, "error", "Invalid server address format: " .. tostring(server_address))
+        end
         return nil, "Invalid server address format"
     end
     
@@ -196,20 +269,34 @@ local function send_jsonrpc_request_with_retry_and_pool(server_address, method, 
     local cjson = require("cjson")
     local json_request = cjson.encode(request)
     
+    if client then
+        log_message(client, "debug", string.format("Sending RPC request: %s to %s:%s", method, host, port))
+    end
+    
     -- Try the request with retries
     for attempt = 0, max_retries do
         -- For connection pooling, we could implement actual connection reuse
         -- For now, we'll simulate it by using round-robin selection
         -- In a real implementation, this would manage actual TCP connections
         
+        if client and attempt > 0 then
+            log_message(client, "info", string.format("Retry attempt %d/%d for method %s", attempt, max_retries, method))
+        end
+        
         -- Send request using netcat with timeout
         local cmd = string.format('echo \'%s\' | nc -w %d %s %s', json_request, timeout, host, port)
         local process = io.popen(cmd)
         if not process then
             if attempt < max_retries then
+                if client then
+                    log_message(client, "warn", string.format("Failed to execute RPC request, retrying in %s seconds", retry_delay))
+                end
                 os.execute("sleep " .. retry_delay)
                 goto continue
             else
+                if client then
+                    log_message(client, "error", "Failed to execute RPC request after all retries")
+                end
                 return nil, "Failed to execute RPC request"
             end
         end
@@ -221,22 +308,37 @@ local function send_jsonrpc_request_with_retry_and_pool(server_address, method, 
             -- Try to parse the response
             local success, parsed = pcall(cjson.decode, response)
             if success and parsed and parsed.result then
+                if client then
+                    log_message(client, "debug", string.format("RPC request %s succeeded", method))
+                end
                 return parsed.result, nil
             else
                 -- Check if this is a retryable error (like connection issues)
                 if attempt < max_retries and (not response or response == "" or response:find("Connection refused") or response:find("No route to host")) then
+                    if client then
+                        log_message(client, "warn", string.format("Retryable error for method %s, retrying in %s seconds", method, retry_delay))
+                    end
                     os.execute("sleep " .. retry_delay)
                     goto continue
                 else
+                    if client then
+                        log_message(client, "error", string.format("RPC request %s failed with response: %s", method, response))
+                    end
                     return response, nil -- Return raw response if parsing fails
                 end
             end
         else
             -- No response, retry if we have attempts left
             if attempt < max_retries then
+                if client then
+                    log_message(client, "warn", string.format("No response for method %s, retrying in %s seconds", method, retry_delay))
+                end
                 os.execute("sleep " .. retry_delay)
                 goto continue
             else
+                if client then
+                    log_message(client, "error", string.format("No response from server for method %s after all retries", method))
+                end
                 return nil, "No response from server"
             end
         end
@@ -244,7 +346,15 @@ local function send_jsonrpc_request_with_retry_and_pool(server_address, method, 
         ::continue::
     end
     
+    if client then
+        log_message(client, "error", string.format("All retry attempts failed for method %s", method))
+    end
     return nil, "All retry attempts failed"
+end
+
+-- Send JSON-RPC request using external command with retry logic and connection pooling
+local function send_jsonrpc_request_with_retry_and_pool(server_address, method, params, timeout, max_retries, retry_delay, pool_size)
+    return send_jsonrpc_request_with_retry_and_pool_and_log(server_address, method, params, timeout, max_retries, retry_delay, pool_size, nil)
 end
 
 -- Send JSON-RPC request using external command with retry logic
@@ -260,10 +370,11 @@ end
 -- Send hello method to server
 function M:hello()
     if not self.connected then
+        log_message(self, "error", "Not connected to server")
         return nil, "Not connected to server"
     end
     
-    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
         return result
     else
@@ -275,19 +386,22 @@ end
 function M:chat_completion(model, message)
     -- Parameter validation
     if not model or model == "" then
+        log_message(self, "error", "Model parameter is required")
         return nil, "Model parameter is required"
     end
     
     if not message or message == "" then
+        log_message(self, "error", "Message parameter is required")
         return nil, "Message parameter is required"
     end
     
     if not self.connected then
+        log_message(self, "error", "Not connected to server")
         return nil, "Not connected to server"
     end
     
     -- Send chat completion request with parameters as array [message, model]
-    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "chat_completion", {message, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "chat_completion", {message, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
         return result
     else
@@ -298,11 +412,12 @@ end
 -- Get list of available models from server
 function M:list_models()
     if not self.connected then
+        log_message(self, "error", "Not connected to server")
         return nil, "Not connected to server"
     end
     
     -- Send list_models request with empty parameters
-    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "list_models", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "list_models", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
         return result
     else
@@ -314,15 +429,17 @@ end
 function M:model_info(model_name)
     -- Parameter validation
     if not model_name or model_name == "" then
+        log_message(self, "error", "Model name parameter is required")
         return nil, "Model name parameter is required"
     end
     
     if not self.connected then
+        log_message(self, "error", "Not connected to server")
         return nil, "Not connected to server"
     end
     
     -- Send model_info request with model name as parameter
-    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "model_info", {model_name}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "model_info", {model_name}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
         return result
     else
@@ -334,19 +451,22 @@ end
 function M:generate_embedding(model, text)
     -- Parameter validation
     if not model or model == "" then
+        log_message(self, "error", "Model parameter is required")
         return nil, "Model parameter is required"
     end
     
     if not text or text == "" then
+        log_message(self, "error", "Text parameter is required")
         return nil, "Text parameter is required"
     end
     
     if not self.connected then
+        log_message(self, "error", "Not connected to server")
         return nil, "Not connected to server"
     end
     
     -- Send generate_embedding request with parameters as array [text, model]
-    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "generate_embedding", {text, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "generate_embedding", {text, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
         return result
     else
@@ -357,7 +477,7 @@ end
 -- Ping the server to test connectivity and get server status
 function M:ping()
     -- Send ping request to server (uses hello method as ping)
-    local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
         return "pong"
     else
@@ -390,7 +510,7 @@ function M:get_server_info()
     -- If server is available, try to get additional info
     if success then
         -- Try to get actual server version if possible
-        local hello_result = send_jsonrpc_request_with_retry_and_pool(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+        local hello_result = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "hello", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
         if hello_result then
             -- Server is responding, we could extend this to get more detailed info
             -- For now, we just confirm it's running
@@ -405,20 +525,24 @@ end
 function M:batch_operations(operations)
     -- Parameter validation
     if not operations or type(operations) ~= "table" or #operations == 0 then
+        log_message(self, "error", "Operations parameter must be a non-empty table")
         return nil, "Operations parameter must be a non-empty table"
     end
     
     if not self.connected then
+        log_message(self, "error", "Not connected to server")
         return nil, "Not connected to server"
     end
     
     -- Validate each operation
     for i, operation in ipairs(operations) do
         if type(operation) ~= "table" then
+            log_message(self, "error", "Operation " .. i .. " must be a table")
             return nil, "Operation " .. i .. " must be a table"
         end
         
         if not operation.method or type(operation.method) ~= "string" then
+            log_message(self, "error", "Operation " .. i .. " must have a method field")
             return nil, "Operation " .. i .. " must have a method field"
         end
         
@@ -427,18 +551,22 @@ function M:batch_operations(operations)
         end
     end
     
+    log_message(self, "info", string.format("Executing batch of %d operations", #operations))
+    
     -- Execute each operation and collect results
     local results = {}
     for i, operation in ipairs(operations) do
-        local result, error_msg = send_jsonrpc_request_with_retry_and_pool(self.server_address, operation.method, operation.params, self.timeout, self.max_retries, self.retry_delay, self.pool_size)
+        local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, operation.method, operation.params, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
         if result then
             results[i] = result
         else
             -- For batch operations, we continue even if some operations fail
+            log_message(self, "warn", string.format("Batch operation %d (%s) failed: %s", i, operation.method, error_msg or "unknown error"))
             results[i] = nil
         end
     end
     
+    log_message(self, "info", string.format("Batch completed with %d/%d successful operations", #results, #operations))
     return results
 end
 
