@@ -57,7 +57,25 @@ function M.send_message(message, model)
         return nil, "Failed to get response from AI"
     end
     
-    return response
+    -- Parse JSON response
+    local parsed_response = M.parse_json_response(response)
+    if not parsed_response then
+        return nil, "Failed to parse AI response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "AI error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract AI message content
+    if parsed_response.result and parsed_response.result.message then
+        return parsed_response.result.message.content
+    elseif parsed_response.result and parsed_response.result.content then
+        return parsed_response.result.content
+    else
+        return nil, "Unexpected response format"
+    end
 end
 
 -- Get list of available models
@@ -73,7 +91,23 @@ function M.get_available_models()
         return nil, "Failed to get models list"
     end
     
-    return response
+    -- Parse JSON response
+    local parsed_response = M.parse_json_response(response)
+    if not parsed_response then
+        return nil, "Failed to parse models response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "Models error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract models list
+    if parsed_response.result and parsed_response.result.models then
+        return parsed_response.result.models
+    else
+        return nil, "Unexpected models response format"
+    end
 end
 
 -- Get list of projects
@@ -89,7 +123,23 @@ function M.get_projects()
         return nil, "Failed to get projects list"
     end
     
-    return response
+    -- Parse JSON response
+    local parsed_response = M.parse_json_response(response)
+    if not parsed_response then
+        return nil, "Failed to parse projects response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "Projects error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract projects list
+    if parsed_response.result and parsed_response.result.projects then
+        return parsed_response.result.projects
+    else
+        return nil, "Unexpected projects response format"
+    end
 end
 
 -- Create a new project
@@ -121,7 +171,23 @@ function M.get_config()
         return nil, "Failed to get configuration"
     end
     
-    return response
+    -- Parse JSON response
+    local parsed_response = M.parse_json_response(response)
+    if not parsed_response then
+        return nil, "Failed to parse configuration response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "Configuration error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract configuration data
+    if parsed_response.result then
+        return parsed_response.result
+    else
+        return nil, "Unexpected configuration response format"
+    end
 end
 
 -- Save configuration to backend
@@ -138,6 +204,29 @@ function M.save_config(config_data)
     end
     
     return response
+end
+
+-- Parse JSON-RPC response
+function M.parse_json_response(json_string)
+    if not json_string or json_string == "" then
+        return nil, "Empty JSON string"
+    end
+    
+    -- Try to load cjson
+    local cjson_available = pcall(require, "cjson")
+    local cjson = cjson_available and require("cjson") or nil
+    
+    if not cjson then
+        return nil, "cjson library not available"
+    end
+    
+    -- Parse JSON with error handling
+    local success, result = pcall(cjson.decode, json_string)
+    if not success then
+        return nil, "Failed to parse JSON: " .. tostring(result)
+    end
+    
+    return result
 end
 
 -- Initialize Rust backend
@@ -199,8 +288,16 @@ function M.open_chat()
         local models_info = "Available models: llama2 (default)"
         local models_response = M.get_available_models()
         if models_response then
-            -- TODO: Parse JSON response to show actual models
-            models_info = "Available models: llama2 (default) - check backend for full list"
+            -- Display actual models from parsed response
+            local model_names = {}
+            for _, model in ipairs(models_response) do
+                table.insert(model_names, model.name)
+            end
+            if #model_names > 0 then
+                models_info = "Available models: " .. table.concat(model_names, ", ")
+            else
+                models_info = "Available models: llama2 (default) - check backend for full list"
+            end
         end
         
         -- Add initial content with model information
@@ -259,14 +356,23 @@ function M.open_projects()
         
         local projects_response = M.get_projects()
         if projects_response then
-            -- TODO: Parse JSON response to show actual projects
+            -- Display actual projects from parsed response
             projects_content = {
                 "# Paragonic Projects",
                 "",
                 "Projects loaded from backend:",
-                "",
-                "---"
+                ""
             }
+            
+            for _, project in ipairs(projects_response) do
+                table.insert(projects_content, "## " .. project.name)
+                if project.description and project.description ~= "" then
+                    table.insert(projects_content, project.description)
+                end
+                table.insert(projects_content, "")
+            end
+            
+            table.insert(projects_content, "---")
         else
             projects_content = {
                 "# Paragonic Projects",
@@ -327,21 +433,21 @@ function M.open_config()
         
         local config_response = M.get_config()
         if config_response then
-            -- TODO: Parse JSON response to show actual configuration
+            -- Display actual configuration from parsed response
             config_content = {
                 "# Paragonic Configuration",
                 "",
                 "Current configuration loaded from backend:",
                 "",
                 "## Ollama Settings",
-                "- Host: 127.0.0.1:11434",
-                "- Model: llama2",
+                "- Host: " .. (config_response.ollama_host or "127.0.0.1:11434"),
+                "- Model: " .. (config_response.ollama_model or "llama2"),
                 "",
                 "## Database Settings", 
-                "- Path: /tmp/paragonic.db",
+                "- Path: " .. (config_response.database_path or "/tmp/paragonic.db"),
                 "",
                 "## Logging Settings",
-                "- Level: info",
+                "- Level: " .. (config_response.log_level or "info"),
                 "",
                 "---",
                 "",
