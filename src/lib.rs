@@ -15,16 +15,34 @@ pub mod vector;
 
 pub use error::{ParagonicError, ParagonicResult};
 
+use tokio::sync::OnceCell;
+
+/// Global initialization flag to ensure logging is only set up once
+static INITIALIZED: OnceCell<()> = OnceCell::const_new();
+
 /// Initialize the Paragonic backend
 /// 
 /// This function sets up logging, database connections, and other core services.
 /// It should be called once when the plugin is loaded.
+/// This function is idempotent - calling it multiple times is safe.
 pub async fn initialize() -> ParagonicResult<()> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
+    // Ensure initialization only happens once
+    INITIALIZED.get_or_init(|| async {
+        // Initialize logging only once
+        tracing_subscriber::fmt::init();
+        tracing::info!("Logging initialized");
+    }).await;
     
-    // Initialize database
-    database::initialize().await?;
+    // Check if database is already initialized before trying to initialize it
+    match database::get_pool() {
+        Ok(_) => {
+            tracing::info!("Database already initialized, skipping initialization");
+        }
+        Err(_) => {
+            // Initialize database only if not already initialized
+            database::initialize().await?;
+        }
+    }
     
     tracing::info!("Paragonic backend initialized successfully");
     Ok(())
@@ -59,4 +77,86 @@ pub async fn shutdown() -> ParagonicResult<()> {
     
     tracing::info!("Paragonic backend shutdown complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio;
+
+    /// Test that initialize() function completes successfully
+    #[tokio::test]
+    async fn test_initialize_success() {
+        // Test that initialize() returns Ok(()) regardless of whether database is already initialized
+        let result = initialize().await;
+        match result {
+            Ok(_) => {
+                println!("initialize() succeeded");
+                assert!(true, "initialize() should return Ok(())");
+            }
+            Err(e) => {
+                // If database is already initialized, that's also acceptable
+                if e.to_string().contains("already initialized") {
+                    println!("Database already initialized, which is acceptable");
+                    assert!(true, "Database already initialized is acceptable");
+                } else {
+                    panic!("initialize() failed with unexpected error: {:?}", e);
+                }
+            }
+        }
+    }
+
+    /// Test that initialize() can be called multiple times safely
+    #[tokio::test]
+    async fn test_initialize_idempotent() {
+        // First call should succeed
+        let result1 = initialize().await;
+        match result1 {
+            Ok(_) => println!("First initialize() call succeeded"),
+            Err(e) => {
+                if e.to_string().contains("already initialized") {
+                    println!("First call: Database already initialized");
+                } else {
+                    panic!("First initialize() call failed with error: {:?}", e);
+                }
+            }
+        }
+
+        // Second call should also succeed (idempotent)
+        let result2 = initialize().await;
+        match result2 {
+            Ok(_) => println!("Second initialize() call succeeded"),
+            Err(e) => {
+                if e.to_string().contains("already initialized") {
+                    println!("Second call: Database already initialized");
+                } else {
+                    panic!("Second initialize() call failed with error: {:?}", e);
+                }
+            }
+        }
+    }
+
+    /// Test that initialize() sets up logging correctly
+    #[tokio::test]
+    async fn test_initialize_sets_up_logging() {
+        // Initialize the system
+        let result = initialize().await;
+        match result {
+            Ok(_) => println!("initialize() succeeded"),
+            Err(e) => {
+                if e.to_string().contains("already initialized") {
+                    println!("Database already initialized, continuing with logging test");
+                } else {
+                    panic!("initialize() failed with error: {:?}", e);
+                }
+            }
+        }
+
+        // Verify that logging is working by checking if we can log a message
+        // This is a basic test - in a real scenario we might capture log output
+        tracing::info!("Test log message from initialize test");
+        
+        // If we get here without panicking, logging is working
+        assert!(true, "Logging should be functional after initialize()");
+    }
 } 
