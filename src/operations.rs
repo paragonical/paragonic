@@ -164,6 +164,39 @@ pub async fn create_task(request: CreateTaskRequest) -> ParagonicResult<Task> {
     Ok(task)
 }
 
+/// Get a task by ID
+/// 
+/// This function retrieves a task from the database by its ID.
+/// Returns the task if found, or an error if not found or database error occurs.
+pub async fn get_task(task_id: Uuid) -> ParagonicResult<Task> {
+    let mut conn = get_connection()?;
+    
+    tasks::table
+        .filter(tasks::id.eq(task_id))
+        .first::<Task>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get task {}: {}", task_id, e);
+            ParagonicError::Database(format!("Failed to get task: {e}"))
+        })
+}
+
+/// List all tasks for a goal
+/// 
+/// This function retrieves all tasks from the database for a specific goal.
+/// Returns a vector of tasks ordered by creation date (newest first).
+pub async fn list_tasks(goal_id: Uuid) -> ParagonicResult<Vec<Task>> {
+    let mut conn = get_connection()?;
+    
+    tasks::table
+        .filter(tasks::goal_id.eq(goal_id))
+        .order(tasks::created_at.desc())
+        .load::<Task>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to list tasks for goal {}: {}", goal_id, e);
+            ParagonicError::Database(format!("Failed to list tasks: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,5 +513,135 @@ mod tests {
         assert!(task.updated_at.is_some());
         assert!(task.created_at.unwrap() <= Utc::now());
         assert!(task.updated_at.unwrap() <= Utc::now());
+    }
+    
+    /// Test getting a task by ID
+    #[tokio::test]
+    async fn test_get_task() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Test Project for Get Task".to_string(),
+            description: Some("A test project for get task operation".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create a goal
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal for Get Task".to_string(),
+            description: Some("A test goal for get task operation".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        // Create a task
+        let create_task_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Test Task for Get".to_string(),
+            description: Some("A test task for get operation".to_string()),
+            priority: Some(2),
+        };
+        let created_task = create_task(create_task_request).await.unwrap();
+        let task_id = created_task.id;
+        
+        // Now get the task by ID
+        let result = get_task(task_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "get_task should succeed");
+        let task = result.unwrap();
+        assert_eq!(task.id, task_id);
+        assert_eq!(task.name, "Test Task for Get");
+        assert_eq!(task.description, Some("A test task for get operation".to_string()));
+        assert_eq!(task.goal_id, Some(goal.id));
+        assert_eq!(task.priority, Some(2));
+    }
+    
+    /// Test listing all tasks for a goal
+    #[tokio::test]
+    async fn test_list_tasks() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Test Project for List Tasks".to_string(),
+            description: Some("A test project for list tasks operation".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create a goal
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal for List Tasks".to_string(),
+            description: Some("A test goal for list tasks operation".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        // Create multiple tasks for this goal
+        let task1_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Task Alpha".to_string(),
+            description: Some("First test task".to_string()),
+            priority: Some(1),
+        };
+        
+        let task2_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Task Beta".to_string(),
+            description: Some("Second test task".to_string()),
+            priority: Some(2),
+        };
+        
+        let task3_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Task Gamma".to_string(),
+            description: None,
+            priority: Some(3),
+        };
+        
+        let _task1 = create_task(task1_request).await.unwrap();
+        let _task2 = create_task(task2_request).await.unwrap();
+        let _task3 = create_task(task3_request).await.unwrap();
+        
+        // List all tasks for the goal
+        let result = list_tasks(goal.id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "list_tasks should succeed");
+        let tasks = result.unwrap();
+        
+        // Should have at least 3 tasks (our test tasks)
+        assert!(tasks.len() >= 3, "Should have at least 3 tasks");
+        
+        // Find our test tasks
+        let alpha_task = tasks.iter().find(|t| t.name == "Task Alpha");
+        let beta_task = tasks.iter().find(|t| t.name == "Task Beta");
+        let gamma_task = tasks.iter().find(|t| t.name == "Task Gamma");
+        
+        assert!(alpha_task.is_some(), "Task Alpha should be found");
+        assert!(beta_task.is_some(), "Task Beta should be found");
+        assert!(gamma_task.is_some(), "Task Gamma should be found");
+        
+        assert_eq!(alpha_task.unwrap().description, Some("First test task".to_string()));
+        assert_eq!(beta_task.unwrap().description, Some("Second test task".to_string()));
+        assert_eq!(gamma_task.unwrap().description, None);
+        
+        // All tasks should belong to the same goal
+        assert_eq!(alpha_task.unwrap().goal_id, Some(goal.id));
+        assert_eq!(beta_task.unwrap().goal_id, Some(goal.id));
+        assert_eq!(gamma_task.unwrap().goal_id, Some(goal.id));
     }
 } 
