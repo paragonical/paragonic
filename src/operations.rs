@@ -798,6 +798,22 @@ pub async fn get_conversation(conversation_id: Uuid) -> ParagonicResult<Conversa
         })
 }
 
+/// List all conversations
+/// 
+/// This function retrieves all conversations from the database.
+/// Returns a vector of all conversations, ordered by creation date (newest first).
+pub async fn list_conversations() -> ParagonicResult<Vec<Conversation>> {
+    let mut conn = get_connection()?;
+    
+    conversations::table
+        .order(conversations::created_at.desc())
+        .load::<Conversation>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to list conversations: {}", e);
+            ParagonicError::Database(format!("Failed to list conversations: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1698,6 +1714,68 @@ mod tests {
         assert!(conversation.updated_at.is_some());
         assert!(conversation.created_at.unwrap() <= Utc::now());
         assert!(conversation.updated_at.unwrap() <= Utc::now());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test listing conversations
+    #[tokio::test]
+    async fn test_list_conversations() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversations)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for conversation listing".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create multiple conversations
+        let conversation1_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation 1".to_string()),
+        };
+        let conversation2_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation 2".to_string()),
+        };
+        
+        let conversation1 = create_conversation(conversation1_request).await.unwrap();
+        let conversation2 = create_conversation(conversation2_request).await.unwrap();
+        
+        // Test listing conversations
+        let result = list_conversations().await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "list_conversations should succeed");
+        let conversations = result.unwrap();
+        
+        // Should have at least our 2 conversations
+        assert!(conversations.len() >= 2, "Should have at least 2 conversations");
+        
+        // Find our conversations in the list
+        let found_conversation1 = conversations.iter().find(|c| c.id == conversation1.id);
+        let found_conversation2 = conversations.iter().find(|c| c.id == conversation2.id);
+        
+        assert!(found_conversation1.is_some(), "Should find conversation 1");
+        assert!(found_conversation2.is_some(), "Should find conversation 2");
+        
+        let conv1 = found_conversation1.unwrap();
+        let conv2 = found_conversation2.unwrap();
+        
+        assert_eq!(conv1.agent_id, Some(agent.id));
+        assert_eq!(conv1.title, Some("Test Conversation 1".to_string()));
+        assert_eq!(conv2.agent_id, Some(agent.id));
+        assert_eq!(conv2.title, Some("Test Conversation 2".to_string()));
         
         // Clean up
         delete_agent(agent.id).await.unwrap();
