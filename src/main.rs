@@ -1,15 +1,24 @@
 use paragonic::{initialize, start_rpc_server};
 use std::process;
+use std::env;
 
 #[tokio::main]
 async fn main() {
-    // Initialize the backend
-    if let Err(e) = initialize().await {
-        eprintln!("Failed to initialize Paragonic backend: {}", e);
-        process::exit(1);
+    // Parse command line arguments
+    let args: Vec<String> = env::args().collect();
+    let skip_database = args.iter().any(|arg| arg == "--no-database");
+    
+    if skip_database {
+        println!("Starting Paragonic backend without database initialization...");
+    } else {
+        // Initialize the backend
+        if let Err(e) = initialize().await {
+            eprintln!("Failed to initialize Paragonic backend: {}", e);
+            process::exit(1);
+        }
+        println!("Paragonic backend initialized successfully");
     }
-
-    println!("Paragonic backend initialized successfully");
+    
     println!("Starting RPC server on 127.0.0.1:3000...");
 
     // Start the RPC server (this is not async, it just sets up the server)
