@@ -199,10 +199,7 @@ end
 
 -- Send chat completion request to server
 function M:chat_completion(model, message)
-    return self:call("chat_completion", {
-        model = model,
-        message = message
-    })
+    return self:call("chat_completion", {message, model})
 end
 
 -- List available models
@@ -212,9 +209,12 @@ end
 
 -- Get model information
 function M:model_info(model)
-    return self:call("model_info", {
-        model = model
-    })
+    return self:call("model_info", {model})
+end
+
+-- Generate embedding
+function M:generate_embedding(text, model)
+    return self:call("generate_embedding", {text, model})
 end
 
 -- Get list of projects
