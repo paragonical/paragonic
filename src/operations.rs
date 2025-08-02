@@ -56,6 +56,22 @@ pub async fn get_project(project_id: Uuid) -> ParagonicResult<Project> {
         })
 }
 
+/// List all projects
+/// 
+/// This function retrieves all projects from the database.
+/// Returns a vector of all projects, ordered by creation date (newest first).
+pub async fn list_projects() -> ParagonicResult<Vec<Project>> {
+    let mut conn = get_connection()?;
+    
+    projects::table
+        .order(projects::created_at.desc())
+        .load::<Project>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to list projects: {}", e);
+            ParagonicError::Database(format!("Failed to list projects: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +136,60 @@ mod tests {
         assert_eq!(project.id, project_id);
         assert_eq!(project.name, "Test Project for Get");
         assert_eq!(project.description, Some("A test project for get operation".to_string()));
+    }
+    
+    /// Test listing all projects
+    #[tokio::test]
+    async fn test_list_projects() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // Create multiple projects
+        let project1_request = CreateProjectRequest {
+            name: "Project Alpha".to_string(),
+            description: Some("First test project".to_string()),
+        };
+        
+        let project2_request = CreateProjectRequest {
+            name: "Project Beta".to_string(),
+            description: Some("Second test project".to_string()),
+        };
+        
+        let project3_request = CreateProjectRequest {
+            name: "Project Gamma".to_string(),
+            description: None,
+        };
+        
+        let _project1 = create_project(project1_request).await.unwrap();
+        let _project2 = create_project(project2_request).await.unwrap();
+        let _project3 = create_project(project3_request).await.unwrap();
+        
+        // List all projects
+        let result = list_projects().await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "list_projects should succeed");
+        let projects = result.unwrap();
+        
+        // Should have at least 3 projects (our test projects)
+        assert!(projects.len() >= 3, "Should have at least 3 projects");
+        
+        // Find our test projects
+        let alpha_project = projects.iter().find(|p| p.name == "Project Alpha");
+        let beta_project = projects.iter().find(|p| p.name == "Project Beta");
+        let gamma_project = projects.iter().find(|p| p.name == "Project Gamma");
+        
+        assert!(alpha_project.is_some(), "Project Alpha should be found");
+        assert!(beta_project.is_some(), "Project Beta should be found");
+        assert!(gamma_project.is_some(), "Project Gamma should be found");
+        
+        assert_eq!(alpha_project.unwrap().description, Some("First test project".to_string()));
+        assert_eq!(beta_project.unwrap().description, Some("Second test project".to_string()));
+        assert_eq!(gamma_project.unwrap().description, None);
     }
 } 
