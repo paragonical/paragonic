@@ -143,5 +143,25 @@ function M:hello()
     return self:call("hello", {})
 end
 
+-- Send chat completion request to server
+function M:chat_completion(model, message)
+    return self:call("chat_completion", {
+        model = model,
+        message = message
+    })
+end
+
+-- List available models
+function M:list_models()
+    return self:call("list_models", {})
+end
+
+-- Get model information
+function M:model_info(model)
+    return self:call("model_info", {
+        model = model
+    })
+end
+
 return M
  
