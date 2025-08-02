@@ -48,6 +48,8 @@ function M._setup_commands()
     
     -- Load RPC test module
     require('paragonic.rpc_test')
+    -- Load interface test module
+    require('paragonic.interface_test')
 end
 
 -- Set up autocommands
@@ -105,8 +107,44 @@ end
 
 -- Open projects interface
 function M.open_projects()
-    -- TODO: Implement projects interface
-    vim.notify("Projects interface not yet implemented", vim.log.levels.WARN)
+    -- Check if projects buffer already exists
+    local projects_buf = nil
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        local name = vim.api.nvim_buf_get_name(buf)
+        if name == "paragonic://projects" then
+            projects_buf = buf
+            break
+        end
+    end
+    
+    -- Create new buffer if it doesn't exist
+    if not projects_buf then
+        projects_buf = vim.api.nvim_create_buf(true, true)
+        
+        -- Set buffer name
+        vim.api.nvim_buf_set_name(projects_buf, "paragonic://projects")
+        
+        -- Set buffer options
+        vim.api.nvim_buf_set_option(projects_buf, "buftype", "nofile")
+        vim.api.nvim_buf_set_option(projects_buf, "swapfile", false)
+        vim.api.nvim_buf_set_option(projects_buf, "modifiable", true)
+        
+        -- Add initial content
+        vim.api.nvim_buf_set_lines(projects_buf, 0, -1, false, {
+            "# Paragonic Projects",
+            "",
+            "Your projects will be listed here:",
+            "",
+            "---"
+        })
+        
+        -- Set filetype for syntax highlighting
+        vim.api.nvim_buf_set_option(projects_buf, "filetype", "markdown")
+    end
+    
+    -- Open the buffer in a new window
+    vim.api.nvim_command("split")
+    vim.api.nvim_set_current_buf(projects_buf)
 end
 
 -- Open configuration
