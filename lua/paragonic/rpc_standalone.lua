@@ -159,4 +159,19 @@ function M:chat_completion(model, message)
     end
 end
 
+-- Get list of available models from server
+function M:list_models()
+    if not self.connected then
+        return nil, "Not connected to server"
+    end
+    
+    -- Send list_models request with empty parameters
+    local result, error_msg = send_jsonrpc_request(self.server_address, "list_models", {})
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
 return M 
