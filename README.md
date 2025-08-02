@@ -106,6 +106,12 @@ Paragonic provides a set of structures to facilitate this collaboration, includi
      the agent or human to complete
    - **Channels** &emsp; A communication channel for the agent or human, allowing users
      to provide updates and feedback on the progress of tasks and goals.
+   - **Programs** &emsp; A container of projects and operations, often associated together
+     for long-running systems. Programs provide a higher-level organizational structure
+     for managing complex, multi-project initiatives.
+   - **Portfolios** &emsp; A set of programs, providing the highest level of organizational
+     structure for managing multiple long-running systems and initiatives across
+     different domains or business areas.
 - **Prompts** &emsp; Templated messages and workflows that can be used to guide the
   agent or human, enabling users to provide structured guidance and instructions
   for the agent or human to follow. 

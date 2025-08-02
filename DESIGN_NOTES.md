@@ -99,3 +99,10 @@ impl Server for ParagonicServer {
 - [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [tokio_jsonrpc crate](https://crates.io/crates/tokio_jsonrpc) 
+
+## Resource Types
+
+- **Repositories**: Code and file collections
+- **Channels**: Communication channels for updates and feedback
+- **Programs**: Container of projects and operations for long-running systems
+- **Portfolios**: Set of programs for highest-level organizational structure 

@@ -149,8 +149,58 @@ end
 
 -- Open configuration
 function M.open_config()
-    -- TODO: Implement configuration interface
-    vim.notify("Configuration interface not yet implemented", vim.log.levels.WARN)
+    -- Check if config buffer already exists
+    local config_buf = nil
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        local name = vim.api.nvim_buf_get_name(buf)
+        if name == "paragonic://config" then
+            config_buf = buf
+            break
+        end
+    end
+    
+    -- Create new buffer if it doesn't exist
+    if not config_buf then
+        config_buf = vim.api.nvim_create_buf(true, true)
+        
+        -- Set buffer name
+        vim.api.nvim_buf_set_name(config_buf, "paragonic://config")
+        
+        -- Set buffer options
+        vim.api.nvim_buf_set_option(config_buf, "buftype", "nofile")
+        vim.api.nvim_buf_set_option(config_buf, "swapfile", false)
+        vim.api.nvim_buf_set_option(config_buf, "modifiable", true)
+        
+        -- Add initial content with current configuration
+        local config_content = {
+            "# Paragonic Configuration",
+            "",
+            "Current configuration:",
+            "",
+            "## Ollama Settings",
+            "- Host: " .. config.ollama_host,
+            "- Model: " .. config.ollama_model,
+            "",
+            "## Database Settings", 
+            "- Path: " .. config.database_path,
+            "",
+            "## Logging Settings",
+            "- Level: " .. config.log_level,
+            "",
+            "---",
+            "",
+            "Edit the configuration above and save to update settings."
+        }
+        
+        vim.api.nvim_buf_set_lines(config_buf, 0, -1, false, config_content)
+        
+        -- Set filetype for syntax highlighting
+        vim.api.nvim_buf_set_option(config_buf, "filetype", "markdown")
+    end
+    
+    -- Open the buffer in a new window
+    vim.api.nvim_command("split")
+    vim.api.nvim_set_current_buf(config_buf)
 end
 
 -- Get current configuration
