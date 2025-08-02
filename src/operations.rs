@@ -629,6 +629,80 @@ pub async fn search_embeddings(_query: &str, limit: usize) -> ParagonicResult<Ve
     Ok(mock_results.into_iter().take(limit).collect())
 }
 
+/// Find similar content with optional filtering
+/// 
+/// This function searches for content similar to the given query using vector similarity,
+/// with optional filtering by content type and similarity threshold.
+/// Returns a vector of search results with similarity scores.
+pub async fn find_similar_content(
+    _query: &str, 
+    content_type: Option<String>, 
+    limit: usize, 
+    threshold: Option<f32>
+) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
+    // TODO: Implement actual embedding search functionality with filtering
+    // For now, return a mock result to test the interface
+    
+    // Mock search results
+    let mut mock_results = vec![
+        EmbeddingSearchResult {
+            embedding: Embedding {
+                id: Uuid::new_v4(),
+                content_type: "project".to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: "Test project content for similar search".to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                embedding_vector: None,
+                metadata: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+            similarity_score: 0.85,
+        },
+        EmbeddingSearchResult {
+            embedding: Embedding {
+                id: Uuid::new_v4(),
+                content_type: "task".to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: "Test task content for similar search".to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                embedding_vector: None,
+                metadata: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+            similarity_score: 0.72,
+        },
+        EmbeddingSearchResult {
+            embedding: Embedding {
+                id: Uuid::new_v4(),
+                content_type: "goal".to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: "Test goal content for similar search".to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                embedding_vector: None,
+                metadata: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+            similarity_score: 0.65,
+        },
+    ];
+    
+    // Apply content type filter if specified
+    if let Some(ct) = content_type {
+        mock_results.retain(|result| result.embedding.content_type == ct);
+    }
+    
+    // Apply similarity threshold filter if specified
+    if let Some(thresh) = threshold {
+        mock_results.retain(|result| result.similarity_score >= thresh);
+    }
+    
+    // Return only the requested number of results
+    Ok(mock_results.into_iter().take(limit).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1383,6 +1457,64 @@ mod tests {
             assert!(result.similarity_score <= 1.0, "Similarity should be <= 1.0");
             assert!(!result.embedding.content_text.is_empty(), "Content should not be empty");
             assert!(!result.embedding.content_type.is_empty(), "Content type should be present");
+        }
+        
+        // Clean up
+        delete_project(project.id).await.unwrap();
+    }
+    
+    /// Test that find_similar_content function works correctly
+    #[tokio::test]
+    async fn test_find_similar_content() {
+        // Initialize database
+        crate::database::initialize().await.unwrap();
+        
+        // Create a test project with some content
+        let project_request = CreateProjectRequest {
+            name: "Test Project for Similar Content".to_string(),
+            description: Some("A project to test similar content search functionality".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create a test goal
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal for Similar Content".to_string(),
+            description: Some("A goal to test similar content search".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        // Create a test task
+        let task_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Test Task for Similar Content".to_string(),
+            description: Some("A task to test similar content search functionality".to_string()),
+            priority: Some(1),
+        };
+        let _task = create_task(task_request).await.unwrap();
+        
+        // Test find similar content with a query
+        let query = "test similar content search";
+        let content_type = Some("project".to_string());
+        let limit = 3;
+        let threshold = Some(0.5);
+        
+        let results = find_similar_content(query, content_type, limit, threshold).await.unwrap();
+        
+        // Verify we get some results
+        assert!(!results.is_empty(), "Find similar content should return some results");
+        
+        // Verify each result has the expected structure
+        for result in results {
+            assert!(result.similarity_score > 0.0, "Similarity should be positive");
+            assert!(result.similarity_score <= 1.0, "Similarity should be <= 1.0");
+            assert!(!result.embedding.content_text.is_empty(), "Content should not be empty");
+            assert!(!result.embedding.content_type.is_empty(), "Content type should be present");
+            
+            // If threshold was specified, verify similarity is above threshold
+            if let Some(thresh) = threshold {
+                assert!(result.similarity_score >= thresh, "Similarity should be above threshold");
+            }
         }
         
         // Clean up
