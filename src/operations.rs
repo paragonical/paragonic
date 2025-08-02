@@ -4,7 +4,7 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, Task, CreateTaskRequest};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
@@ -251,6 +251,99 @@ pub async fn update_project(project_id: Uuid, request: UpdateProjectRequest) -> 
         .map_err(|e| {
             tracing::error!("Failed to get updated project {}: {}", project_id, e);
             ParagonicError::Database(format!("Failed to get updated project: {e}"))
+        })
+}
+
+/// Update a goal
+/// 
+/// This function updates a goal in the database with the given fields.
+/// Returns the updated goal with new timestamps.
+pub async fn update_goal(goal_id: Uuid, request: UpdateGoalRequest) -> ParagonicResult<Goal> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    
+    // Execute the update based on what fields are provided
+    match (request.name, request.description, request.status) {
+        (Some(name), Some(description), Some(status)) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::name.eq(name),
+                    goals::description.eq(description),
+                    goals::status.eq(status),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), Some(description), None) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::name.eq(name),
+                    goals::description.eq(description),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None, Some(status)) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::name.eq(name),
+                    goals::status.eq(status),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None, None) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::name.eq(name),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description), Some(status)) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::description.eq(description),
+                    goals::status.eq(status),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description), None) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::description.eq(description),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None, Some(status)) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set((
+                    goals::status.eq(status),
+                    goals::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None, None) => {
+            diesel::update(goals::table.filter(goals::id.eq(goal_id)))
+                .set(goals::updated_at.eq(now))
+                .execute(&mut conn)
+        }
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to update goal {}: {}", goal_id, e);
+        ParagonicError::Database(format!("Failed to update goal: {e}"))
+    })?;
+    
+    // Return the updated goal
+    goals::table
+        .filter(goals::id.eq(goal_id))
+        .first::<Goal>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get updated goal {}: {}", goal_id, e);
+            ParagonicError::Database(format!("Failed to get updated goal: {e}"))
         })
 }
 
@@ -737,5 +830,51 @@ mod tests {
         assert_eq!(updated_project.description, Some("Updated project description".to_string()));
         assert!(updated_project.updated_at.is_some());
         assert!(updated_project.updated_at.unwrap() > project.updated_at.unwrap());
+    }
+    
+    /// Test updating a goal with valid data
+    #[tokio::test]
+    async fn test_update_goal() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project and goal
+        let project_request = CreateProjectRequest {
+            name: "Test Project".to_string(),
+            description: Some("Test project description".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Original Goal Name".to_string(),
+            description: Some("Original goal description".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        let goal_id = goal.id;
+        
+        // Update the goal
+        let update_request = UpdateGoalRequest {
+            name: Some("Updated Goal Name".to_string()),
+            description: Some("Updated goal description".to_string()),
+            status: Some("completed".to_string()),
+        };
+        
+        let result = update_goal(goal_id, update_request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "update_goal should succeed");
+        let updated_goal = result.unwrap();
+        assert_eq!(updated_goal.id, goal_id);
+        assert_eq!(updated_goal.name, "Updated Goal Name");
+        assert_eq!(updated_goal.description, Some("Updated goal description".to_string()));
+        assert_eq!(updated_goal.status, Some("completed".to_string()));
+        assert!(updated_goal.updated_at.is_some());
+        assert!(updated_goal.updated_at.unwrap() > goal.updated_at.unwrap());
     }
 } 
