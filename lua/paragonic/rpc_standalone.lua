@@ -265,4 +265,45 @@ function M:get_server_info()
     return server_info
 end
 
+-- Execute multiple operations in a batch
+function M:batch_operations(operations)
+    -- Parameter validation
+    if not operations or type(operations) ~= "table" or #operations == 0 then
+        return nil, "Operations parameter must be a non-empty table"
+    end
+    
+    if not self.connected then
+        return nil, "Not connected to server"
+    end
+    
+    -- Validate each operation
+    for i, operation in ipairs(operations) do
+        if type(operation) ~= "table" then
+            return nil, "Operation " .. i .. " must be a table"
+        end
+        
+        if not operation.method or type(operation.method) ~= "string" then
+            return nil, "Operation " .. i .. " must have a method field"
+        end
+        
+        if not operation.params then
+            operation.params = {}
+        end
+    end
+    
+    -- Execute each operation and collect results
+    local results = {}
+    for i, operation in ipairs(operations) do
+        local result, error_msg = send_jsonrpc_request(self.server_address, operation.method, operation.params)
+        if result then
+            results[i] = result
+        else
+            -- For batch operations, we continue even if some operations fail
+            results[i] = nil
+        end
+    end
+    
+    return results
+end
+
 return M 
