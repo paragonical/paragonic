@@ -10,9 +10,11 @@ use tokio_codec::Decoder;
 use futures::stream::Stream;
 use serde_json::Value;
 use std::sync::Arc;
+use tracing::error;
 
 use crate::ollama::OllamaClient;
 use crate::error::ParagonicResult;
+use crate::ollama::ChatMessage;
 
 /// JSON-RPC server for Paragonic
 pub struct ParagonicServer {
@@ -60,13 +62,43 @@ impl ParagonicServer {
         let message = params[0].as_str()
             .ok_or_else(|| RpcError::invalid_params(None))?
             .to_string();
-        let _model = params[1].as_str()
+        let model = params[1].as_str()
             .ok_or_else(|| RpcError::invalid_params(None))?
             .to_string();
         
-        // For now, return a mock response
-        // TODO: Implement actual Ollama call
-        Ok(format!("Mock response to: {message}"))
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message,
+        };
+        
+        // Make actual Ollama API call
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use the current handle
+            handle.block_on(async {
+                self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {}", e))))?
+                .block_on(async {
+                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                })
+        };
+        
+        match response {
+            Ok(chat_response) => {
+                // Return the response as JSON
+                serde_json::to_string(&chat_response)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {}", e))))
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                error!("Ollama chat completion failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {}", e))))
+            }
+        }
     }
     
     /// Handle list models request
@@ -207,8 +239,8 @@ mod tests {
     }
     
     /// Test that the server can handle chat completion requests
-    #[test]
-    fn test_server_chat_completion() {
+    #[tokio::test]
+    async fn test_server_chat_completion() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
         let server = ParagonicServer::new(client);
@@ -218,6 +250,122 @@ mod tests {
         let result = server.handle_chat_completion(&params);
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Mock response"));
+    }
+
+    /// Test that handle_chat_completion validates required parameters
+    #[tokio::test]
+    async fn test_handle_chat_completion_parameter_validation() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with missing parameters
+        let params = Some(serde_json::json!(["Hello"])); // Missing model
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_err());
+        
+        // Test with empty parameters
+        let params = Some(serde_json::json!([]));
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_err());
+        
+        // Test with None parameters
+        let result = server.handle_chat_completion(&None);
+        assert!(result.is_err());
+    }
+
+    /// Test that handle_chat_completion handles invalid parameter types
+    #[tokio::test]
+    async fn test_handle_chat_completion_invalid_parameter_types() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with non-string message
+        let params = Some(serde_json::json!([123, "llama3.2:3b"]));
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_err());
+        
+        // Test with non-string model
+        let params = Some(serde_json::json!(["Hello", 456]));
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_err());
+    }
+
+    /// Test that handle_chat_completion creates proper chat messages
+    #[tokio::test]
+    async fn test_handle_chat_completion_creates_chat_messages() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that the function can extract message and model correctly
+        let message = "Hello, how are you?";
+        let model = "llama3.2:3b";
+        let params = Some(serde_json::json!([message, model]));
+        
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_ok());
+        
+        // For now, it returns a mock response, but we can verify the parameters were parsed
+        let response = result.unwrap();
+        assert!(response.contains(message));
+    }
+
+    /// Test that handle_chat_completion can handle complex messages
+    #[tokio::test]
+    async fn test_handle_chat_completion_complex_messages() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with a complex message containing special characters
+        let message = "Hello! How are you doing today? I have a question about Rust programming...";
+        let model = "llama3.2:3b";
+        let params = Some(serde_json::json!([message, model]));
+        
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        assert!(response.contains("Mock response"));
+    }
+
+    /// Test that handle_chat_completion makes actual Ollama API calls
+    #[test]
+    fn test_handle_chat_completion_actual_ollama_call() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        let message = "Hello, this is a test message";
+        let model = "llama3.2:3b";
+        let params = Some(serde_json::json!([message, model]));
+        
+        let result = server.handle_chat_completion(&params);
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        // This test will fail because we're still returning mock responses
+        // It should contain actual AI-generated content, not "Mock response"
+        assert!(!response.contains("Mock response"), 
+            "Response should contain actual AI content, not mock response. Got: {}", response);
+        
+        // The response should be a valid JSON structure with AI-generated content
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        
+        // Should have a message field with content
+        assert!(response_json.get("message").is_some(), 
+            "Response should have a 'message' field");
+        
+        let message_content = response_json["message"]["content"].as_str()
+            .expect("Message should have content field");
+        
+        assert!(!message_content.is_empty(), 
+            "Message content should not be empty");
+        assert!(message_content != message, 
+            "AI response should be different from input message");
     }
     
     /// Test that the server can handle list models requests
