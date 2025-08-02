@@ -135,4 +135,28 @@ function M:hello()
     end
 end
 
+-- Send chat completion request to server
+function M:chat_completion(model, message)
+    -- Parameter validation
+    if not model or model == "" then
+        return nil, "Model parameter is required"
+    end
+    
+    if not message or message == "" then
+        return nil, "Message parameter is required"
+    end
+    
+    if not self.connected then
+        return nil, "Not connected to server"
+    end
+    
+    -- Send chat completion request with parameters as array [message, model]
+    local result, error_msg = send_jsonrpc_request(self.server_address, "chat_completion", {message, model})
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
 return M 
