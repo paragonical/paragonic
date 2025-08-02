@@ -409,6 +409,112 @@ pub fn handle_list_goals(&self, params: &Option<Value>) -> Result<String, RpcErr
     serde_json::to_string(&mock_goals)
         .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goals: {e}"))))
 }
+    
+    /// Handle create task request
+pub fn handle_create_task(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let goal_id = params.get("goal_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let name = params.get("name")
+        .and_then(|n| n.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?
+        .to_string();
+    
+    let description = params.get("description")
+        .and_then(|d| d.as_str())
+        .map(|d| d.to_string());
+    
+    let priority = params.get("priority")
+        .and_then(|p| p.as_i64())
+        .map(|p| p as i32);
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_task = serde_json::json!({
+        "id": "789e0123-e89b-12d3-a456-426614174000",
+        "goal_id": goal_id,
+        "name": name.clone(),
+        "description": description.clone(),
+        "status": "pending",
+        "priority": priority,
+        "created_at": null,
+        "updated_at": null
+    });
+    
+    serde_json::to_string(&mock_task)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize task: {e}"))))
+}
+    
+    /// Handle get task request
+pub fn handle_get_task(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let task_id = params.get("task_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_task = serde_json::json!({
+        "id": task_id,
+        "goal_id": "456e7890-e89b-12d3-a456-426614174000",
+        "name": "Mock Task",
+        "description": "A mock task for testing",
+        "status": "pending",
+        "priority": 1,
+        "created_at": null,
+        "updated_at": null
+    });
+    
+    serde_json::to_string(&mock_task)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize task: {e}"))))
+}
+    
+    /// Handle list tasks request
+pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let goal_id = params.get("goal_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_tasks = serde_json::json!([
+        {
+            "id": "789e0123-e89b-12d3-a456-426614174000",
+            "goal_id": goal_id,
+            "name": "Mock Task 1",
+            "description": "First mock task",
+            "status": "pending",
+            "priority": 1,
+            "created_at": null,
+            "updated_at": null
+        },
+        {
+            "id": "789e0123-e89b-12d3-a456-426614174001",
+            "goal_id": goal_id,
+            "name": "Mock Task 2",
+            "description": "Second mock task",
+            "status": "in_progress",
+            "priority": 2,
+            "created_at": null,
+            "updated_at": null
+        }
+    ]);
+    
+    serde_json::to_string(&mock_tasks)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize tasks: {e}"))))
+}
 }
 
 impl Server for ParagonicServer {
@@ -446,6 +552,12 @@ impl Server for ParagonicServer {
             "get_goal" => Some(self.handle_get_goal(params)),
             // Handle list goals requests
             "list_goals" => Some(self.handle_list_goals(params)),
+            // Handle create task requests
+            "create_task" => Some(self.handle_create_task(params)),
+            // Handle get task requests
+            "get_task" => Some(self.handle_get_task(params)),
+            // Handle list tasks requests
+            "list_tasks" => Some(self.handle_list_tasks(params)),
             _ => None
         }
     }
@@ -916,5 +1028,86 @@ mod tests {
         
         assert_eq!(goal1.get("name").unwrap().as_str(), Some("Mock Goal 1"));
         assert_eq!(goal2.get("name").unwrap().as_str(), Some("Mock Goal 2"));
+    }
+    
+    /// Test that the server can handle create task requests
+    #[test]
+    fn test_server_create_task() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that server can handle create task
+        let params = Some(serde_json::json!({
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000",
+            "name": "Test Task",
+            "description": "A test task created via RPC",
+            "priority": 1
+        }));
+        let result = server.handle_create_task(&params);
+        assert!(result.is_ok(), "handle_create_task should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("id").is_some(), "Should have an id field");
+        assert!(response_json.get("name").is_some(), "Should have a name field");
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Test Task"));
+        assert_eq!(response_json.get("goal_id").unwrap().as_str(), Some("456e7890-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("priority").unwrap().as_i64(), Some(1));
+    }
+    
+    /// Test that the server can handle get task requests
+    #[test]
+    fn test_server_get_task() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test get task with a mock task ID
+        let get_params = Some(serde_json::json!({
+            "task_id": "789e0123-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_get_task(&get_params);
+        assert!(result.is_ok(), "handle_get_task should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("id").unwrap().as_str(), Some("789e0123-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Mock Task"));
+    }
+    
+    /// Test that the server can handle list tasks requests
+    #[test]
+    fn test_server_list_tasks() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test list tasks with a mock goal ID
+        let list_params = Some(serde_json::json!({
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_list_tasks(&list_params);
+        assert!(result.is_ok(), "handle_list_tasks should return Ok");
+        
+        // Verify the response is valid JSON array
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.is_array(), "Response should be an array");
+        
+        let tasks_array = response_json.as_array().unwrap();
+        assert_eq!(tasks_array.len(), 2, "Should have exactly 2 mock tasks");
+        
+        // Verify the mock tasks
+        let task1 = tasks_array[0].as_object().unwrap();
+        let task2 = tasks_array[1].as_object().unwrap();
+        
+        assert_eq!(task1.get("name").unwrap().as_str(), Some("Mock Task 1"));
+        assert_eq!(task2.get("name").unwrap().as_str(), Some("Mock Task 2"));
     }
 } 
