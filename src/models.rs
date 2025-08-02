@@ -156,6 +156,15 @@ pub struct CreateTaskRequest {
     pub priority: Option<i32>,
 }
 
+/// Update task request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateTaskRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+    pub priority: Option<i32>,
+}
+
 /// Create agent request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateAgentRequest {

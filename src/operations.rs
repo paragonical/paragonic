@@ -4,7 +4,7 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
@@ -344,6 +344,175 @@ pub async fn update_goal(goal_id: Uuid, request: UpdateGoalRequest) -> Paragonic
         .map_err(|e| {
             tracing::error!("Failed to get updated goal {}: {}", goal_id, e);
             ParagonicError::Database(format!("Failed to get updated goal: {e}"))
+        })
+}
+
+/// Update a task
+/// 
+/// This function updates a task in the database with the given fields.
+/// Returns the updated task with new timestamps.
+pub async fn update_task(task_id: Uuid, request: UpdateTaskRequest) -> ParagonicResult<Task> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    
+    // Execute the update based on what fields are provided
+    match (request.name, request.description, request.status, request.priority) {
+        (Some(name), Some(description), Some(status), Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::description.eq(description),
+                    tasks::status.eq(status),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), Some(description), Some(status), None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::description.eq(description),
+                    tasks::status.eq(status),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), Some(description), None, Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::description.eq(description),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), Some(description), None, None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::description.eq(description),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None, Some(status), Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::status.eq(status),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None, Some(status), None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::status.eq(status),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None, None, Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None, None, None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::name.eq(name),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description), Some(status), Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::description.eq(description),
+                    tasks::status.eq(status),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description), Some(status), None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::description.eq(description),
+                    tasks::status.eq(status),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description), None, Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::description.eq(description),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description), None, None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::description.eq(description),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None, Some(status), Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::status.eq(status),
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None, Some(status), None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::status.eq(status),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None, None, Some(priority)) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set((
+                    tasks::priority.eq(priority),
+                    tasks::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None, None, None) => {
+            diesel::update(tasks::table.filter(tasks::id.eq(task_id)))
+                .set(tasks::updated_at.eq(now))
+                .execute(&mut conn)
+        }
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to update task {}: {}", task_id, e);
+        ParagonicError::Database(format!("Failed to update task: {e}"))
+    })?;
+    
+    // Return the updated task
+    tasks::table
+        .filter(tasks::id.eq(task_id))
+        .first::<Task>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get updated task {}: {}", task_id, e);
+            ParagonicError::Database(format!("Failed to get updated task: {e}"))
         })
 }
 
@@ -876,5 +1045,61 @@ mod tests {
         assert_eq!(updated_goal.status, Some("completed".to_string()));
         assert!(updated_goal.updated_at.is_some());
         assert!(updated_goal.updated_at.unwrap() > goal.updated_at.unwrap());
+    }
+    
+    /// Test updating a task with valid data
+    #[tokio::test]
+    async fn test_update_task() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project, goal, and task
+        let project_request = CreateProjectRequest {
+            name: "Test Project".to_string(),
+            description: Some("Test project description".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal".to_string(),
+            description: Some("Test goal description".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        let task_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Original Task Name".to_string(),
+            description: Some("Original task description".to_string()),
+            priority: Some(1),
+        };
+        let task = create_task(task_request).await.unwrap();
+        let task_id = task.id;
+        
+        // Update the task
+        let update_request = UpdateTaskRequest {
+            name: Some("Updated Task Name".to_string()),
+            description: Some("Updated task description".to_string()),
+            status: Some("in_progress".to_string()),
+            priority: Some(5),
+        };
+        
+        let result = update_task(task_id, update_request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "update_task should succeed");
+        let updated_task = result.unwrap();
+        assert_eq!(updated_task.id, task_id);
+        assert_eq!(updated_task.name, "Updated Task Name");
+        assert_eq!(updated_task.description, Some("Updated task description".to_string()));
+        assert_eq!(updated_task.status, Some("in_progress".to_string()));
+        assert_eq!(updated_task.priority, Some(5));
+        assert!(updated_task.updated_at.is_some());
+        assert!(updated_task.updated_at.unwrap() > task.updated_at.unwrap());
     }
 } 
