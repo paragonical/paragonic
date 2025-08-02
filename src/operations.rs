@@ -562,6 +562,29 @@ pub async fn delete_goal(goal_id: Uuid) -> ParagonicResult<()> {
     Ok(())
 }
 
+/// Delete a task
+/// 
+/// This function deletes a task from the database.
+/// Returns success if the task was deleted, or an error if it doesn't exist.
+pub async fn delete_task(task_id: Uuid) -> ParagonicResult<()> {
+    let mut conn = get_connection()?;
+    
+    // Execute the delete
+    let rows_affected = diesel::delete(tasks::table.filter(tasks::id.eq(task_id)))
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to delete task {}: {}", task_id, e);
+            ParagonicError::Database(format!("Failed to delete task: {e}"))
+        })?;
+    
+    // Check if any rows were actually deleted
+    if rows_affected == 0 {
+        return Err(ParagonicError::NotFound(format!("Task with id {task_id} not found")));
+    }
+    
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1222,5 +1245,54 @@ mod tests {
         // Verify the goal no longer exists
         let get_result = get_goal(goal_id).await;
         assert!(get_result.is_err(), "Goal should no longer exist");
+    }
+    
+    /// Test deleting a task with valid ID
+    #[tokio::test]
+    async fn test_delete_task() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project, goal, and task
+        let project_request = CreateProjectRequest {
+            name: "Test Project".to_string(),
+            description: Some("Test project description".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal".to_string(),
+            description: Some("Test goal description".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        let task_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Task to Delete".to_string(),
+            description: Some("This task will be deleted".to_string()),
+            priority: Some(1),
+        };
+        let task = create_task(task_request).await.unwrap();
+        let task_id = task.id;
+        
+        // Verify the task exists
+        let retrieved_task = get_task(task_id).await.unwrap();
+        assert_eq!(retrieved_task.id, task_id);
+        
+        // Delete the task
+        let result = delete_task(task_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "delete_task should succeed");
+        
+        // Verify the task no longer exists
+        let get_result = get_task(task_id).await;
+        assert!(get_result.is_err(), "Task should no longer exist");
     }
 } 
