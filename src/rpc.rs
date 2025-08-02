@@ -311,6 +311,41 @@ pub fn handle_list_projects(&self) -> Result<String, RpcError> {
     serde_json::to_string(&mock_projects)
         .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize projects: {e}"))))
 }
+    
+    /// Handle create goal request
+pub fn handle_create_goal(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let project_id = params.get("project_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let name = params.get("name")
+        .and_then(|n| n.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?
+        .to_string();
+    
+    let description = params.get("description")
+        .and_then(|d| d.as_str())
+        .map(|d| d.to_string());
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_goal = serde_json::json!({
+        "id": "456e7890-e89b-12d3-a456-426614174000",
+        "project_id": project_id,
+        "name": name.clone(),
+        "description": description.clone(),
+        "status": "active",
+        "created_at": null,
+        "updated_at": null
+    });
+    
+    serde_json::to_string(&mock_goal)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goal: {e}"))))
+}
 }
 
 impl Server for ParagonicServer {
@@ -342,6 +377,8 @@ impl Server for ParagonicServer {
             "get_project" => Some(self.handle_get_project(params)),
             // Handle list projects requests
             "list_projects" => Some(self.handle_list_projects()),
+            // Handle create goal requests
+            "create_goal" => Some(self.handle_create_goal(params)),
             _ => None
         }
     }
@@ -733,5 +770,31 @@ mod tests {
         
         assert_eq!(project1.get("name").unwrap().as_str(), Some("Mock Project 1"));
         assert_eq!(project2.get("name").unwrap().as_str(), Some("Mock Project 2"));
+    }
+    
+    /// Test that the server can handle create goal requests
+    #[test]
+    fn test_server_create_goal() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that server can handle create goal
+        let params = Some(serde_json::json!({
+            "project_id": "123e4567-e89b-12d3-a456-426614174000",
+            "name": "Test Goal",
+            "description": "A test goal created via RPC"
+        }));
+        let result = server.handle_create_goal(&params);
+        assert!(result.is_ok(), "handle_create_goal should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("id").is_some(), "Should have an id field");
+        assert!(response_json.get("name").is_some(), "Should have a name field");
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Test Goal"));
+        assert_eq!(response_json.get("project_id").unwrap().as_str(), Some("123e4567-e89b-12d3-a456-426614174000"));
     }
 } 
