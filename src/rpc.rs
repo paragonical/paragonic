@@ -303,8 +303,8 @@ mod tests {
     }
     
     /// Test that the server can handle chat completion requests
-    #[tokio::test]
-    async fn test_server_chat_completion() {
+    #[test]
+    fn test_server_chat_completion() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
         let server = ParagonicServer::new(client);
@@ -313,7 +313,11 @@ mod tests {
         let params = Some(serde_json::json!(["Hello", "llama3.2:3b"]));
         let result = server.handle_chat_completion(&params);
         assert!(result.is_ok());
-        assert!(result.unwrap().contains("Mock response"));
+        // Now it returns real AI responses, so we just verify it's valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
     }
 
     /// Test that handle_chat_completion validates required parameters
@@ -357,8 +361,8 @@ mod tests {
     }
 
     /// Test that handle_chat_completion creates proper chat messages
-    #[tokio::test]
-    async fn test_handle_chat_completion_creates_chat_messages() {
+    #[test]
+    fn test_handle_chat_completion_creates_chat_messages() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
         let server = ParagonicServer::new(client);
@@ -371,14 +375,16 @@ mod tests {
         let result = server.handle_chat_completion(&params);
         assert!(result.is_ok());
         
-        // For now, it returns a mock response, but we can verify the parameters were parsed
+        // Now it returns real AI responses, so we just verify it's valid JSON
         let response = result.unwrap();
-        assert!(response.contains(message));
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
     }
 
     /// Test that handle_chat_completion can handle complex messages
-    #[tokio::test]
-    async fn test_handle_chat_completion_complex_messages() {
+    #[test]
+    fn test_handle_chat_completion_complex_messages() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
         let server = ParagonicServer::new(client);
@@ -392,7 +398,10 @@ mod tests {
         assert!(result.is_ok());
         
         let response = result.unwrap();
-        assert!(response.contains("Mock response"));
+        // Now it returns real AI responses, so we just verify it's valid JSON
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
     }
 
     /// Test that handle_chat_completion makes actual Ollama API calls
