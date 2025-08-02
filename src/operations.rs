@@ -516,6 +516,29 @@ pub async fn update_task(task_id: Uuid, request: UpdateTaskRequest) -> Paragonic
         })
 }
 
+/// Delete a project
+/// 
+/// This function deletes a project from the database.
+/// Returns success if the project was deleted, or an error if it doesn't exist.
+pub async fn delete_project(project_id: Uuid) -> ParagonicResult<()> {
+    let mut conn = get_connection()?;
+    
+    // Execute the delete
+    let rows_affected = diesel::delete(projects::table.filter(projects::id.eq(project_id)))
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to delete project {}: {}", project_id, e);
+            ParagonicError::Database(format!("Failed to delete project: {e}"))
+        })?;
+    
+    // Check if any rows were actually deleted
+    if rows_affected == 0 {
+        return Err(ParagonicError::NotFound(format!("Project with id {project_id} not found")));
+    }
+    
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1101,5 +1124,39 @@ mod tests {
         assert_eq!(updated_task.priority, Some(5));
         assert!(updated_task.updated_at.is_some());
         assert!(updated_task.updated_at.unwrap() > task.updated_at.unwrap());
+    }
+    
+    /// Test deleting a project with valid ID
+    #[tokio::test]
+    async fn test_delete_project() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Project to Delete".to_string(),
+            description: Some("This project will be deleted".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        let project_id = project.id;
+        
+        // Verify the project exists
+        let retrieved_project = get_project(project_id).await.unwrap();
+        assert_eq!(retrieved_project.id, project_id);
+        
+        // Delete the project
+        let result = delete_project(project_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "delete_project should succeed");
+        
+        // Verify the project no longer exists
+        let get_result = get_project(project_id).await;
+        assert!(get_result.is_err(), "Project should no longer exist");
     }
 } 
