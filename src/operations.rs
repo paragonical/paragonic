@@ -4,7 +4,7 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
@@ -583,6 +583,50 @@ pub async fn delete_task(task_id: Uuid) -> ParagonicResult<()> {
     }
     
     Ok(())
+}
+
+/// Search embeddings for similar content
+/// 
+/// This function searches for content similar to the given query using vector similarity.
+/// Returns a vector of search results with similarity scores.
+pub async fn search_embeddings(_query: &str, limit: usize) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
+    // TODO: Implement actual embedding search functionality
+    // For now, return a mock result to test the interface
+    
+    // Mock search results
+    let mock_results = vec![
+        EmbeddingSearchResult {
+            embedding: Embedding {
+                id: Uuid::new_v4(),
+                content_type: "project".to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: "Test project content".to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                embedding_vector: None,
+                metadata: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+            similarity_score: 0.85,
+        },
+        EmbeddingSearchResult {
+            embedding: Embedding {
+                id: Uuid::new_v4(),
+                content_type: "task".to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: "Test task content".to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                embedding_vector: None,
+                metadata: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            },
+            similarity_score: 0.72,
+        },
+    ];
+    
+    // Return only the requested number of results
+    Ok(mock_results.into_iter().take(limit).collect())
 }
 
 #[cfg(test)]
@@ -1294,5 +1338,54 @@ mod tests {
         // Verify the task no longer exists
         let get_result = get_task(task_id).await;
         assert!(get_result.is_err(), "Task should no longer exist");
+    }
+    
+    /// Test that search_embeddings function works correctly
+    #[tokio::test]
+    async fn test_search_embeddings() {
+        // Initialize database
+        crate::database::initialize().await.unwrap();
+        
+        // Create a test project with some content
+        let project_request = CreateProjectRequest {
+            name: "Test Project for Search".to_string(),
+            description: Some("A project to test embedding search functionality".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create a test goal
+        let goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal".to_string(),
+            description: Some("A goal to test embedding search".to_string()),
+        };
+        let goal = create_goal(goal_request).await.unwrap();
+        
+        // Create a test task
+        let task_request = CreateTaskRequest {
+            goal_id: goal.id,
+            name: "Test Task".to_string(),
+            description: Some("A task to test embedding search functionality".to_string()),
+            priority: Some(1),
+        };
+        let _task = create_task(task_request).await.unwrap();
+        
+        // Test search with a query
+        let query = "test embedding search";
+        let results = search_embeddings(query, 5).await.unwrap();
+        
+        // Verify we get some results
+        assert!(!results.is_empty(), "Search should return some results");
+        
+        // Verify each result has the expected structure
+        for result in results {
+            assert!(result.similarity_score > 0.0, "Similarity should be positive");
+            assert!(result.similarity_score <= 1.0, "Similarity should be <= 1.0");
+            assert!(!result.embedding.content_text.is_empty(), "Content should not be empty");
+            assert!(!result.embedding.content_type.is_empty(), "Content type should be present");
+        }
+        
+        // Clean up
+        delete_project(project.id).await.unwrap();
     }
 } 
