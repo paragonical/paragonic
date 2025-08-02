@@ -10,7 +10,8 @@ function M.new(server_address)
     local client = {
         server_address = server_address,
         connected = false,
-        socket = nil
+        socket = nil,
+        timeout = 10 -- Default timeout of 10 seconds
     }
     
     -- Set metatable for object-oriented behavior
@@ -75,8 +76,29 @@ function M:is_connected()
     return self.connected
 end
 
+-- Get current timeout value
+function M:get_timeout()
+    return self.timeout
+end
+
+-- Set timeout for operations
+function M:timeout_operations(timeout_seconds)
+    -- Parameter validation
+    if not timeout_seconds or type(timeout_seconds) ~= "number" then
+        return false, "Timeout must be a number"
+    end
+    
+    if timeout_seconds <= 0 then
+        return false, "Timeout must be greater than 0"
+    end
+    
+    -- Set the timeout
+    self.timeout = timeout_seconds
+    return true
+end
+
 -- Send JSON-RPC request using external command
-local function send_jsonrpc_request(server_address, method, params)
+local function send_jsonrpc_request(server_address, method, params, timeout)
     -- Parse server address
     local host, port = server_address:match("([^:]+):?(%d*)")
     if not host then
@@ -85,6 +107,9 @@ local function send_jsonrpc_request(server_address, method, params)
     
     -- Default port to 3000 if not specified
     port = port or "3000"
+    
+    -- Use provided timeout or default to 10 seconds
+    timeout = timeout or 10
     
     -- Create JSON-RPC request
     local request = {
@@ -98,8 +123,8 @@ local function send_jsonrpc_request(server_address, method, params)
     local cjson = require("cjson")
     local json_request = cjson.encode(request)
     
-    -- Send request using netcat
-    local cmd = string.format('echo \'%s\' | nc -w 10 %s %s', json_request, host, port)
+    -- Send request using netcat with timeout
+    local cmd = string.format('echo \'%s\' | nc -w %d %s %s', json_request, timeout, host, port)
     local process = io.popen(cmd)
     if not process then
         return nil, "Failed to execute RPC request"
@@ -127,7 +152,7 @@ function M:hello()
         return nil, "Not connected to server"
     end
     
-    local result, error_msg = send_jsonrpc_request(self.server_address, "hello", {})
+    local result, error_msg = send_jsonrpc_request(self.server_address, "hello", {}, self.timeout)
     if result then
         return result
     else
@@ -151,7 +176,7 @@ function M:chat_completion(model, message)
     end
     
     -- Send chat completion request with parameters as array [message, model]
-    local result, error_msg = send_jsonrpc_request(self.server_address, "chat_completion", {message, model})
+    local result, error_msg = send_jsonrpc_request(self.server_address, "chat_completion", {message, model}, self.timeout)
     if result then
         return result
     else
@@ -166,7 +191,7 @@ function M:list_models()
     end
     
     -- Send list_models request with empty parameters
-    local result, error_msg = send_jsonrpc_request(self.server_address, "list_models", {})
+    local result, error_msg = send_jsonrpc_request(self.server_address, "list_models", {}, self.timeout)
     if result then
         return result
     else
@@ -186,7 +211,7 @@ function M:model_info(model_name)
     end
     
     -- Send model_info request with model name as parameter
-    local result, error_msg = send_jsonrpc_request(self.server_address, "model_info", {model_name})
+    local result, error_msg = send_jsonrpc_request(self.server_address, "model_info", {model_name}, self.timeout)
     if result then
         return result
     else
@@ -210,7 +235,7 @@ function M:generate_embedding(model, text)
     end
     
     -- Send generate_embedding request with parameters as array [text, model]
-    local result, error_msg = send_jsonrpc_request(self.server_address, "generate_embedding", {text, model})
+    local result, error_msg = send_jsonrpc_request(self.server_address, "generate_embedding", {text, model}, self.timeout)
     if result then
         return result
     else
@@ -221,7 +246,7 @@ end
 -- Ping the server to test connectivity and get server status
 function M:ping()
     -- Send ping request to server (uses hello method as ping)
-    local result, error_msg = send_jsonrpc_request(self.server_address, "hello", {})
+    local result, error_msg = send_jsonrpc_request(self.server_address, "hello", {}, self.timeout)
     if result then
         return "pong"
     else
@@ -254,7 +279,7 @@ function M:get_server_info()
     -- If server is available, try to get additional info
     if success then
         -- Try to get actual server version if possible
-        local hello_result = send_jsonrpc_request(self.server_address, "hello", {})
+        local hello_result = send_jsonrpc_request(self.server_address, "hello", {}, self.timeout)
         if hello_result then
             -- Server is responding, we could extend this to get more detailed info
             -- For now, we just confirm it's running
@@ -294,7 +319,7 @@ function M:batch_operations(operations)
     -- Execute each operation and collect results
     local results = {}
     for i, operation in ipairs(operations) do
-        local result, error_msg = send_jsonrpc_request(self.server_address, operation.method, operation.params)
+        local result, error_msg = send_jsonrpc_request(self.server_address, operation.method, operation.params, self.timeout)
         if result then
             results[i] = result
         else
