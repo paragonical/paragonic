@@ -18,8 +18,9 @@ pub struct Project {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub organization_id: Option<Uuid>,
 }
 
 /// Goal model representing objectives within a project
@@ -355,8 +356,9 @@ mod tests {
             id: Uuid::new_v4(),
             name: "Test Project".to_string(),
             description: Some("A test project".to_string()),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
+            organization_id: None,
         };
         
         assert_eq!(project.name, "Test Project");

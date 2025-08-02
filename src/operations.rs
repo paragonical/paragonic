@@ -24,8 +24,9 @@ pub async fn create_project(request: CreateProjectRequest) -> ParagonicResult<Pr
         id: Uuid::new_v4(),
         name: request.name,
         description: request.description,
-        created_at: now,
-        updated_at: now,
+        created_at: Some(now),
+        updated_at: Some(now),
+        organization_id: None, // TODO: Add organization_id support later
     };
     
     diesel::insert_into(projects::table)
@@ -37,6 +38,22 @@ pub async fn create_project(request: CreateProjectRequest) -> ParagonicResult<Pr
         })?;
     
     Ok(project)
+}
+
+/// Get a project by ID
+/// 
+/// This function retrieves a project from the database by its ID.
+/// Returns the project if found, or an error if not found.
+pub async fn get_project(project_id: Uuid) -> ParagonicResult<Project> {
+    let mut conn = get_connection()?;
+    
+    projects::table
+        .filter(projects::id.eq(project_id))
+        .first::<Project>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get project {}: {}", project_id, e);
+            ParagonicError::Database(format!("Failed to get project: {e}"))
+        })
 }
 
 #[cfg(test)]
@@ -68,7 +85,40 @@ mod tests {
         assert_eq!(project.name, "Test Project");
         assert_eq!(project.description, Some("A test project for TDD development".to_string()));
         assert!(project.id != Uuid::nil());
-        assert!(project.created_at <= Utc::now());
-        assert!(project.updated_at <= Utc::now());
+        assert!(project.created_at.is_some());
+        assert!(project.updated_at.is_some());
+        assert!(project.created_at.unwrap() <= Utc::now());
+        assert!(project.updated_at.unwrap() <= Utc::now());
+    }
+    
+    /// Test getting a project by ID
+    #[tokio::test]
+    async fn test_get_project() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let create_request = CreateProjectRequest {
+            name: "Test Project for Get".to_string(),
+            description: Some("A test project for get operation".to_string()),
+        };
+        
+        let created_project = create_project(create_request).await.unwrap();
+        let project_id = created_project.id;
+        
+        // Now get the project by ID
+        let result = get_project(project_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "get_project should succeed");
+        let project = result.unwrap();
+        assert_eq!(project.id, project_id);
+        assert_eq!(project.name, "Test Project for Get");
+        assert_eq!(project.description, Some("A test project for get operation".to_string()));
     }
 } 
