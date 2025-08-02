@@ -854,6 +854,29 @@ pub async fn update_conversation(conversation_id: Uuid, request: UpdateConversat
         })
 }
 
+/// Delete a conversation
+/// 
+/// This function deletes a conversation from the database.
+/// Returns success if the conversation was deleted, or an error if it doesn't exist.
+pub async fn delete_conversation(conversation_id: Uuid) -> ParagonicResult<()> {
+    let mut conn = get_connection()?;
+    
+    // Execute the delete
+    let rows_affected = diesel::delete(conversations::table.filter(conversations::id.eq(conversation_id)))
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to delete conversation {}: {}", conversation_id, e);
+            ParagonicError::Database(format!("Failed to delete conversation: {e}"))
+        })?;
+    
+    // Check if any rows were actually deleted
+    if rows_affected == 0 {
+        return Err(ParagonicError::NotFound(format!("Conversation with id {conversation_id} not found")));
+    }
+    
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1863,6 +1886,52 @@ mod tests {
         assert_eq!(updated_conversation.title, Some("Updated Title".to_string()));
         assert!(updated_conversation.updated_at.is_some());
         assert!(updated_conversation.updated_at.unwrap() >= created_conversation.updated_at.unwrap());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test deleting a conversation
+    #[tokio::test]
+    async fn test_delete_conversation() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for conversation deletion".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create a conversation to delete
+        let conversation_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation for Deletion".to_string()),
+        };
+        let created_conversation = create_conversation(conversation_request).await.unwrap();
+        let conversation_id = created_conversation.id;
+        
+        // Verify the conversation exists
+        let get_result = get_conversation(conversation_id).await;
+        assert!(get_result.is_ok(), "Conversation should exist before deletion");
+        
+        // Test deleting the conversation
+        let result = delete_conversation(conversation_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "delete_conversation should succeed");
+        
+        // Verify the conversation no longer exists
+        let get_result_after = get_conversation(conversation_id).await;
+        assert!(get_result_after.is_err(), "Conversation should not exist after deletion");
         
         // Clean up
         delete_agent(agent.id).await.unwrap();
