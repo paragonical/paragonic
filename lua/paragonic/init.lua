@@ -15,45 +15,19 @@ local config = {
 
 -- Initialize the plugin
 function M.setup(opts)
-    -- Merge user options with defaults
-    if opts then
-        config = vim.tbl_deep_extend("force", config, opts)
-    end
+    -- Merge options with defaults
+    local new_config = vim.tbl_deep_extend("force", config, opts or {})
+    config = vim.tbl_deep_extend("force", config, new_config)
     
-    -- Set up commands
-    M._setup_commands()
+    -- Create commands
+    vim.api.nvim_create_user_command("ParagonicChat", M.open_chat, {})
+    vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
+    vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
+    vim.api.nvim_create_user_command("ParagonicSend", M.send_message_command, {})
     
-    -- Set up autocommands
-    M._setup_autocommands()
-    
-    -- Initialize Rust backend
+    -- Initialize backend
     M._initialize_backend()
     
-    vim.notify("Paragonic initialized", vim.log.levels.INFO)
-end
-
--- Set up Neovim commands
-function M._setup_commands()
-    vim.api.nvim_create_user_command('ParagonicChat', function()
-        M.open_chat()
-    end, { desc = 'Open Paragonic chat interface' })
-    
-    vim.api.nvim_create_user_command('ParagonicProjects', function()
-        M.open_projects()
-    end, { desc = 'Open Paragonic projects interface' })
-    
-    vim.api.nvim_create_user_command('ParagonicConfig', function()
-        M.open_config()
-    end, { desc = 'Open Paragonic configuration' })
-    
-    -- Load RPC test module
-    require('paragonic.rpc_test')
-    -- Load interface test module
-    require('paragonic.interface_test')
-end
-
--- Set up autocommands
-function M._setup_autocommands()
     -- Add any autocommands here as needed
 end
 
@@ -63,6 +37,41 @@ function M._get_rpc_client()
         M._initialize_backend()
     end
     return M._rpc_client
+end
+
+-- Send a message to the AI and get response
+function M.send_message(message, model)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Use default model if not specified
+    model = model or "llama2"
+    
+    -- Send chat completion request
+    local response = rpc_client:chat_completion(model, message)
+    if not response then
+        return nil, "Failed to get response from AI"
+    end
+    
+    return response
+end
+
+-- Get list of available models
+function M.get_available_models()
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Get models list
+    local response = rpc_client:list_models()
+    if not response then
+        return nil, "Failed to get models list"
+    end
+    
+    return response
 end
 
 -- Initialize Rust backend
@@ -120,17 +129,30 @@ function M.open_chat()
         vim.api.nvim_buf_set_option(chat_buf, "swapfile", false)
         vim.api.nvim_buf_set_option(chat_buf, "modifiable", true)
         
-        -- Add initial content
+        -- Get available models for display
+        local models_info = "Available models: llama2 (default)"
+        local models_response = M.get_available_models()
+        if models_response then
+            -- TODO: Parse JSON response to show actual models
+            models_info = "Available models: llama2 (default) - check backend for full list"
+        end
+        
+        -- Add initial content with model information
         vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
             "# Paragonic Chat",
             "",
-            "Type your message below and press Enter to send:",
+            models_info,
+            "",
+            "Type your message below and use :ParagonicSend to send:",
             "",
             "---"
         })
         
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
+        
+        -- Set up buffer-local commands
+        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true})
     end
     
     -- Open the buffer in a new window
@@ -426,6 +448,51 @@ end
 -- Update configuration
 function M.update_config(new_config)
     config = vim.tbl_deep_extend("force", config, new_config)
+end
+
+-- Send message command
+function M.send_message_command()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    -- Only work in chat buffer
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get the current line as the message
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
+    local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
+    local message = lines[1] or ""
+    
+    -- Skip empty lines or lines that start with #
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    -- Send the message
+    local response, err = M.send_message(message, "llama2")
+    if not response then
+        vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Add the response to the buffer
+    local response_lines = {
+        "",
+        "**AI Response:**",
+        response,
+        "",
+        "---"
+    }
+    
+    -- Insert response after the current line
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, response_lines)
+    
+    -- Move cursor to end of response
+    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 1, 0})
 end
 
 return M 
