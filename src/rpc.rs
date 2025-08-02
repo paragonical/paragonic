@@ -229,6 +229,88 @@ impl ParagonicServer {
             }
         }
     }
+    
+    /// Handle create project request
+pub fn handle_create_project(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let name = params.get("name")
+        .and_then(|n| n.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?
+        .to_string();
+    
+    let description = params.get("description")
+        .and_then(|d| d.as_str())
+        .map(|d| d.to_string());
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_project = serde_json::json!({
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "name": name.clone(),
+        "description": description.clone(),
+        "created_at": null,
+        "updated_at": null,
+        "organization_id": null
+    });
+    
+    serde_json::to_string(&mock_project)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize project: {e}"))))
+}
+    
+    /// Handle get project request
+pub fn handle_get_project(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    let params = params.as_ref()
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    let project_id = params.get("project_id")
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| RpcError::invalid_params(None))?;
+    
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_project = serde_json::json!({
+        "id": project_id,
+        "name": "Mock Project",
+        "description": "A mock project for testing",
+        "created_at": null,
+        "updated_at": null,
+        "organization_id": null
+    });
+    
+    serde_json::to_string(&mock_project)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize project: {e}"))))
+}
+    
+    /// Handle list projects request
+pub fn handle_list_projects(&self) -> Result<String, RpcError> {
+    // For now, return a mock response to test the RPC infrastructure
+    // TODO: Implement actual database call when async RPC is supported
+    let mock_projects = serde_json::json!([
+        {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "name": "Mock Project 1",
+            "description": "First mock project",
+            "created_at": null,
+            "updated_at": null,
+            "organization_id": null
+        },
+        {
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "name": "Mock Project 2",
+            "description": "Second mock project",
+            "created_at": null,
+            "updated_at": null,
+            "organization_id": null
+        }
+    ]);
+    
+    serde_json::to_string(&mock_projects)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize projects: {e}"))))
+}
 }
 
 impl Server for ParagonicServer {
@@ -254,6 +336,12 @@ impl Server for ParagonicServer {
             "model_info" => Some(self.handle_model_info(params)),
             // Handle generate embedding requests
             "generate_embedding" => Some(self.handle_generate_embedding(params)),
+            // Handle create project requests
+            "create_project" => Some(self.handle_create_project(params)),
+            // Handle get project requests
+            "get_project" => Some(self.handle_get_project(params)),
+            // Handle list projects requests
+            "list_projects" => Some(self.handle_list_projects()),
             _ => None
         }
     }
@@ -571,5 +659,79 @@ mod tests {
         // Should not be the mock response
         let mock_response = serde_json::json!([0.1, 0.2, 0.3]);
         assert!(response_json != mock_response, "Should not be the mock response, got: {}", response_json);
+    }
+    
+    /// Test that the server can handle create project requests
+    #[test]
+    fn test_server_create_project() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that server can handle create project
+        let params = Some(serde_json::json!({
+            "name": "Test Project",
+            "description": "A test project created via RPC"
+        }));
+        let result = server.handle_create_project(&params);
+        assert!(result.is_ok(), "handle_create_project should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("id").is_some(), "Should have an id field");
+        assert!(response_json.get("name").is_some(), "Should have a name field");
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Test Project"));
+    }
+    
+    /// Test that the server can handle get project requests
+    #[test]
+    fn test_server_get_project() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test get project with a mock project ID
+        let get_params = Some(serde_json::json!({
+            "project_id": "123e4567-e89b-12d3-a456-426614174000"
+        }));
+        let result = server.handle_get_project(&get_params);
+        assert!(result.is_ok(), "handle_get_project should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert_eq!(response_json.get("id").unwrap().as_str(), Some("123e4567-e89b-12d3-a456-426614174000"));
+        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Mock Project"));
+    }
+    
+    /// Test that the server can handle list projects requests
+    #[test]
+    fn test_server_list_projects() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test list projects
+        let result = server.handle_list_projects();
+        assert!(result.is_ok(), "handle_list_projects should return Ok");
+        
+        // Verify the response is valid JSON array
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.is_array(), "Response should be an array");
+        
+        let projects_array = response_json.as_array().unwrap();
+        assert_eq!(projects_array.len(), 2, "Should have exactly 2 mock projects");
+        
+        // Verify the mock projects
+        let project1 = projects_array[0].as_object().unwrap();
+        let project2 = projects_array[1].as_object().unwrap();
+        
+        assert_eq!(project1.get("name").unwrap().as_str(), Some("Mock Project 1"));
+        assert_eq!(project2.get("name").unwrap().as_str(), Some("Mock Project 2"));
     }
 } 
