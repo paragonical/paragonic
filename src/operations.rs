@@ -4,7 +4,7 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, Goal, CreateGoalRequest, Task, CreateTaskRequest};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, Task, CreateTaskRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
@@ -194,6 +194,63 @@ pub async fn list_tasks(goal_id: Uuid) -> ParagonicResult<Vec<Task>> {
         .map_err(|e| {
             tracing::error!("Failed to list tasks for goal {}: {}", goal_id, e);
             ParagonicError::Database(format!("Failed to list tasks: {e}"))
+        })
+}
+
+/// Update a project
+/// 
+/// This function updates a project in the database with the given fields.
+/// Returns the updated project with new timestamps.
+pub async fn update_project(project_id: Uuid, request: UpdateProjectRequest) -> ParagonicResult<Project> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    
+    // Execute the update based on what fields are provided
+    match (request.name, request.description) {
+        (Some(name), Some(description)) => {
+            diesel::update(projects::table.filter(projects::id.eq(project_id)))
+                .set((
+                    projects::name.eq(name),
+                    projects::description.eq(description),
+                    projects::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (Some(name), None) => {
+            diesel::update(projects::table.filter(projects::id.eq(project_id)))
+                .set((
+                    projects::name.eq(name),
+                    projects::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, Some(description)) => {
+            diesel::update(projects::table.filter(projects::id.eq(project_id)))
+                .set((
+                    projects::description.eq(description),
+                    projects::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+        }
+        (None, None) => {
+            diesel::update(projects::table.filter(projects::id.eq(project_id)))
+                .set(projects::updated_at.eq(now))
+                .execute(&mut conn)
+        }
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to update project {}: {}", project_id, e);
+        ParagonicError::Database(format!("Failed to update project: {e}"))
+    })?;
+    
+    // Return the updated project
+    projects::table
+        .filter(projects::id.eq(project_id))
+        .first::<Project>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get updated project {}: {}", project_id, e);
+            ParagonicError::Database(format!("Failed to get updated project: {e}"))
         })
 }
 
@@ -643,5 +700,42 @@ mod tests {
         assert_eq!(alpha_task.unwrap().goal_id, Some(goal.id));
         assert_eq!(beta_task.unwrap().goal_id, Some(goal.id));
         assert_eq!(gamma_task.unwrap().goal_id, Some(goal.id));
+    }
+    
+    /// Test updating a project with valid data
+    #[tokio::test]
+    async fn test_update_project() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Original Project Name".to_string(),
+            description: Some("Original project description".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        let project_id = project.id;
+        
+        // Update the project
+        let update_request = UpdateProjectRequest {
+            name: Some("Updated Project Name".to_string()),
+            description: Some("Updated project description".to_string()),
+        };
+        
+        let result = update_project(project_id, update_request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "update_project should succeed");
+        let updated_project = result.unwrap();
+        assert_eq!(updated_project.id, project_id);
+        assert_eq!(updated_project.name, "Updated Project Name");
+        assert_eq!(updated_project.description, Some("Updated project description".to_string()));
+        assert!(updated_project.updated_at.is_some());
+        assert!(updated_project.updated_at.unwrap() > project.updated_at.unwrap());
     }
 } 

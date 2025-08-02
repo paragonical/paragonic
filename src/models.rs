@@ -124,6 +124,13 @@ pub struct CreateProjectRequest {
     pub description: Option<String>,
 }
 
+/// Update project request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProjectRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
 /// Create goal request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateGoalRequest {
