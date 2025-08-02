@@ -101,6 +101,22 @@ pub async fn create_goal(request: CreateGoalRequest) -> ParagonicResult<Goal> {
     Ok(goal)
 }
 
+/// Get a goal by ID
+/// 
+/// This function retrieves a goal from the database by its ID.
+/// Returns the goal if found, or an error if not found or database error occurs.
+pub async fn get_goal(goal_id: Uuid) -> ParagonicResult<Goal> {
+    let mut conn = get_connection()?;
+    
+    goals::table
+        .filter(goals::id.eq(goal_id))
+        .first::<Goal>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get goal {}: {}", goal_id, e);
+            ParagonicError::Database(format!("Failed to get goal: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +275,44 @@ mod tests {
         assert!(goal.updated_at.is_some());
         assert!(goal.created_at.unwrap() <= Utc::now());
         assert!(goal.updated_at.unwrap() <= Utc::now());
+    }
+    
+    /// Test getting a goal by ID
+    #[tokio::test]
+    async fn test_get_goal() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create a project
+        let project_request = CreateProjectRequest {
+            name: "Test Project for Get Goal".to_string(),
+            description: Some("A test project for get goal operation".to_string()),
+        };
+        let project = create_project(project_request).await.unwrap();
+        
+        // Create a goal
+        let create_goal_request = CreateGoalRequest {
+            project_id: project.id,
+            name: "Test Goal for Get".to_string(),
+            description: Some("A test goal for get operation".to_string()),
+        };
+        let created_goal = create_goal(create_goal_request).await.unwrap();
+        let goal_id = created_goal.id;
+        
+        // Now get the goal by ID
+        let result = get_goal(goal_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "get_goal should succeed");
+        let goal = result.unwrap();
+        assert_eq!(goal.id, goal_id);
+        assert_eq!(goal.name, "Test Goal for Get");
+        assert_eq!(goal.description, Some("A test goal for get operation".to_string()));
+        assert_eq!(goal.project_id, Some(project.id));
     }
 } 
