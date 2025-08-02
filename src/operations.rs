@@ -4,13 +4,13 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult, Agent, CreateAgentRequest, Conversation, CreateConversationRequest, UpdateConversationRequest};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult, Agent, CreateAgentRequest, Conversation, CreateConversationRequest, UpdateConversationRequest, Message, SendMessageRequest, MessageRole};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::Utc;
 
-use crate::schema::{projects, goals, tasks, agents, conversations};
+use crate::schema::{projects, goals, tasks, agents, conversations, messages};
 
 /// Create a new project
 /// 
@@ -875,6 +875,33 @@ pub async fn delete_conversation(conversation_id: Uuid) -> ParagonicResult<()> {
     }
     
     Ok(())
+}
+
+/// Send a message in a conversation
+/// 
+/// This function creates a new message in the specified conversation.
+/// Returns the created message with generated ID and timestamp.
+pub async fn send_message(request: SendMessageRequest) -> ParagonicResult<Message> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    let message = Message {
+        id: Uuid::new_v4(),
+        conversation_id: Some(request.conversation_id),
+        role: MessageRole::User.to_string(), // Default to user role for now
+        content: request.content,
+        created_at: Some(now),
+    };
+    
+    diesel::insert_into(messages::table)
+        .values(&message)
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to send message: {}", e);
+            ParagonicError::Database(format!("Failed to send message: {e}"))
+        })?;
+    
+    Ok(message)
 }
 
 #[cfg(test)]
@@ -1932,6 +1959,55 @@ mod tests {
         // Verify the conversation no longer exists
         let get_result_after = get_conversation(conversation_id).await;
         assert!(get_result_after.is_err(), "Conversation should not exist after deletion");
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test sending a message
+    #[tokio::test]
+    async fn test_send_message() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for message sending".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create a conversation for the message
+        let conversation_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation for Messages".to_string()),
+        };
+        let conversation = create_conversation(conversation_request).await.unwrap();
+        
+        // Test sending a message
+        let message_request = SendMessageRequest {
+            conversation_id: conversation.id,
+            content: "Hello, this is a test message!".to_string(),
+        };
+        
+        let result = send_message(message_request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "send_message should succeed");
+        let message = result.unwrap();
+        assert_eq!(message.conversation_id, Some(conversation.id));
+        assert_eq!(message.content, "Hello, this is a test message!");
+        assert_eq!(message.role, MessageRole::User.to_string());
+        assert!(message.id != Uuid::nil());
+        assert!(message.created_at.is_some());
+        assert!(message.created_at.unwrap() <= Utc::now());
         
         // Clean up
         delete_agent(agent.id).await.unwrap();

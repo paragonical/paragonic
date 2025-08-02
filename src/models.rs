@@ -97,14 +97,14 @@ pub struct Conversation {
 }
 
 /// Message model representing individual messages in conversations
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = messages)]
 pub struct Message {
     pub id: Uuid,
-    pub conversation_id: Uuid,
-    pub role: MessageRole,
+    pub conversation_id: Option<Uuid>,
+    pub role: String, // Store as string in database, convert to enum in application
     pub content: String,
-    pub created_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 /// Message role enumeration
@@ -114,6 +114,16 @@ pub enum MessageRole {
     User,
     Assistant,
     System,
+}
+
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::System => write!(f, "system"),
+        }
+    }
 }
 
 /// Request/Response models for API operations
@@ -430,13 +440,13 @@ mod tests {
     fn test_message_role() {
         let message = Message {
             id: Uuid::new_v4(),
-            conversation_id: Uuid::new_v4(),
-            role: MessageRole::User,
+            conversation_id: Some(Uuid::new_v4()),
+            role: MessageRole::User.to_string(),
             content: "Hello, world!".to_string(),
-            created_at: Utc::now(),
+            created_at: Some(Utc::now()),
         };
         
-        matches!(message.role, MessageRole::User);
+        assert_eq!(message.role, MessageRole::User.to_string());
         assert_eq!(message.content, "Hello, world!");
     }
 
