@@ -194,4 +194,28 @@ function M:model_info(model_name)
     end
 end
 
+-- Generate embeddings for text using server
+function M:generate_embedding(model, text)
+    -- Parameter validation
+    if not model or model == "" then
+        return nil, "Model parameter is required"
+    end
+    
+    if not text or text == "" then
+        return nil, "Text parameter is required"
+    end
+    
+    if not self.connected then
+        return nil, "Not connected to server"
+    end
+    
+    -- Send generate_embedding request with parameters as array [text, model]
+    local result, error_msg = send_jsonrpc_request(self.server_address, "generate_embedding", {text, model})
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
 return M 

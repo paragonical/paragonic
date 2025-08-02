@@ -216,8 +216,11 @@ impl ParagonicServer {
         };
         match response {
             Ok(embedding_response) => {
-                // Return the embeddings as JSON
-                serde_json::to_string(&embedding_response.embedding)
+                // Return the embeddings wrapped in an object with 'embedding' field
+                let result = serde_json::json!({
+                    "embedding": embedding_response.embedding
+                });
+                serde_json::to_string(&result)
                     .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
             }
             Err(e) => {
