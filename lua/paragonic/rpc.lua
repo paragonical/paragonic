@@ -176,5 +176,15 @@ function M:create_project(name, description)
     })
 end
 
+-- Get configuration
+function M:get_config()
+    return self:call("get_config", {})
+end
+
+-- Save configuration
+function M:save_config(config_data)
+    return self:call("save_config", config_data)
+end
+
 return M
  

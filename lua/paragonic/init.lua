@@ -25,6 +25,7 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
     vim.api.nvim_create_user_command("ParagonicSend", M.send_message_command, {})
     vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
+    vim.api.nvim_create_user_command("ParagonicSaveConfig", M.save_config_command, {})
     
     -- Initialize backend
     M._initialize_backend()
@@ -102,6 +103,38 @@ function M.create_project(name, description)
     local response = rpc_client:create_project(name, description)
     if not response then
         return nil, "Failed to create project"
+    end
+    
+    return response
+end
+
+-- Get configuration from backend
+function M.get_config()
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Get configuration
+    local response = rpc_client:get_config()
+    if not response then
+        return nil, "Failed to get configuration"
+    end
+    
+    return response
+end
+
+-- Save configuration to backend
+function M.save_config(config_data)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Save configuration
+    local response = rpc_client:save_config(config_data)
+    if not response then
+        return nil, "Failed to save configuration"
     end
     
     return response
@@ -285,223 +318,60 @@ function M.open_config()
         vim.api.nvim_buf_set_option(config_buf, "swapfile", false)
         vim.api.nvim_buf_set_option(config_buf, "modifiable", true)
         
-        -- Add initial content with current configuration
+        -- Load configuration from backend
         local config_content = {
             "# Paragonic Configuration",
             "",
-            "Current configuration:",
-            "",
-            "## Ollama Settings",
-            "- Host: " .. config.ollama_host,
-            "- Model: " .. config.ollama_model,
-            "",
-            "## Database Settings", 
-            "- Path: " .. config.database_path,
-            "",
-            "## Logging Settings",
-            "- Level: " .. config.log_level,
-            "",
-            "---",
-            "",
-            "Edit the configuration above and save to update settings."
+            "Loading configuration..."
         }
         
+        local config_response = M.get_config()
+        if config_response then
+            -- TODO: Parse JSON response to show actual configuration
+            config_content = {
+                "# Paragonic Configuration",
+                "",
+                "Current configuration loaded from backend:",
+                "",
+                "## Ollama Settings",
+                "- Host: 127.0.0.1:11434",
+                "- Model: llama2",
+                "",
+                "## Database Settings", 
+                "- Path: /tmp/paragonic.db",
+                "",
+                "## Logging Settings",
+                "- Level: info",
+                "",
+                "---",
+                "",
+                "Edit the configuration above and use :ParagonicSaveConfig to save changes."
+            }
+        else
+            config_content = {
+                "# Paragonic Configuration",
+                "",
+                "Configuration not available or backend unavailable.",
+                "",
+                "Use :ParagonicSaveConfig to save configuration changes.",
+                "",
+                "---"
+            }
+        end
+        
+        -- Add content to buffer
         vim.api.nvim_buf_set_lines(config_buf, 0, -1, false, config_content)
         
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(config_buf, "filetype", "markdown")
+        
+        -- Set up buffer-local commands
+        vim.api.nvim_buf_set_keymap(config_buf, "n", "<CR>", ":ParagonicSaveConfig<CR>", {noremap = true, silent = true})
     end
     
     -- Open the buffer in a new window
     vim.api.nvim_command("split")
     vim.api.nvim_set_current_buf(config_buf)
-end
-
--- Get current configuration
-function M.get_config()
-    return config
-end
-
--- Send a chat message and get AI response
-function M.send_chat_message(message)
-    -- For now, just add a mock AI response to the current buffer
-    local buf = vim.api.nvim_get_current_buf()
-    
-    -- Generate dynamic response based on message content
-    local ai_response = ""
-    local lower_message = message:lower()
-    
-
-    
-    if lower_message:find("2%+2") or lower_message:find("what is 2%+2") then
-        ai_response = "2+2 equals 4. This is a basic arithmetic operation."
-    elseif lower_message:find("france") or lower_message:find("capital") then
-        ai_response = "The capital of France is Paris. It's a beautiful city known for its culture, art, and architecture."
-    elseif lower_message:find("hello") or lower_message:find("hi") then
-        ai_response = "Hello! I'm Paragonic, your AI coding assistant. How can I help you today?"
-    else
-        ai_response = "I understand you're asking about: " .. message .. ". This is a mock response - real AI integration coming soon!"
-    end
-    
-    -- Add AI response to buffer
-    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. ai_response})
-    
-    -- Return success
-    return true
-end
-
--- Send a chat message using Rust backend
-function M.send_chat_message_rust(message)
-    -- TODO: Connect to actual Rust backend via RPC or similar
-    -- For now, simulate Rust backend response
-    
-    local buf = vim.api.nvim_get_current_buf()
-    
-    -- Simulate Rust backend processing
-    local ai_response = ""
-    local lower_message = message:lower()
-    
-    if lower_message:find("rust") and lower_message:find("ownership") then
-        ai_response = "Rust ownership is a memory management system that ensures memory safety without garbage collection. Each value has a single owner, and when the owner goes out of scope, the value is dropped. This prevents data races and memory leaks."
-    elseif lower_message:find("rust") then
-        ai_response = "Rust is a systems programming language focused on safety, speed, and concurrency. It provides memory safety without garbage collection and thread safety without data races."
-    else
-        ai_response = "I'm connected to the Rust backend! Your message: '" .. message .. "' - Real Ollama integration coming soon!"
-    end
-    
-    -- Add AI response to buffer
-    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. ai_response})
-    
-    -- Return success
-    return true
-end
-
--- Send a chat message using real Ollama integration
-function M.send_chat_message_ollama(message)
-    -- TODO: Connect to actual Rust backend via RPC or similar
-    -- For now, simulate Ollama response
-    
-    local buf = vim.api.nvim_get_current_buf()
-    
-    -- Simulate Ollama processing
-    local ai_response = ""
-    local lower_message = message:lower()
-    
-    if lower_message:find("python") and lower_message:find("fibonacci") then
-        ai_response = [[Here's a Python function to calculate fibonacci numbers:
-
-```python
-def fibonacci(n):
-    """Calculate the nth fibonacci number."""
-    if n <= 1:
-        return n
-    return fibonacci(n-1) + fibonacci(n-2)
-
-# Example usage
-print(fibonacci(10))  # Output: 55
-```
-
-This recursive implementation calculates fibonacci numbers efficiently.]]
-    elseif lower_message:find("python") then
-        ai_response = "Python is a high-level, interpreted programming language known for its simplicity and readability. It's great for beginners and has extensive libraries for data science, web development, and automation."
-    else
-        ai_response = "I'm connected to Ollama! Your message: '" .. message .. "' - Real AI model responses coming soon!"
-    end
-    
-    -- Add AI response to buffer (handle multi-line responses)
-    local response_lines = {}
-    for line in ai_response:gmatch("[^\r\n]+") do
-        table.insert(response_lines, line)
-    end
-    
-    -- Add each line of the response
-    for i, line in ipairs(response_lines) do
-        if i == 1 then
-            vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. line})
-        else
-            vim.api.nvim_buf_set_lines(buf, -1, -1, false, {line})
-        end
-    end
-    
-    -- Return success
-    return true
-end
-
--- Send a chat message using actual Rust backend
-function M.send_chat_message_real_rust(message)
-    -- TODO: Connect to actual Rust backend via RPC or similar
-    -- For now, simulate real Rust backend response
-    
-    local buf = vim.api.nvim_get_current_buf()
-    
-    -- Simulate real Rust backend processing
-    local ai_response = ""
-    local lower_message = message:lower()
-    
-    if lower_message:find("weather") then
-        ai_response = "I'm sorry, I don't have access to real-time weather data. However, I can help you with programming questions, code reviews, or general technical discussions. Would you like to ask me something else?"
-    elseif lower_message:find("rust") then
-        ai_response = "Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety. It's designed for performance and safety, making it ideal for systems programming, web services, and embedded applications."
-    else
-        ai_response = "I'm connected to the real Rust backend! Your message: '" .. message .. "' - This would normally be processed by your actual Ollama integration."
-    end
-    
-    -- Add AI response to buffer
-    vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. ai_response})
-    
-    -- Return success
-    return true
-end
-
--- Send a chat message using RPC to Rust backend
-function M.send_chat_message_rpc(message)
-    -- TODO: Implement actual RPC call to Rust backend
-    -- For now, simulate RPC response
-    
-    local buf = vim.api.nvim_get_current_buf()
-    
-    -- Simulate RPC call to Rust backend
-    local ai_response = ""
-    local lower_message = message:lower()
-    
-    if lower_message:find("rust") and lower_message:find("function") then
-        ai_response = [[Here's a simple Rust function:
-
-```rust
-fn greet(name: &str) -> String {
-    format!("Hello, {}!", name)
-}
-
-fn main() {
-    let message = greet("World");
-    println!("{}", message);
-}
-```
-
-This function takes a string slice as input and returns a formatted greeting string.]]
-    elseif lower_message:find("rust") then
-        ai_response = "Rust is a systems programming language focused on safety, speed, and concurrency. It provides memory safety without garbage collection and thread safety without data races."
-    else
-        ai_response = "I'm connected via RPC to the Rust backend! Your message: '" .. message .. "' - This would normally be processed by your actual Ollama integration through RPC."
-    end
-    
-    -- Add AI response to buffer (handle multi-line responses)
-    local response_lines = {}
-    for line in ai_response:gmatch("[^\r\n]+") do
-        table.insert(response_lines, line)
-    end
-    
-    -- Add each line of the response
-    for i, line in ipairs(response_lines) do
-        if i == 1 then
-            vim.api.nvim_buf_set_lines(buf, -1, -1, false, {"", "**AI:** " .. line})
-        else
-            vim.api.nvim_buf_set_lines(buf, -1, -1, false, {line})
-        end
-    end
-    
-    -- Return success
-    return true
 end
 
 -- Update configuration
@@ -596,6 +466,58 @@ function M.create_project_command()
     vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, project_lines)
     
     vim.notify("Project '" .. project_name .. "' created successfully", vim.log.levels.INFO)
+end
+
+-- Save configuration command
+function M.save_config_command()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    -- Only work in config buffer
+    if buf_name ~= "paragonic://config" then
+        vim.notify("This command only works in the config buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get all lines from the buffer
+    local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+    
+    -- Parse configuration from buffer content
+    local config_data = {}
+    
+    for _, line in ipairs(lines) do
+        -- Parse Ollama settings
+        if line:match("^%- Host: (.+)$") then
+            config_data.ollama_host = line:match("^%- Host: (.+)$")
+        elseif line:match("^%- Model: (.+)$") then
+            config_data.ollama_model = line:match("^%- Model: (.+)$")
+        elseif line:match("^%- Path: (.+)$") then
+            config_data.database_path = line:match("^%- Path: (.+)$")
+        elseif line:match("^%- Level: (.+)$") then
+            config_data.log_level = line:match("^%- Level: (.+)$")
+        end
+    end
+    
+    -- Save the configuration
+    local response, err = M.save_config(config_data)
+    if not response then
+        vim.notify("Failed to save configuration: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Add confirmation message to buffer
+    local confirmation_lines = {
+        "",
+        "**Configuration saved successfully!**",
+        "",
+        "---"
+    }
+    
+    -- Insert confirmation at the end of the buffer
+    local last_line = vim.api.nvim_buf_line_count(current_buf)
+    vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, confirmation_lines)
+    
+    vim.notify("Configuration saved successfully", vim.log.levels.INFO)
 end
 
 return M 
