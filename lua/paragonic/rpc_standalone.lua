@@ -218,4 +218,15 @@ function M:generate_embedding(model, text)
     end
 end
 
+-- Ping the server to test connectivity and get server status
+function M:ping()
+    -- Send ping request to server (uses hello method as ping)
+    local result, error_msg = send_jsonrpc_request(self.server_address, "hello", {})
+    if result then
+        return "pong"
+    else
+        return nil
+    end
+end
+
 return M 
