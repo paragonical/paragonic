@@ -72,7 +72,7 @@ pub enum TaskStatus {
 }
 
 /// Agent model representing AI agents
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = agents)]
 pub struct Agent {
     pub id: Uuid,
@@ -85,7 +85,7 @@ pub struct Agent {
 }
 
 /// Conversation model representing chat sessions
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = conversations)]
 pub struct Conversation {
     pub id: Uuid,

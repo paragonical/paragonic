@@ -4,13 +4,13 @@
 //! including projects, goals, tasks, agents, conversations, and more.
 
 use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult};
+use crate::models::{Project, CreateProjectRequest, UpdateProjectRequest, Goal, CreateGoalRequest, UpdateGoalRequest, Task, CreateTaskRequest, UpdateTaskRequest, Embedding, EmbeddingSearchResult, Agent, CreateAgentRequest, Conversation, CreateConversationRequest};
 use crate::database::get_connection;
 use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::Utc;
 
-use crate::schema::{projects, goals, tasks};
+use crate::schema::{projects, goals, tasks, agents, conversations};
 
 /// Create a new project
 /// 
@@ -701,6 +701,84 @@ pub async fn find_similar_content(
     
     // Return only the requested number of results
     Ok(mock_results.into_iter().take(limit).collect())
+}
+
+/// Create a new agent
+/// 
+/// This function creates a new agent in the database with the given configuration.
+/// Returns the created agent with generated ID and timestamps.
+pub async fn create_agent(request: CreateAgentRequest) -> ParagonicResult<Agent> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    let agent = Agent {
+        id: Uuid::new_v4(),
+        name: request.name,
+        description: request.description,
+        model_name: request.model_name,
+        configuration: request.configuration,
+        created_at: now,
+        updated_at: now,
+    };
+    
+    diesel::insert_into(agents::table)
+        .values(&agent)
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to create agent: {}", e);
+            ParagonicError::Database(format!("Failed to create agent: {e}"))
+        })?;
+    
+    Ok(agent)
+}
+
+/// Delete an agent by ID
+/// 
+/// This function deletes an agent from the database by its ID.
+/// Returns an error if the agent is not found or if a database error occurs.
+pub async fn delete_agent(agent_id: Uuid) -> ParagonicResult<()> {
+    let mut conn = get_connection()?;
+    
+    let rows_affected = diesel::delete(agents::table.filter(agents::id.eq(agent_id)))
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to delete agent {}: {}", agent_id, e);
+            ParagonicError::Database(format!("Failed to delete agent: {e}"))
+        })?;
+    
+    // Check if any rows were actually deleted
+    if rows_affected == 0 {
+        return Err(ParagonicError::NotFound(format!("Agent with id {agent_id} not found")));
+    }
+    
+    Ok(())
+}
+
+/// Create a new conversation
+/// 
+/// This function creates a new conversation in the database with the given agent.
+/// Returns the created conversation with generated ID and timestamps.
+pub async fn create_conversation(request: CreateConversationRequest) -> ParagonicResult<Conversation> {
+    let mut conn = get_connection()?;
+    
+    let now = Utc::now();
+    let conversation = Conversation {
+        id: Uuid::new_v4(),
+        agent_id: request.agent_id,
+        title: request.title,
+        created_at: now,
+        updated_at: now,
+    };
+    
+    diesel::insert_into(conversations::table)
+        .values(&conversation)
+        .execute(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to create conversation: {}", e);
+            ParagonicError::Database(format!("Failed to create conversation: {e}"))
+        })?;
+    
+    Ok(conversation)
 }
 
 #[cfg(test)]
@@ -1519,5 +1597,45 @@ mod tests {
         
         // Clean up
         delete_project(project.id).await.unwrap();
+    }
+    
+    /// Test creating a conversation with valid data
+    #[tokio::test]
+    async fn test_create_conversation() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for conversation creation".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        let request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation".to_string()),
+        };
+        
+        let result = create_conversation(request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "create_conversation should succeed");
+        let conversation = result.unwrap();
+        assert_eq!(conversation.agent_id, agent.id);
+        assert_eq!(conversation.title, Some("Test Conversation".to_string()));
+        assert!(conversation.id != Uuid::nil());
+        assert!(conversation.created_at <= Utc::now());
+        assert!(conversation.updated_at <= Utc::now());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
     }
 } 
