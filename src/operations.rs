@@ -1395,6 +1395,7 @@ mod tests {
         
         // First create a project
         let create_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Get".to_string(),
             description: Some("A test project for get operation".to_string()),
         };
@@ -1431,16 +1432,19 @@ mod tests {
         
         // Create multiple projects
         let project1_request = CreateProjectRequest {
+            organization_id: None,
             name: "Project Alpha".to_string(),
             description: Some("First test project".to_string()),
         };
         
         let project2_request = CreateProjectRequest {
+            organization_id: None,
             name: "Project Beta".to_string(),
             description: Some("Second test project".to_string()),
         };
         
         let project3_request = CreateProjectRequest {
+            organization_id: None,
             name: "Project Gamma".to_string(),
             description: None,
         };
@@ -1479,6 +1483,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Goal".to_string(),
             description: Some("A test project for goal creation".to_string()),
         };
@@ -1518,6 +1523,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Get Goal".to_string(),
             description: Some("A test project for get goal operation".to_string()),
         };
@@ -1557,6 +1563,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for List Goals".to_string(),
             description: Some("A test project for list goals operation".to_string()),
         };
@@ -1627,6 +1634,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Task".to_string(),
             description: Some("A test project for task creation".to_string()),
         };
@@ -1676,6 +1684,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Get Task".to_string(),
             description: Some("A test project for get task operation".to_string()),
         };
@@ -1725,6 +1734,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for List Tasks".to_string(),
             description: Some("A test project for list tasks operation".to_string()),
         };
@@ -1806,6 +1816,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Original Project Name".to_string(),
             description: Some("Original project description".to_string()),
         };
@@ -1843,6 +1854,7 @@ mod tests {
         
         // First create a project and goal
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project".to_string(),
             description: Some("Test project description".to_string()),
         };
@@ -1889,6 +1901,7 @@ mod tests {
         
         // First create a project, goal, and task
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project".to_string(),
             description: Some("Test project description".to_string()),
         };
@@ -1945,6 +1958,7 @@ mod tests {
         
         // First create a project
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Project to Delete".to_string(),
             description: Some("This project will be deleted".to_string()),
         };
@@ -1979,6 +1993,7 @@ mod tests {
         
         // First create a project and goal
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project".to_string(),
             description: Some("Test project description".to_string()),
         };
@@ -2020,6 +2035,7 @@ mod tests {
         
         // First create a project, goal, and task
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project".to_string(),
             description: Some("Test project description".to_string()),
         };
@@ -2176,6 +2192,7 @@ mod tests {
         
         // Create a test project with some content
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Search".to_string(),
             description: Some("A project to test embedding search functionality".to_string()),
         };
@@ -2309,6 +2326,7 @@ mod tests {
         
         // Create a test project with some content
         let project_request = CreateProjectRequest {
+            organization_id: None,
             name: "Test Project for Similar Content".to_string(),
             description: Some("A project to test similar content search functionality".to_string()),
         };

@@ -251,6 +251,7 @@ pub fn handle_create_project(&self, params: &Option<Value>) -> Result<String, Rp
     let request = crate::models::CreateProjectRequest {
         name,
         description,
+        organization_id: None, // TODO: Add organization_id support from params
     };
     
     // DONE: Implement actual database call when async RPC is supported
