@@ -990,6 +990,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         let request = crate::models::CreateConversationRequest {
             agent_id: agent_uuid,
             title,
+            organization_id: None, // TODO: Add organization_id support from params
         };
         
         // DONE: Implement actual database call when async RPC is supported

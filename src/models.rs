@@ -191,6 +191,7 @@ pub struct CreateAgentRequest {
 pub struct CreateConversationRequest {
     pub agent_id: Uuid,
     pub title: Option<String>,
+    pub organization_id: Option<Uuid>,
 }
 
 /// Update conversation request

@@ -1101,7 +1101,7 @@ pub async fn create_conversation(request: CreateConversationRequest) -> Paragoni
         title: request.title,
         created_at: Some(now),
         updated_at: Some(now),
-        organization_id: None, // TODO: Add organization_id support later
+        organization_id: request.organization_id,
     };
     
     diesel::insert_into(conversations::table)
@@ -2400,6 +2400,7 @@ mod tests {
         let request = CreateConversationRequest {
             agent_id: agent.id,
             title: Some("Test Conversation".to_string()),
+            organization_id: None,
         };
         
         let result = create_conversation(request).await;
@@ -2414,6 +2415,49 @@ mod tests {
         assert!(conversation.updated_at.is_some());
         assert!(conversation.created_at.unwrap() <= Utc::now());
         assert!(conversation.updated_at.unwrap() <= Utc::now());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test creating a conversation with organization support
+    #[tokio::test]
+    async fn test_create_conversation_with_organization() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for conversation with organization".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        let organization_id = Uuid::new_v4();
+        let request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Organization Conversation".to_string()),
+            organization_id: Some(organization_id),
+        };
+        
+        let result = create_conversation(request).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "create_conversation with organization should succeed");
+        let conversation = result.unwrap();
+        assert_eq!(conversation.agent_id, Some(agent.id));
+        assert_eq!(conversation.title, Some("Organization Conversation".to_string()));
+        assert_eq!(conversation.organization_id, Some(organization_id));
+        assert!(conversation.id != Uuid::nil());
+        assert!(conversation.created_at.is_some());
+        assert!(conversation.updated_at.is_some());
         
         // Clean up
         delete_agent(agent.id).await.unwrap();
@@ -2441,6 +2485,7 @@ mod tests {
         
         // Create a conversation to retrieve
         let conversation_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation for Retrieval".to_string()),
         };
@@ -2486,10 +2531,12 @@ mod tests {
         
         // Create multiple conversations
         let conversation1_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation 1".to_string()),
         };
         let conversation2_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation 2".to_string()),
         };
@@ -2548,6 +2595,7 @@ mod tests {
         
         // Create a conversation to update
         let conversation_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Original Title".to_string()),
         };
@@ -2595,6 +2643,7 @@ mod tests {
         
         // Create a conversation to delete
         let conversation_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation for Deletion".to_string()),
         };
@@ -2641,6 +2690,7 @@ mod tests {
         
         // Create a conversation for the message
         let conversation_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation for Messages".to_string()),
         };
@@ -2690,6 +2740,7 @@ mod tests {
         
         // Create a conversation for the message
         let conversation_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation for Message Retrieval".to_string()),
         };
@@ -2741,6 +2792,7 @@ mod tests {
         
         // Create a conversation for the messages
         let conversation_request = CreateConversationRequest {
+            organization_id: None,
             agent_id: agent.id,
             title: Some("Test Conversation for Message Listing".to_string()),
         };
