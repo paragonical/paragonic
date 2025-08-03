@@ -11,7 +11,7 @@ CREATE TABLE embeddings (
     content_id UUID NOT NULL, -- Reference to the actual content
     content_text TEXT NOT NULL, -- The text that was embedded
     embedding_model VARCHAR(100) NOT NULL, -- e.g., 'nomic-embed-text'
-    embedding_vector vector(384), -- Vector representation (384 dimensions for nomic-embed-text)
+    embedding_vector vector(768), -- Vector representation (768 dimensions for current embedding model)
     metadata JSONB, -- Additional metadata about the embedding
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

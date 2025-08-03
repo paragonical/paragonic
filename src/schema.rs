@@ -1,6 +1,10 @@
 // @generated automatically by Diesel CLI.
 
-// Custom types will be handled separately
+pub mod sql_types {
+    #[derive(diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "vector"))]
+    pub struct Vector;
+}
 
 diesel::table! {
     agents (id) {
@@ -48,6 +52,9 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+    use super::sql_types::Vector;
+
     embeddings (id) {
         id -> Uuid,
         #[max_length = 50]
@@ -56,7 +63,7 @@ diesel::table! {
         content_text -> Text,
         #[max_length = 100]
         embedding_model -> Varchar,
-        embedding_vector -> Nullable<Binary>, // Using Binary for Vector type
+        embedding_vector -> Nullable<Vector>,
         metadata -> Nullable<Jsonb>,
         created_at -> Nullable<Timestamptz>,
         updated_at -> Nullable<Timestamptz>,

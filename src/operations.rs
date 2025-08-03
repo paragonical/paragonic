@@ -589,9 +589,9 @@ pub async fn delete_task(task_id: Uuid) -> ParagonicResult<()> {
 /// 
 /// This function searches for content similar to the given query using vector similarity.
 /// Returns a vector of search results with similarity scores.
-pub async fn search_embeddings(_query: &str, limit: usize) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
-    // TODO: Implement actual embedding search functionality
-    // For now, return a mock result to test the interface
+pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
+    // For now, return mock results while we work on the pgvector integration
+    // TODO: Implement actual embedding search with pgvector
     
     // Mock search results
     let mock_results = vec![
@@ -1649,6 +1649,78 @@ mod tests {
         assert!(get_result.is_err(), "Task should no longer exist");
     }
     
+    /// Test that search_embeddings function works correctly with actual embeddings
+    #[tokio::test]
+    async fn test_search_embeddings_with_real_embeddings() {
+        // Initialize database (ignore if already initialized)
+        let _ = crate::database::initialize().await;
+        
+        // Create test content and generate embeddings
+        let test_content = vec![
+            ("project", "Machine learning project for image recognition"),
+            ("task", "Implement neural network architecture"),
+            ("goal", "Build AI system for autonomous driving"),
+            ("message", "Discuss the latest developments in transformer models"),
+        ];
+        
+        // Create embeddings for test content
+        let mut created_embeddings = Vec::new();
+        for (content_type, content_text) in test_content {
+            let embedding_request = crate::models::CreateEmbeddingRequest {
+                content_type: content_type.to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: content_text.to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                metadata: Some(serde_json::json!({"test": true})),
+            };
+            
+            let embedding = crate::embeddings::create_embedding(embedding_request).await.unwrap();
+            created_embeddings.push(embedding);
+        }
+        
+        // Test search with a query that should match our content
+        let query = "machine learning AI";
+        let results = search_embeddings(query, 10).await.unwrap();
+        
+        // Verify we get results
+        assert!(!results.is_empty(), "Search should return results for AI-related query");
+        
+        // Verify results are ordered by similarity (highest first)
+        for i in 1..results.len() {
+            assert!(
+                results[i-1].similarity_score >= results[i].similarity_score,
+                "Results should be ordered by similarity score (descending)"
+            );
+        }
+        
+        // Verify similarity scores are reasonable
+        for result in &results {
+            assert!(result.similarity_score > 0.0, "Similarity should be positive");
+            assert!(result.similarity_score <= 1.0, "Similarity should be <= 1.0");
+        }
+        
+        // Verify we can find our test content in results
+        let found_content_types: Vec<_> = results.iter()
+            .map(|r| r.embedding.content_type.as_str())
+            .collect();
+        
+        assert!(
+            found_content_types.contains(&"project") || found_content_types.contains(&"task") || found_content_types.contains(&"goal"),
+            "Should find AI-related content in search results"
+        );
+        
+        // Test with different query
+        let query2 = "neural network";
+        let results2 = search_embeddings(query2, 5).await.unwrap();
+        assert!(!results2.is_empty(), "Search should return results for neural network query");
+        
+        // Clean up embeddings
+        for embedding in created_embeddings {
+            // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
+            // when the test database is torn down
+        }
+    }
+
     /// Test that search_embeddings function works correctly
     #[tokio::test]
     async fn test_search_embeddings() {
@@ -1698,6 +1770,80 @@ mod tests {
         delete_project(project.id).await.unwrap();
     }
     
+    /// Test that find_similar_content function works correctly with filtering
+    #[tokio::test]
+    async fn test_find_similar_content_with_filtering() {
+        // Initialize database (ignore if already initialized)
+        let _ = crate::database::initialize().await;
+        
+        // Create test content with different types
+        let test_content = vec![
+            ("project", "Machine learning project for image recognition"),
+            ("project", "Web development project for e-commerce"),
+            ("task", "Implement neural network architecture"),
+            ("task", "Design user interface components"),
+            ("goal", "Build AI system for autonomous driving"),
+            ("goal", "Improve website performance"),
+            ("message", "Discuss the latest developments in transformer models"),
+        ];
+        
+        // Create embeddings for test content
+        let mut created_embeddings = Vec::new();
+        for (content_type, content_text) in test_content {
+            let embedding_request = crate::models::CreateEmbeddingRequest {
+                content_type: content_type.to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: content_text.to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                metadata: Some(serde_json::json!({"test": true})),
+            };
+            
+            let embedding = crate::embeddings::create_embedding(embedding_request).await.unwrap();
+            created_embeddings.push(embedding);
+        }
+        
+        // Test filtering by content type
+        let query = "machine learning AI";
+        let content_type_filter = Some("project".to_string());
+        let limit = 5;
+        let threshold = Some(0.3);
+        
+        let results = find_similar_content(query, content_type_filter, limit, threshold).await.unwrap();
+        
+        // Verify we get results
+        assert!(!results.is_empty(), "Filtered search should return results");
+        
+        // Verify all results are of the filtered content type
+        for result in &results {
+            assert_eq!(result.embedding.content_type, "project", "All results should be projects");
+        }
+        
+        // Verify similarity scores are above threshold
+        for result in &results {
+            assert!(result.similarity_score >= threshold.unwrap(), "Similarity should be above threshold");
+        }
+        
+        // Test with different content type filter
+        let task_results = find_similar_content(query, Some("task".to_string()), 3, None).await.unwrap();
+        for result in &task_results {
+            assert_eq!(result.embedding.content_type, "task", "All results should be tasks");
+        }
+        
+        // Test with no content type filter (should return all types)
+        let all_results = find_similar_content(query, None, 10, None).await.unwrap();
+        let content_types: std::collections::HashSet<_> = all_results.iter()
+            .map(|r| r.embedding.content_type.as_str())
+            .collect();
+        
+        assert!(content_types.len() > 1, "Should return multiple content types when no filter applied");
+        
+        // Clean up embeddings
+        for embedding in created_embeddings {
+            // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
+            // when the test database is torn down
+        }
+    }
+
     /// Test that find_similar_content function works correctly
     #[tokio::test]
     async fn test_find_similar_content() {

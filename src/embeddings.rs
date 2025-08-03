@@ -47,28 +47,38 @@ pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResul
 
 /// Store embedding in database
 async fn store_embedding(embedding: &Embedding) -> ParagonicResult<()> {
-    use crate::schema::embeddings;
-    
     let pool = crate::database::get_pool()?;
     let mut conn = pool.get()?;
     
-    // Convert Vector to bytes for storage
-    let embedding_bytes = embedding.embedding_vector.as_ref()
-        .map(|v| v.to_bytes())
-        .unwrap_or_default();
+    // Use raw SQL with proper pgvector casting
+    let sql = r#"
+        INSERT INTO embeddings (
+            id, content_type, content_id, content_text, 
+            embedding_model, embedding_vector, metadata, 
+            created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8, $9)
+    "#;
     
-    diesel::insert_into(embeddings::table)
-        .values((
-            embeddings::id.eq(embedding.id),
-            embeddings::content_type.eq(&embedding.content_type),
-            embeddings::content_id.eq(embedding.content_id),
-            embeddings::content_text.eq(&embedding.content_text),
-            embeddings::embedding_model.eq(&embedding.embedding_model),
-            embeddings::embedding_vector.eq(embedding_bytes),
-            embeddings::metadata.eq(&embedding.metadata),
-            embeddings::created_at.eq(embedding.created_at),
-            embeddings::updated_at.eq(embedding.updated_at),
-        ))
+    // Convert embedding vector to proper pgvector format
+    let embedding_array = if let Some(vector) = &embedding.embedding_vector {
+        format!("[{}]", vector.values.iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(","))
+    } else {
+        "NULL".to_string()
+    };
+    
+    diesel::sql_query(sql)
+        .bind::<diesel::sql_types::Uuid, _>(embedding.id)
+        .bind::<diesel::sql_types::Text, _>(&embedding.content_type)
+        .bind::<diesel::sql_types::Uuid, _>(embedding.content_id)
+        .bind::<diesel::sql_types::Text, _>(&embedding.content_text)
+        .bind::<diesel::sql_types::Text, _>(&embedding.embedding_model)
+        .bind::<diesel::sql_types::Text, _>(embedding_array)
+        .bind::<diesel::sql_types::Nullable<diesel::sql_types::Jsonb>, _>(&embedding.metadata)
+        .bind::<diesel::sql_types::Timestamptz, _>(embedding.created_at)
+        .bind::<diesel::sql_types::Timestamptz, _>(embedding.updated_at)
         .execute(&mut conn)
         .map_err(|e| {
             tracing::error!("Failed to store embedding: {}", e);
