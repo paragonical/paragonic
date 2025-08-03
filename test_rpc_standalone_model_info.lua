@@ -4,8 +4,7 @@ Test for implementing model_info method in rpc_standalone.lua - one-by-one TDD f
 
 -- Add lua directory to package path
 package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
--- Add luarocks path for cjson and socket
-package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/?.so"
+-- No external dependencies needed for vim.json
 package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/socket/?.so"
 
 -- Test that model_info method exists
@@ -67,8 +66,7 @@ local function test_model_info_method_implementation()
     assert(type(result) == "string", "model_info should return a string")
     
     -- Parse the result as JSON to verify it's valid model info
-    local cjson = require("cjson")
-    local success, parsed = pcall(cjson.decode, result)
+    local success, parsed = pcall(vim.json.decode, result)
     assert(success, "model_info should return valid JSON")
     assert(type(parsed) == "table", "model_info should return a JSON object")
     
@@ -86,7 +84,7 @@ local function test_model_info_method_implementation()
     assert(result2 ~= nil, "Second model_info call should succeed")
     assert(type(result2) == "string", "Second model_info should return a string")
     
-    local success2, parsed2 = pcall(cjson.decode, result2)
+    local success2, parsed2 = pcall(vim.json.decode, result2)
     assert(success2, "Second model_info should return valid JSON")
     assert(parsed2.name:find("llama3.2"), "Second model_info should be for llama3.2 model")
     

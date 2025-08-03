@@ -212,16 +212,8 @@ function M.parse_json_response(json_string)
         return nil, "Empty JSON string"
     end
     
-    -- Try to load cjson
-    local cjson_available = pcall(require, "cjson")
-    local cjson = cjson_available and require("cjson") or nil
-    
-    if not cjson then
-        return nil, "cjson library not available"
-    end
-    
-    -- Parse JSON with error handling
-    local success, result = pcall(cjson.decode, json_string)
+    -- Parse JSON with error handling using vim.json
+    local success, result = pcall(vim.json.decode, json_string)
     if not success then
         return nil, "Failed to parse JSON: " .. tostring(result)
     end

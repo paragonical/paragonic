@@ -3,7 +3,7 @@
 -- Test script for RPC search functionality
 -- This script demonstrates how to use the search RPC methods from Lua
 
-local json = require("cjson")
+-- Use vim.json for JSON handling
 
 -- Configuration
 local RPC_HOST = "127.0.0.1"
@@ -30,7 +30,7 @@ local function make_rpc_call(method, params)
         id = 1
     }
     
-    local request_json = json.encode(request) .. "\n"
+    local request_json = vim.json.encode(request) .. "\n"
     
     -- Send request
     local success, err = tcp:send(request_json)
@@ -51,7 +51,7 @@ local function make_rpc_call(method, params)
     tcp:close()
     
     -- Parse response
-    local success, result = pcall(json.decode, response)
+    local success, result = pcall(vim.json.decode, response)
     if not success then
         print("Failed to parse response: " .. (result or "unknown error"))
         return nil
@@ -72,7 +72,7 @@ local function test_search_embeddings()
     local result = make_rpc_call("search_embeddings", params)
     if result then
         if result.error then
-            print("Error: " .. json.encode(result.error))
+            print("Error: " .. vim.json.encode(result.error))
         else
             print("Success: Found " .. #result.result.results .. " results")
             for i, search_result in ipairs(result.result.results) do
@@ -95,7 +95,7 @@ local function test_find_similar_content()
     local result = make_rpc_call("find_similar_content", params)
     if result then
         if result.error then
-            print("Error: " .. json.encode(result.error))
+            print("Error: " .. vim.json.encode(result.error))
         else
             print("Success: Found " .. #result.result.results .. " results")
             for i, search_result in ipairs(result.result.results) do
@@ -119,7 +119,7 @@ local function test_hybrid_search()
     local result = make_rpc_call("hybrid_search", params)
     if result then
         if result.error then
-            print("Error: " .. json.encode(result.error))
+            print("Error: " .. vim.json.encode(result.error))
         else
             print("Success: Found " .. #result.result.results .. " results")
             for i, search_result in ipairs(result.result.results) do

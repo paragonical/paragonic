@@ -4,51 +4,14 @@ Paragonic RPC Client for connecting to Rust JSON-RPC server
 
 local M = {}
 
--- Try to load cjson, fallback to custom encoder if not available
-local cjson_available = pcall(require, "cjson")
-local cjson = cjson_available and require("cjson") or nil
-
--- Simple JSON encoding for basic objects (fallback)
-local function encode_json_fallback(obj)
-    if type(obj) == "table" then
-        local parts = {}
-        for k, v in pairs(obj) do
-            if type(k) == "string" then
-                table.insert(parts, string.format('"%s":%s', k, encode_json_fallback(v)))
-            else
-                table.insert(parts, encode_json_fallback(v))
-            end
-        end
-        return "{" .. table.concat(parts, ",") .. "}"
-    elseif type(obj) == "string" then
-        return string.format('"%s"', obj)
-    elseif type(obj) == "number" then
-        return tostring(obj)
-    elseif type(obj) == "boolean" then
-        return obj and "true" or "false"
-    else
-        return "null"
-    end
-end
-
--- JSON encode function that uses cjson if available, fallback otherwise
+-- JSON encode function using vim.json
 local function encode_json(obj)
-    if cjson then
-        return cjson.encode(obj)
-    else
-        return encode_json_fallback(obj)
-    end
+    return vim.json.encode(obj)
 end
 
--- JSON decode function that uses cjson if available, fallback otherwise
+-- JSON decode function using vim.json
 local function decode_json(str)
-    if cjson then
-        return cjson.decode(str)
-    else
-        -- Simple fallback decoder for basic cases
-        -- This is very limited and should be replaced with a proper decoder
-        error("JSON decoding not available without cjson")
-    end
+    return vim.json.decode(str)
 end
 
 -- RPC Client constructor
