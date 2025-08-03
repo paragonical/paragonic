@@ -266,8 +266,7 @@ local function send_jsonrpc_request_with_retry_and_pool_and_log(server_address, 
     }
     
     -- Convert to JSON string
-    local cjson = require("cjson")
-    local json_request = cjson.encode(request)
+    local json_request = vim.json.encode(request)
     
     if client then
         log_message(client, "debug", string.format("Sending RPC request: %s to %s:%s", method, host, port))
@@ -306,12 +305,27 @@ local function send_jsonrpc_request_with_retry_and_pool_and_log(server_address, 
         
         if response and response ~= "" then
             -- Try to parse the response
-            local success, parsed = pcall(cjson.decode, response)
-            if success and parsed and parsed.result then
+            local success, parsed = pcall(vim.json.decode, response)
+            if success and parsed then
                 if client then
                     log_message(client, "debug", string.format("RPC request %s succeeded", method))
                 end
-                return parsed.result, nil
+                -- Extract the actual result from the JSON-RPC envelope
+                if parsed.result then
+                    -- If result is a string, parse it as JSON
+                    if type(parsed.result) == "string" then
+                        local success2, actual_result = pcall(vim.json.decode, parsed.result)
+                        if success2 then
+                            return actual_result, nil
+                        else
+                            return parsed.result, nil
+                        end
+                    else
+                        return parsed.result, nil
+                    end
+                else
+                    return parsed, nil
+                end
             else
                 -- Check if this is a retryable error (like connection issues)
                 if attempt < max_retries and (not response or response == "" or response:find("Connection refused") or response:find("No route to host")) then
@@ -568,6 +582,212 @@ function M:batch_operations(operations)
     
     log_message(self, "info", string.format("Batch completed with %d/%d successful operations", #results, #operations))
     return results
+end
+
+-- Search embeddings using vector similarity
+function M:search_embeddings(query, limit)
+    -- Parameter validation
+    if not query or query == "" then
+        log_message(self, "error", "Query parameter is required")
+        return nil, "Query parameter is required"
+    end
+    
+    if not self.connected then
+        log_message(self, "error", "Not connected to server")
+        return nil, "Not connected to server"
+    end
+    
+    -- Set default limit if not provided
+    limit = limit or 10
+    
+    -- Validate limit
+    if type(limit) ~= "number" or limit <= 0 then
+        log_message(self, "error", "Limit must be a positive number")
+        return nil, "Limit must be a positive number"
+    end
+    
+    -- Prepare parameters
+    local params = {
+        query = query,
+        limit = limit
+    }
+    
+    -- Send search_embeddings request
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "search_embeddings", params, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
+-- Find similar content with optional filtering
+function M:find_similar_content(query, content_type, limit, threshold)
+    -- Parameter validation
+    if not query or query == "" then
+        log_message(self, "error", "Query parameter is required")
+        return nil, "Query parameter is required"
+    end
+    
+    if not self.connected then
+        log_message(self, "error", "Not connected to server")
+        return nil, "Not connected to server"
+    end
+    
+    -- Set default values if not provided
+    limit = limit or 10
+    threshold = threshold or 0.0
+    
+    -- Validate parameters
+    if type(limit) ~= "number" or limit <= 0 then
+        log_message(self, "error", "Limit must be a positive number")
+        return nil, "Limit must be a positive number"
+    end
+    
+    if type(threshold) ~= "number" or threshold < 0 or threshold > 1 then
+        log_message(self, "error", "Threshold must be a number between 0 and 1")
+        return nil, "Threshold must be a number between 0 and 1"
+    end
+    
+    -- Prepare parameters
+    local params = {
+        query = query,
+        limit = limit,
+        threshold = threshold
+    }
+    
+    -- Add content_type if provided
+    if content_type and content_type ~= "" then
+        params.content_type = content_type
+    end
+    
+    -- Send find_similar_content request
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "find_similar_content", params, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
+-- Perform hybrid search combining vector similarity with text filtering
+function M:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
+    -- Parameter validation
+    if not query or query == "" then
+        log_message(self, "error", "Query parameter is required")
+        return nil, "Query parameter is required"
+    end
+    
+    if not self.connected then
+        log_message(self, "error", "Not connected to server")
+        return nil, "Not connected to server"
+    end
+    
+    -- Set default values if not provided
+    limit = limit or 10
+    threshold = threshold or 0.0
+    include_text_filtering = include_text_filtering ~= false -- Default to true
+    
+    -- Validate parameters
+    if type(limit) ~= "number" or limit <= 0 then
+        log_message(self, "error", "Limit must be a positive number")
+        return nil, "Limit must be a positive number"
+    end
+    
+    if type(threshold) ~= "number" or threshold < 0 or threshold > 1 then
+        log_message(self, "error", "Threshold must be a number between 0 and 1")
+        return nil, "Threshold must be a number between 0 and 1"
+    end
+    
+    if type(include_text_filtering) ~= "boolean" then
+        log_message(self, "error", "Include text filtering must be a boolean")
+        return nil, "Include text filtering must be a boolean"
+    end
+    
+    -- Prepare parameters
+    local params = {
+        query = query,
+        limit = limit,
+        threshold = threshold,
+        include_text_filtering = include_text_filtering
+    }
+    
+    -- Add content_type if provided
+    if content_type and content_type ~= "" then
+        params.content_type = content_type
+    end
+    
+    -- Send hybrid_search request
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "hybrid_search", params, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
+    if result then
+        return result
+    else
+        return nil, error_msg
+    end
+end
+
+-- Helper function to format search results for display
+function M:format_search_results(search_results, max_length)
+    if not search_results or not search_results.results then
+        return "No search results found"
+    end
+    
+    max_length = max_length or 100
+    
+    local formatted = {}
+    for i, result in ipairs(search_results.results) do
+        if result.embedding and result.embedding.content_text then
+            local text = result.embedding.content_text
+            if #text > max_length then
+                text = text:sub(1, max_length) .. "..."
+            end
+            
+            local score = result.similarity_score or 0
+            local content_type = result.embedding.content_type or "unknown"
+            
+            table.insert(formatted, string.format("%d. [%s] (%.3f) %s", i, content_type, score, text))
+        end
+    end
+    
+    if #formatted == 0 then
+        return "No search results found"
+    end
+    
+    return table.concat(formatted, "\n")
+end
+
+-- Helper function to get search statistics
+function M:get_search_stats(search_results)
+    if not search_results or not search_results.results then
+        return {
+            total_results = 0,
+            avg_score = 0,
+            content_types = {},
+            query = search_results and search_results.query or "unknown"
+        }
+    end
+    
+    local total_results = #search_results.results
+    local total_score = 0
+    local content_types = {}
+    
+    for _, result in ipairs(search_results.results) do
+        if result.similarity_score then
+            total_score = total_score + result.similarity_score
+        end
+        
+        if result.embedding and result.embedding.content_type then
+            local content_type = result.embedding.content_type
+            content_types[content_type] = (content_types[content_type] or 0) + 1
+        end
+    end
+    
+    return {
+        total_results = total_results,
+        avg_score = total_results > 0 and (total_score / total_results) or 0,
+        content_types = content_types,
+        query = search_results.query or "unknown"
+    }
 end
 
 return M 
