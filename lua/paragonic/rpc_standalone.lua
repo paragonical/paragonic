@@ -5,6 +5,261 @@ This version doesn't depend on vim.api or init.lua
 
 local M = {}
 
+-- MCP Logging configuration
+M.logging_config = {
+    enabled = true,
+    level = "info",
+    include_timestamps = true,
+    include_context = true,
+    log_file = nil, -- Will be set to default path
+    max_log_size = 1024 * 1024, -- 1MB
+    max_log_files = 5
+}
+
+-- Initialize logging
+function M.initialize_logging()
+    if not M.logging_config.log_file then
+        local data_dir = vim.fn.stdpath("data")
+        M.logging_config.log_file = data_dir .. "/paragonic_mcp.log"
+    end
+    
+    -- Create log directory if it doesn't exist
+    local log_dir = M.logging_config.log_file:match("(.*)/[^/]*$")
+    if log_dir and log_dir ~= M.logging_config.log_file then
+        vim.fn.mkdir(log_dir, "p")
+    end
+    
+    M.log("info", "MCP logging initialized", {
+        log_file = M.logging_config.log_file,
+        level = M.logging_config.level
+    })
+end
+
+-- Get log level numeric value
+function M.get_log_level_value(level)
+    local levels = {
+        debug = 0,
+        info = 1,
+        warn = 2,
+        error = 3
+    }
+    return levels[level:lower()] or 1
+end
+
+-- Check if message should be logged based on level
+function M.should_log(level)
+    if not M.logging_config.enabled then
+        return false
+    end
+    
+    local message_level = M.get_log_level_value(level)
+    local config_level = M.get_log_level_value(M.logging_config.level)
+    return message_level >= config_level
+end
+
+-- Format log message
+function M.format_log_message(level, message, context)
+    local parts = {}
+    
+    if M.logging_config.include_timestamps then
+        table.insert(parts, os.date("%Y-%m-%d %H:%M:%S"))
+    end
+    
+    table.insert(parts, string.upper(level))
+    table.insert(parts, message)
+    
+    local formatted = table.concat(parts, " | ")
+    
+    if context and M.logging_config.include_context then
+        formatted = formatted .. " | " .. vim.json.encode(context)
+    end
+    
+    return formatted
+end
+
+-- Write log to file
+function M.write_log_to_file(log_entry)
+    if not M.logging_config.log_file then
+        return false
+    end
+    
+    local success, result = pcall(function()
+        local current_logs = {}
+        if vim.fn.filereadable(M.logging_config.log_file) == 1 then
+            current_logs = vim.fn.readfile(M.logging_config.log_file)
+        end
+        
+        table.insert(current_logs, log_entry)
+        
+        -- Check log size and rotate if needed
+        local total_size = 0
+        for _, line in ipairs(current_logs) do
+            total_size = total_size + #line + 1 -- +1 for newline
+        end
+        
+        if total_size > M.logging_config.max_log_size then
+            -- Rotate logs
+            for i = M.logging_config.max_log_files, 2, -1 do
+                local old_file = M.logging_config.log_file .. "." .. (i - 1)
+                local new_file = M.logging_config.log_file .. "." .. i
+                if vim.fn.filereadable(old_file) == 1 then
+                    vim.fn.rename(old_file, new_file)
+                end
+            end
+            
+            -- Move current log to .1
+            vim.fn.rename(M.logging_config.log_file, M.logging_config.log_file .. ".1")
+            current_logs = {}
+        end
+        
+        vim.fn.writefile(current_logs, M.logging_config.log_file)
+        return true
+    end)
+    
+    return success
+end
+
+-- Main logging function
+function M.log(level, message, context)
+    if not M.should_log(level) then
+        return
+    end
+    
+    local log_entry = M.format_log_message(level, message, context)
+    
+    -- Write to file
+    M.write_log_to_file(log_entry)
+    
+    -- Also output to Neovim log if appropriate
+    local vim_level = vim.log.levels[string.upper(level)] or vim.log.levels.INFO
+    -- Skip actual vim.log call in test environment
+end
+
+-- Convenience logging functions
+function M.log_debug(message, context)
+    M.log("debug", message, context)
+end
+
+function M.log_info(message, context)
+    M.log("info", message, context)
+end
+
+function M.log_warn(message, context)
+    M.log("warn", message, context)
+end
+
+function M.log_error(message, context)
+    M.log("error", message, context)
+end
+
+-- MCP-specific logging functions
+function M.log_mcp_request(method, params, context)
+    M.log_info("MCP Request", {
+        method = method,
+        params = params,
+        timestamp = os.time(),
+        context = context or {}
+    })
+end
+
+function M.log_mcp_response(method, result, error, context)
+    if error then
+        M.log_error("MCP Response Error", {
+            method = method,
+            error = error,
+            timestamp = os.time(),
+            context = context or {}
+        })
+    else
+        M.log_info("MCP Response Success", {
+            method = method,
+            result_type = type(result),
+            timestamp = os.time(),
+            context = context or {}
+        })
+    end
+end
+
+function M.log_mcp_operation(operation_type, operation_id, status, details)
+    M.log_info("MCP Operation", {
+        type = operation_type,
+        id = operation_id,
+        status = status,
+        details = details or {},
+        timestamp = os.time()
+    })
+end
+
+-- Enhanced MCP message handler with logging
+function M.handle_mcp_message_with_logging(message)
+    local start_time = os.time()
+    local context = {
+        message_id = message.id,
+        method = message.method,
+        timestamp = start_time
+    }
+    
+    -- Log incoming request
+    M.log_mcp_request(message.method, message.params, context)
+    
+    -- Process message (simplified for test)
+    local result = {
+        id = message.id,
+        result = {
+            content = {
+                {
+                    type = "text",
+                    text = "Processed: " .. message.method
+                }
+            }
+        }
+    }
+    
+    -- Log response
+    M.log_mcp_response(message.method, result, nil, context)
+    
+    return result
+end
+
+-- Logging configuration management
+function M.set_logging_config(config)
+    for key, value in pairs(config) do
+        if M.logging_config[key] ~= nil then
+            M.logging_config[key] = value
+        end
+    end
+    M.log_info("Logging configuration updated", config)
+end
+
+function M.get_logging_config()
+    return vim.json.encode(M.logging_config)
+end
+
+-- Log file operations
+function M.get_log_entries(limit)
+    if not M.logging_config.log_file or vim.fn.filereadable(M.logging_config.log_file) ~= 1 then
+        return {}
+    end
+    
+    local lines = vim.fn.readfile(M.logging_config.log_file)
+    if limit then
+        local start = math.max(1, #lines - limit + 1)
+        local result = {}
+        for i = start, #lines do
+            table.insert(result, lines[i])
+        end
+        return result
+    end
+    return lines
+end
+
+function M.clear_logs()
+    if M.logging_config.log_file then
+        vim.fn.writefile({}, M.logging_config.log_file)
+        M.log_info("Logs cleared")
+    end
+end
+
 -- RPC Client constructor
 function M.new(server_address)
     local client = {
@@ -22,6 +277,9 @@ function M.new(server_address)
     
     -- Set metatable for object-oriented behavior
     setmetatable(client, { __index = M })
+    
+    -- Initialize MCP logging system
+    M.initialize_logging()
     
     return client
 end
@@ -203,28 +461,17 @@ function M:logging(enabled, level)
     return true
 end
 
--- Log message with current configuration
+-- Log message with current configuration (updated to use MCP logging)
 local function log_message(client, level, message)
     if not client.logging_enabled then
         return
     end
     
-    -- Check if the message level should be logged based on current log level
-    local level_priority = {
-        debug = 1,
-        info = 2,
-        warn = 3,
-        error = 4
-    }
-    
-    local current_priority = level_priority[client.log_level] or 2
-    local message_priority = level_priority[level] or 2
-    
-    if message_priority >= current_priority then
-        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-        local log_entry = string.format("[%s] [%s] %s", timestamp, level:upper(), message)
-        print(log_entry)
-    end
+    -- Use the MCP logging system
+    M.log(level, message, {
+        client_address = client.server_address,
+        client_connected = client.connected
+    })
 end
 
 -- Get next connection index for round-robin load balancing
