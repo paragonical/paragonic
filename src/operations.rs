@@ -920,6 +920,24 @@ pub async fn get_message(message_id: Uuid) -> ParagonicResult<Message> {
         })
 }
 
+/// List all messages in a conversation
+/// 
+/// This function retrieves all messages from a specific conversation.
+/// Messages are ordered by creation time (oldest first).
+/// Returns a vector of messages if successful, or an error if the operation fails.
+pub async fn list_messages(conversation_id: Uuid) -> ParagonicResult<Vec<Message>> {
+    let mut conn = get_connection()?;
+    
+    messages::table
+        .filter(messages::conversation_id.eq(conversation_id))
+        .order(messages::created_at.asc())
+        .load::<Message>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to list messages for conversation {}: {}", conversation_id, e);
+            ParagonicError::Database(format!("Failed to list messages: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2075,6 +2093,89 @@ mod tests {
         assert_eq!(message.role, MessageRole::User.to_string());
         assert!(message.created_at.is_some());
         assert!(message.created_at.unwrap() <= Utc::now());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test listing messages in a conversation
+    #[tokio::test]
+    async fn test_list_messages() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for message listing".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create a conversation for the messages
+        let conversation_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation for Message Listing".to_string()),
+        };
+        let conversation = create_conversation(conversation_request).await.unwrap();
+        
+        // Send multiple messages to list
+        let message_request1 = SendMessageRequest {
+            conversation_id: conversation.id,
+            content: "First test message".to_string(),
+        };
+        let message1 = send_message(message_request1).await.unwrap();
+        
+        let message_request2 = SendMessageRequest {
+            conversation_id: conversation.id,
+            content: "Second test message".to_string(),
+        };
+        let message2 = send_message(message_request2).await.unwrap();
+        
+        let message_request3 = SendMessageRequest {
+            conversation_id: conversation.id,
+            content: "Third test message".to_string(),
+        };
+        let message3 = send_message(message_request3).await.unwrap();
+        
+        // Test listing messages
+        let result = list_messages(conversation.id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "list_messages should succeed");
+        let messages = result.unwrap();
+        assert!(messages.len() >= 3, "Should have at least 3 messages");
+        
+        // Find our specific messages
+        let found_message1 = messages.iter().find(|m| m.id == message1.id);
+        let found_message2 = messages.iter().find(|m| m.id == message2.id);
+        let found_message3 = messages.iter().find(|m| m.id == message3.id);
+        
+        assert!(found_message1.is_some(), "Should find message 1");
+        assert!(found_message2.is_some(), "Should find message 2");
+        assert!(found_message3.is_some(), "Should find message 3");
+        
+        let msg1 = found_message1.unwrap();
+        let msg2 = found_message2.unwrap();
+        let msg3 = found_message3.unwrap();
+        
+        assert_eq!(msg1.conversation_id, Some(conversation.id));
+        assert_eq!(msg1.content, "First test message");
+        assert_eq!(msg1.role, MessageRole::User.to_string());
+        
+        assert_eq!(msg2.conversation_id, Some(conversation.id));
+        assert_eq!(msg2.content, "Second test message");
+        assert_eq!(msg2.role, MessageRole::User.to_string());
+        
+        assert_eq!(msg3.conversation_id, Some(conversation.id));
+        assert_eq!(msg3.content, "Third test message");
+        assert_eq!(msg3.role, MessageRole::User.to_string());
         
         // Clean up
         delete_agent(agent.id).await.unwrap();
