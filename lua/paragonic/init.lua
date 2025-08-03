@@ -2177,6 +2177,30 @@ function M.list_mcp_resources()
             name = "Neovim Windows",
             description = "List of all windows in the session", 
             mime_type = "application/json"
+        },
+        {
+            uri = "neovim://marks",
+            name = "Neovim Marks",
+            description = "List of all marks in the session",
+            mime_type = "application/json"
+        },
+        {
+            uri = "neovim://registers",
+            name = "Neovim Registers",
+            description = "List of all registers and their content",
+            mime_type = "application/json"
+        },
+        {
+            uri = "neovim://macros",
+            name = "Neovim Macros",
+            description = "List of all recorded macros",
+            mime_type = "application/json"
+        },
+        {
+            uri = "neovim://plugins",
+            name = "Neovim Plugins",
+            description = "List of all loaded plugins",
+            mime_type = "application/json"
         }
     }
 end
@@ -2323,6 +2347,50 @@ function M.read_mcp_resource(uri)
                     uri = uri,
                     mime_type = "application/json",
                     text = vim.json.encode(session_info.windows)
+                }
+            }
+        }
+    elseif uri == "neovim://marks" then
+        local marks_info = M.get_marks_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(marks_info)
+                }
+            }
+        }
+    elseif uri == "neovim://registers" then
+        local registers_info = M.get_registers_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(registers_info)
+                }
+            }
+        }
+    elseif uri == "neovim://macros" then
+        local macros_info = M.get_macros_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(macros_info)
+                }
+            }
+        }
+    elseif uri == "neovim://plugins" then
+        local plugins_info = M.get_plugins_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(plugins_info)
                 }
             }
         }
@@ -2589,6 +2657,128 @@ function M.display_resource_content(uri, result)
     vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
     
     vim.notify("Displayed resource content for: " .. uri, vim.log.levels.INFO)
+end
+
+-- Helper to get all Neovim marks with context
+function M.get_marks_info()
+    local marks = {}
+    local mark_list = vim.fn.getmarklist()
+    for _, mark_data in ipairs(mark_list) do
+        local mark = mark_data.mark
+        local pos = mark_data.pos
+        local file = mark_data.file
+        if pos and pos[1] > 0 then -- Valid mark
+            local buf = pos[1]
+            local line = pos[2]
+            local col = pos[3]
+            local context_lines = vim.api.nvim_buf_get_lines(buf, line - 1, line, false)
+            local context = context_lines[1] or ""
+            table.insert(marks, {
+                mark = mark,
+                buffer_id = buf,
+                file_path = file,
+                line = line,
+                column = col,
+                context = context,
+                timestamp = os.time()
+            })
+        end
+    end
+    return marks
+end
+
+-- Helper to get all Neovim registers with content
+function M.get_registers_info()
+    local registers = {}
+    local register_names = {"\"", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}
+    
+    for _, reg in ipairs(register_names) do
+        local content = vim.fn.getreg(reg)
+        local reg_type = vim.fn.getregtype(reg)
+        
+        if content and content ~= "" then
+            table.insert(registers, {
+                register = reg,
+                content = content,
+                type = reg_type,
+                length = #content,
+                timestamp = os.time()
+            })
+        end
+    end
+    
+    return registers
+end
+
+-- Helper to get all Neovim macros
+function M.get_macros_info()
+    local macros = {}
+    local macro_registers = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}
+    
+    for _, reg in ipairs(macro_registers) do
+        local macro = vim.fn.getreg(reg)
+        if macro and macro ~= "" and macro:match("^[a-zA-Z0-9@:]*$") then
+            -- This looks like a macro (contains only letters, numbers, @, :)
+            table.insert(macros, {
+                register = reg,
+                macro = macro,
+                description = "Macro in register " .. reg,
+                timestamp = os.time()
+            })
+        end
+    end
+    
+    return macros
+end
+
+-- Helper to get all Neovim plugins
+function M.get_plugins_info()
+    local plugins = {}
+    
+    -- Get loaded plugins from g:loaded_plugins
+    local loaded_plugins = vim.g.loaded_plugins or {}
+    for plugin_name, loaded in pairs(loaded_plugins) do
+        if loaded then
+            table.insert(plugins, {
+                name = plugin_name,
+                loaded = true,
+                path = "g:loaded_plugins",
+                timestamp = os.time()
+            })
+        end
+    end
+    
+    -- Get plugins from runtime path
+    local runtime_path = vim.api.nvim_get_option("runtimepath")
+    local paths = vim.fn.split(runtime_path, ",")
+    
+    for _, path in ipairs(paths) do
+        local plugin_files = vim.fn.globpath(path, "**/plugin/*.vim", true, true)
+        for _, plugin_file in ipairs(plugin_files) do
+            local plugin_name = plugin_file:match("([^/]+)/plugin/[^/]+%.vim$")
+            if plugin_name then
+                -- Check if not already added
+                local exists = false
+                for _, existing_plugin in ipairs(plugins) do
+                    if existing_plugin.name == plugin_name then
+                        exists = true
+                        break
+                    end
+                end
+                
+                if not exists then
+                    table.insert(plugins, {
+                        name = plugin_name,
+                        loaded = true,
+                        path = plugin_file,
+                        timestamp = os.time()
+                    })
+                end
+            end
+        end
+    end
+    
+    return plugins
 end
 
 return M 

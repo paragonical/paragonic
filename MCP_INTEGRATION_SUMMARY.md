@@ -15,6 +15,8 @@
 - ✅ **Buffers Resource**: `neovim://buffers` - List of all buffers in session  
 - ✅ **Windows Resource**: `neovim://windows` - List of all windows in session
 - ✅ **MIME Types**: `application/json` for all resources
+- ✅ **Resource Content**: Full JSON data retrieval via `resources/read`
+- ✅ **Content Validation**: JSON validation and error handling
 
 #### 3. **MCP Tools** (Converted from Agent Functions)
 - ✅ **agent_edit_file**: Edit files in current session
@@ -25,12 +27,14 @@
   - Parameters: `file_path`, `force`
 
 #### 4. **User Interface**
-- ✅ **Commands**: `:ParagonicMCPInit`, `:ParagonicMCPResources`, `:ParagonicMCPTools`
-- ✅ **Display Functions**: Floating windows for resources and tools
+- ✅ **Commands**: `:ParagonicMCPInit`, `:ParagonicMCPResources`, `:ParagonicMCPTools`, `:ParagonicMCPReadResource`
+- ✅ **Display Functions**: Floating windows for resources, tools, and resource content
 - ✅ **Schema Display**: Shows tool parameters with required/optional indicators
+- ✅ **Content Display**: Formatted JSON display with syntax highlighting
 
 #### 5. **Test Coverage**
 - ✅ **MCP Server Init Test**: Protocol compliance and message handling
+- ✅ **MCP Resource Content Test**: Resource content retrieval and validation
 - ✅ **All Agent Tests**: Session info, file edit, file create, file save
 - ✅ **Integration**: All tests pass together
 
@@ -87,16 +91,25 @@
   "params": {}
 }
 
-// List available tools
+// Read resource content
 {
   "id": 3,
+  "method": "resources/read",
+  "params": {
+    "uri": "neovim://session"
+  }
+}
+
+// List available tools
+{
+  "id": 4,
   "method": "tools/list", 
   "params": {}
 }
 
 // Call a tool
 {
-  "id": 4,
+  "id": 5,
   "method": "tools/call",
   "params": {
     "name": "agent_edit_file",
@@ -111,9 +124,10 @@
 
 ### For Neovim Users
 ```vim
-:ParagonicMCPInit      " Initialize MCP server
-:ParagonicMCPResources " View available resources
-:ParagonicMCPTools     " View available tools
+:ParagonicMCPInit         " Initialize MCP server
+:ParagonicMCPResources    " View available resources
+:ParagonicMCPTools        " View available tools
+:ParagonicMCPReadResource " Read resource content (default: session)
 ```
 
 ## 📊 Current Status
