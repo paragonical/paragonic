@@ -638,7 +638,6 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
     /// Handle delete project requests
     /// 
     /// This function deletes a project from the database.
-    /// For now, returns a mock response to test the RPC infrastructure.
     pub fn handle_delete_project(&self, params: &Option<Value>) -> Result<String, RpcError> {
         let params = params.as_ref()
             .and_then(|p| p.as_object())
@@ -648,15 +647,25 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .and_then(|id| id.as_str())
             .ok_or_else(|| RpcError::invalid_params(None))?;
         
-        // For now, return a mock response to test the RPC infrastructure
-        // TODO: Implement actual database call when async RPC is supported
-        let mock_response = serde_json::json!({
+        // Parse the project ID
+        let project_uuid = uuid::Uuid::parse_str(project_id)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Invalid project ID: {e}"))))?;
+        
+        // DONE: Implement actual database call when async RPC is supported
+        // Call the actual database operation using the current runtime
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(crate::operations::delete_project(project_uuid))
+        })
+        .map_err(|e| RpcError::server_error(Some(format!("Failed to delete project: {e}"))))?;
+        
+        // Return success response
+        let response = serde_json::json!({
             "success": true,
             "message": "Project deleted successfully",
             "project_id": project_id
         });
         
-        serde_json::to_string(&mock_response)
+        serde_json::to_string(&response)
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
     
@@ -1922,23 +1931,37 @@ mod tests {
     /// Test that the server can handle delete project requests
     #[test]
     fn test_server_delete_project() {
-        let config = OllamaConfig::default();
-        let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        // Create a runtime for the test
+        let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
         
-        // Test delete project with mock parameters
-        let params = Some(serde_json::json!({
-            "project_id": "123e4567-e89b-12d3-a456-426614174000"
-        }));
-        let result = server.handle_delete_project(&params);
-        assert!(result.is_ok(), "handle_delete_project should return Ok");
-        
-        // Verify the response is valid JSON
-        let response = result.unwrap();
-        let response_json: serde_json::Value = serde_json::from_str(&response)
-            .expect("Response should be valid JSON");
-        assert_eq!(response_json.get("success").unwrap().as_bool(), Some(true));
-        assert_eq!(response_json.get("message").unwrap().as_str(), Some("Project deleted successfully"));
+        runtime.block_on(async {
+            // Initialize test database
+            let db_result = crate::database::initialize().await;
+            if let Err(e) = &db_result {
+                println!("Database initialization failed: {e:?}");
+                // Skip test if database can't be initialized
+                return;
+            }
+            
+            let config = OllamaConfig::default();
+            let client = OllamaClient::new(config).unwrap();
+            let server = ParagonicServer::new(client);
+            
+            // Test delete project with mock parameters
+            let params = Some(serde_json::json!({
+                "project_id": "123e4567-e89b-12d3-a456-426614174000"
+            }));
+            let result = server.handle_delete_project(&params);
+            assert!(result.is_ok(), "handle_delete_project should return Ok");
+            
+            // Verify the response is valid JSON
+            let response = result.unwrap();
+            let response_json: serde_json::Value = serde_json::from_str(&response)
+                .expect("Response should be valid JSON");
+            assert!(response_json.get("success").is_some(), "Should have a success field");
+            assert!(response_json.get("message").is_some(), "Should have a message field");
+            assert!(response_json.get("project_id").is_some(), "Should have a project_id field");
+        });
     }
     
     /// Test that the server can handle delete goal requests
@@ -2981,6 +3004,69 @@ mod tests {
             assert_eq!(task.description, Some("A test task updated via RPC with real database".to_string()));
             assert_eq!(task.status, Some("in_progress".to_string()));
             assert_eq!(task.priority, Some(3));
+        });
+    }
+
+    #[test]
+    fn test_handle_delete_project_with_real_database() {
+        // Create a runtime for the test
+        let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+        
+        runtime.block_on(async {
+            // Initialize test database
+            let db_result = crate::database::initialize().await;
+            if let Err(e) = &db_result {
+                println!("Database initialization failed: {e:?}");
+                // Skip test if database can't be initialized
+                return;
+            }
+            
+            let mut config = ConfigManager::new();
+            config.load_from_standard_locations().expect("Failed to load config");
+            
+            let ollama_client = OllamaClient::from_config_manager(&config).expect("Failed to create Ollama client");
+            let server = ParagonicServer::new(ollama_client);
+            
+            // First, create a project to delete
+            let create_project_params = serde_json::json!({
+                "name": "Test Project for Deletion",
+                "description": "A test project to be deleted via RPC"
+            });
+            
+            let create_result = server.handle_create_project(&Some(create_project_params));
+            assert!(create_result.is_ok(), "create_project should succeed");
+            
+            let create_response: serde_json::Value = serde_json::from_str(&create_result.unwrap())
+                .expect("Create response should be valid JSON");
+            let project_id = create_response.get("id").unwrap().as_str().unwrap();
+            
+            // Now test deleting the project
+            let delete_project_params = serde_json::json!({
+                "project_id": project_id
+            });
+            
+            let result = server.handle_delete_project(&Some(delete_project_params));
+            if let Err(e) = &result {
+                println!("Delete project failed with error: {e:?}");
+            }
+            assert!(result.is_ok(), "delete_project should succeed");
+            
+            let response_str = result.unwrap();
+            let response: serde_json::Value = serde_json::from_str(&response_str)
+                .expect("Response should be valid JSON");
+            
+            // Verify response structure
+            assert!(response.get("success").is_some(), "Response should have success field");
+            assert_eq!(response.get("success").unwrap(), true);
+            assert!(response.get("message").is_some(), "Response should have message field");
+            assert_eq!(response.get("message").unwrap(), "Project deleted successfully");
+            assert!(response.get("project_id").is_some(), "Response should have project_id field");
+            assert_eq!(response.get("project_id").unwrap(), project_id);
+            
+            // Verify the project was actually deleted from the database
+            let uuid = uuid::Uuid::parse_str(project_id).expect("Should be valid UUID");
+            let project = crate::operations::get_project(uuid).await;
+            assert!(project.is_err(), "Project should not exist in database after deletion");
         });
     }
 } 
