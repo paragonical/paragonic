@@ -1898,4 +1898,101 @@ function M.agent_get_file_content(file_path)
     }
 end
 
+-- Create a new file in the current session
+function M.agent_create_file(args)
+    local file_name = args[1]
+    local content = args[2] or ""
+    local open_in_window = args[3] == "true"
+    
+    if not file_name or file_name == "" then
+        vim.notify("File name is required", vim.log.levels.WARN)
+        return false
+    end
+    
+    -- Check if file already exists in session
+    local buffers = vim.api.nvim_list_bufs()
+    for _, buf in ipairs(buffers) do
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        if buf_name == file_name then
+            vim.notify("File already exists in session: " .. file_name, vim.log.levels.WARN)
+            return false
+        end
+    end
+    
+    -- Create new buffer
+    local new_buf = vim.api.nvim_create_buf(true, false)
+    if not new_buf then
+        vim.notify("Failed to create buffer", vim.log.levels.ERROR)
+        return false
+    end
+    
+    -- Set buffer name
+    vim.api.nvim_buf_set_name(new_buf, file_name)
+    
+    -- Set initial content if provided
+    if content ~= "" then
+        local lines = {}
+        for line in content:gmatch("[^\r\n]+") do
+            table.insert(lines, line)
+        end
+        vim.api.nvim_buf_set_lines(new_buf, 0, -1, false, lines)
+    end
+    
+    -- Open in window if requested
+    if open_in_window then
+        local config = {
+            relative = "editor",
+            width = 80,
+            height = 20,
+            row = 2,
+            col = 2,
+            style = "minimal",
+            border = "single"
+        }
+        vim.api.nvim_open_win(new_buf, true, config)
+    else
+        -- Switch to the new buffer
+        vim.api.nvim_set_current_buf(new_buf)
+    end
+    
+    vim.notify("Created file: " .. file_name, vim.log.levels.INFO)
+    return true, new_buf
+end
+
+-- Create a file with a template
+function M.agent_create_file_with_template(template_name, file_name)
+    local templates = {
+        lua = {
+            header = "--[[",
+            footer = "--]]",
+            content = "local M = {}\n\nreturn M"
+        },
+        rust = {
+            header = "//",
+            footer = "",
+            content = "fn main() {\n    println!(\"Hello, world!\");\n}"
+        },
+        markdown = {
+            header = "#",
+            footer = "",
+            content = "# Title\n\nContent goes here."
+        }
+    }
+    
+    local template = templates[template_name]
+    if not template then
+        return false, "Unknown template: " .. template_name
+    end
+    
+    local content = template.content
+    if template.header ~= "" then
+        content = template.header .. " " .. file_name .. "\n" .. content
+    end
+    if template.footer ~= "" then
+        content = content .. "\n" .. template.footer
+    end
+    
+    return M.agent_create_file({file_name, content})
+end
+
 return M 
