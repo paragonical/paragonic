@@ -138,6 +138,25 @@ provides metrics for identifying expertise and knowledge gaps.  This may be
 potentially useful for way to routing review requests for PRs to humans from
 humans or agents for units of work.
 
+### Interleaved Retrieval-Augmented Generation Learning (IRAGL)
+
+Because we're essentially self-hosting the assistive system, we want to
+leverage the existing knowledge and expertise of the organization, agent or
+human throughout the captured work and metadata.  This is done by using a
+retrieval-augmented generation (RAG) system that allows the agent or human to
+access relevant information and data from various sources, such as
+repositories, channels, and programs. The RAG system enables the agent or human
+to retrieve relevant information and data from various sources, such as
+repositories, channels, and programs, and use it to generate responses and
+complete tasks effectively. 
+
+We have all of the information: the repositories, structures and communications
+between agents and humans, so we can use this information to train the vector
+knowledge base.  This is the machine-equivalent of ISRL, where the system
+continually refreshes and optimizes the vector knowledge base to ensure that
+the agent has access to the most relevant and up-to-date information and for
+the human, the best possible search support for "ad-hoc" questions.
+
 ### Ledgers & Work
 
 You could say that the only score that matters in an ongoing organization is
