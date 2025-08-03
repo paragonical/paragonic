@@ -12,6 +12,7 @@ pub mod schema;
 pub mod embeddings;
 pub mod rpc;
 pub mod vector;
+// pub mod fulltext; // TODO: Re-enable when Tantivy integration is complete
 pub mod operations;
 
 pub use error::{ParagonicError, ParagonicResult};

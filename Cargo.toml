@@ -49,6 +49,9 @@ rust_decimal = { version = "1.0", features = ["serde"] }
 # Async streaming support
 futures-util = "0.3"
 
+# Full-text search engine
+tantivy = "0.24"
+
 # CLI argument parsing (for development/testing)
 clap = { version = "4.0", features = ["derive"] }
 
@@ -67,6 +70,7 @@ path = "src/main.rs"
 # Testing
 tokio-test = "0.4"
 mockall = "0.13.1"
+tempfile = "3.10"
 
 # Test database
 testcontainers = "0.25" 

@@ -58,4 +58,28 @@ impl From<std::net::AddrParseError> for ParagonicError {
     fn from(err: std::net::AddrParseError) -> Self {
         ParagonicError::Internal(format!("Address parse error: {err}"))
     }
+}
+
+impl From<tantivy::TantivyError> for ParagonicError {
+    fn from(err: tantivy::TantivyError) -> Self {
+        ParagonicError::Internal(format!("Tantivy error: {err}"))
+    }
+}
+
+impl From<tantivy::query::QueryParserError> for ParagonicError {
+    fn from(err: tantivy::query::QueryParserError) -> Self {
+        ParagonicError::Internal(format!("Query parser error: {err}"))
+    }
+}
+
+impl From<uuid::Error> for ParagonicError {
+    fn from(err: uuid::Error) -> Self {
+        ParagonicError::Internal(format!("UUID parse error: {err}"))
+    }
+}
+
+impl From<chrono::ParseError> for ParagonicError {
+    fn from(err: chrono::ParseError) -> Self {
+        ParagonicError::Internal(format!("Chrono parse error: {err}"))
+    }
 } 

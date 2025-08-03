@@ -1007,6 +1007,61 @@ pub async fn find_similar_content(
     apply_filters_to_results(search_results, content_type, limit, threshold)
 }
 
+/// Hybrid search that combines vector similarity with text-based filtering
+/// 
+/// This function performs vector similarity search and then applies text-based
+/// filtering to improve relevance. It provides the benefits of semantic search
+/// while also considering exact text matches and content type filtering.
+pub async fn hybrid_search(
+    query: &str,
+    content_type: Option<String>,
+    limit: usize,
+    threshold: Option<f32>,
+    include_text_filtering: bool,
+) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
+    // First, perform vector similarity search
+    let vector_results = search_embeddings(query, limit * 2).await?;
+    
+    // Apply content type and threshold filters
+    let mut filtered_results = apply_filters_to_results(vector_results, content_type.clone(), limit * 2, threshold)?;
+    
+    // If text filtering is enabled, boost results that contain query terms
+    if include_text_filtering {
+        let query_terms: Vec<String> = query.split_whitespace()
+            .map(|s| s.to_lowercase())
+            .collect();
+        
+        // Sort results by a combination of similarity score and text match boost
+        filtered_results.sort_by(|a, b| {
+            let a_boost = calculate_text_match_boost(&a.embedding.content_text, &query_terms);
+            let b_boost = calculate_text_match_boost(&b.embedding.content_text, &query_terms);
+            
+            let a_score = a.similarity_score * (1.0 + a_boost);
+            let b_score = b.similarity_score * (1.0 + b_boost);
+            
+            b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+    
+    // Return only the requested number of results
+    Ok(filtered_results.into_iter().take(limit).collect())
+}
+
+/// Calculate a boost score based on text match frequency
+fn calculate_text_match_boost(content: &str, query_terms: &[String]) -> f32 {
+    let content_lower = content.to_lowercase();
+    let mut match_count = 0;
+    
+    for term in query_terms {
+        if content_lower.contains(term) {
+            match_count += 1;
+        }
+    }
+    
+    // Boost by 0.1 for each matching term, up to a maximum of 0.5
+    (match_count as f32 * 0.1).min(0.5)
+}
+
 /// Create a new agent
 /// 
 /// This function creates a new agent in the database with the given configuration.
@@ -2741,6 +2796,88 @@ mod tests {
         for embedding in stored_embeddings {
             // Note: We don't have a delete_embedding function yet, so we'll leave them
             // This is fine for testing as the database is isolated
+        }
+    }
+
+    /// Test that hybrid_search function works correctly
+    #[tokio::test]
+    async fn test_hybrid_search() {
+        // Initialize database (ignore if already initialized)
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized (e.g., port conflicts)
+            return;
+        }
+        
+        // Create test content
+        let test_content = vec![
+            ("project", "Machine learning project for image recognition"),
+            ("task", "Implement neural network architecture"),
+            ("goal", "Build AI system for autonomous driving"),
+            ("message", "Discuss the latest developments in transformer models"),
+        ];
+        
+        // Create embeddings for test content
+        let mut created_embeddings = Vec::new();
+        for (content_type, content_text) in test_content {
+            let embedding_request = crate::models::CreateEmbeddingRequest {
+                content_type: content_type.to_string(),
+                content_id: Uuid::new_v4(),
+                content_text: content_text.to_string(),
+                embedding_model: "nomic-embed-text".to_string(),
+                metadata: Some(serde_json::json!({"test": true})),
+            };
+            
+            let embedding = crate::embeddings::create_embedding(embedding_request).await.unwrap();
+            created_embeddings.push(embedding);
+        }
+        
+        // Test hybrid search with a query
+        let query = "machine learning AI";
+        let content_type_filter = Some("project".to_string());
+        let limit = 5;
+        let threshold = Some(0.3);
+        let include_text_filtering = true;
+        
+        let results = hybrid_search(query, content_type_filter, limit, threshold, include_text_filtering).await.unwrap();
+        
+        // Verify we get results
+        assert!(!results.is_empty(), "Hybrid search should return results");
+        
+        // Verify results are ordered by similarity (highest first)
+        for i in 1..results.len() {
+            assert!(
+                results[i-1].similarity_score >= results[i].similarity_score,
+                "Results should be ordered by similarity score (descending)"
+            );
+        }
+        
+        // Verify similarity scores are reasonable
+        for result in &results {
+            assert!(result.similarity_score > 0.0, "Similarity should be positive");
+            assert!(result.similarity_score <= 1.0, "Similarity should be <= 1.0");
+        }
+        
+        // Verify we can find our test content in results
+        let found_content_types: Vec<_> = results.iter()
+            .map(|r| r.embedding.content_type.as_str())
+            .collect();
+        
+        assert!(
+            found_content_types.contains(&"project") || found_content_types.contains(&"task") || found_content_types.contains(&"goal"),
+            "Should find AI-related content in hybrid search results"
+        );
+        
+        // Test with different query
+        let query2 = "neural network";
+        let results2 = hybrid_search(query2, Some("task".to_string()), 3, None, true).await.unwrap();
+        assert!(!results2.is_empty(), "Hybrid search should return results for neural network query");
+        
+        // Clean up embeddings
+        for embedding in created_embeddings {
+            // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
+            // when the test database is torn down
         }
     }
 } 
