@@ -407,12 +407,17 @@ pub fn handle_create_task(&self, params: &Option<Value>) -> Result<String, RpcEr
     
     let goal_id = params.get("goal_id")
         .and_then(|id| id.as_str())
-        .ok_or_else(|| RpcError::invalid_params(None))?;
+        .ok_or_else(|| RpcError::invalid_params(Some("Goal ID is required".to_string())))?;
     
     let name = params.get("name")
         .and_then(|n| n.as_str())
-        .ok_or_else(|| RpcError::invalid_params(None))?
+        .ok_or_else(|| RpcError::invalid_params(Some("Task name is required".to_string())))?
         .to_string();
+    
+    // Validate that name is not empty
+    if name.trim().is_empty() {
+        return Err(RpcError::invalid_params(Some("Task name cannot be empty".to_string())));
+    }
     
     let description = params.get("description")
         .and_then(|d| d.as_str())
@@ -878,7 +883,12 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         
         let name = params.get("name")
             .and_then(|n| n.as_str())
-            .ok_or_else(|| RpcError::invalid_params(None))?;
+            .ok_or_else(|| RpcError::invalid_params(Some("Agent name is required".to_string())))?;
+        
+        // Validate that name is not empty
+        if name.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Agent name cannot be empty".to_string())));
+        }
         
         let description = params.get("description")
             .and_then(|d| d.as_str())
@@ -886,7 +896,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         
         let model_name = params.get("model_name")
             .and_then(|m| m.as_str())
-            .ok_or_else(|| RpcError::invalid_params(None))?;
+            .ok_or_else(|| RpcError::invalid_params(Some("Model name is required".to_string())))?;
         
         let configuration = params.get("configuration")
             .cloned()
@@ -3839,17 +3849,34 @@ mod tests {
         let result = server.handle_create_task(&params);
         assert!(result.is_err(), "Should reject missing goal_id");
         
-        // Test invalid priority range
+        // Test missing name
         let params = Some(serde_json::json!({
             "goal_id": "456e7890-e89b-12d3-a456-426614174000",
-            "name": "Test Task",
             "description": "A test task",
-            "priority": 11  // Assuming priority should be 1-10
+            "priority": 1
         }));
         let result = server.handle_create_task(&params);
-        // This test will pass if priority validation is implemented
-        // For now, we just test that it doesn't crash
-        assert!(result.is_ok() || result.is_err(), "Should handle priority gracefully");
+        assert!(result.is_err(), "Should reject missing name");
+        
+        // Test empty name
+        let params = Some(serde_json::json!({
+            "goal_id": "456e7890-e89b-12d3-a456-426614174000",
+            "name": "",
+            "description": "A test task",
+            "priority": 1
+        }));
+        let result = server.handle_create_task(&params);
+        assert!(result.is_err(), "Should reject empty name");
+        
+        // Test invalid UUID format
+        let params = Some(serde_json::json!({
+            "goal_id": "invalid-uuid",
+            "name": "Test Task",
+            "description": "A test task",
+            "priority": 1
+        }));
+        let result = server.handle_create_task(&params);
+        assert!(result.is_err(), "Should reject invalid UUID format");
     }
 
     /// Test that handle_search_embeddings validates parameters
