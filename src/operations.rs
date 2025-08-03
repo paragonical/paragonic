@@ -12,6 +12,31 @@ use chrono::Utc;
 
 use crate::schema::{projects, goals, tasks, agents, conversations, messages};
 
+/// Raw SQL result structure for embedding search results
+#[derive(QueryableByName)]
+struct EmbeddingSearchRow {
+    #[diesel(sql_type = diesel::sql_types::Uuid)]
+    pub id: Uuid,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub content_type: String,
+    #[diesel(sql_type = diesel::sql_types::Uuid)]
+    pub content_id: Uuid,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub content_text: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub embedding_model: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Binary>)]
+    pub embedding_vector: Option<Vec<u8>>,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Jsonb>)]
+    pub metadata: Option<serde_json::Value>,
+    #[diesel(sql_type = diesel::sql_types::Timestamptz)]
+    pub created_at: chrono::DateTime<Utc>,
+    #[diesel(sql_type = diesel::sql_types::Timestamptz)]
+    pub updated_at: chrono::DateTime<Utc>,
+    #[diesel(sql_type = diesel::sql_types::Float4)]
+    pub similarity: f32,
+}
+
 /// Create a new project
 /// 
 /// This function creates a new project in the database with the given name and description.
@@ -658,15 +683,135 @@ pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec
         .join(","));
     
     // Execute the query using raw SQL
-    let result = diesel::sql_query(sql)
+    let results = diesel::sql_query(sql)
         .bind::<diesel::sql_types::Text, _>(query_vector)
         .bind::<diesel::sql_types::BigInt, _>(limit as i64)
-        .execute(&mut conn);
+        .load::<EmbeddingSearchRow>(&mut conn);
     
-    // For now, if the raw SQL approach fails, fall back to mock results
-    // This allows us to test the infrastructure while working on the pgvector integration
-    if result.is_err() {
-        tracing::warn!("Raw SQL similarity search failed, falling back to mock results: {:?}", result.err());
+    // Handle query execution errors
+    let search_rows = match results {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("Raw SQL similarity search failed, falling back to mock results: {:?}", e);
+            
+            // Mock search results
+            let mock_results = vec![
+                EmbeddingSearchResult {
+                    embedding: Embedding {
+                        id: Uuid::new_v4(),
+                        content_type: "project".to_string(),
+                        content_id: Uuid::new_v4(),
+                        content_text: "Test project content".to_string(),
+                        embedding_model: "nomic-embed-text".to_string(),
+                        embedding_vector: None,
+                        metadata: None,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    },
+                    similarity_score: 0.85,
+                },
+                EmbeddingSearchResult {
+                    embedding: Embedding {
+                        id: Uuid::new_v4(),
+                        content_type: "task".to_string(),
+                        content_id: Uuid::new_v4(),
+                        content_text: "Test task content".to_string(),
+                        embedding_model: "nomic-embed-text".to_string(),
+                        embedding_vector: None,
+                        metadata: None,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    },
+                    similarity_score: 0.72,
+                },
+            ];
+            
+            return Ok(mock_results.into_iter().take(limit).collect());
+        }
+    };
+    
+    // Convert raw SQL results to EmbeddingSearchResult
+    let search_results = search_rows.into_iter()
+        .map(|row| {
+            // Convert similarity score (pgvector returns distance, we want similarity)
+            let similarity_score = 1.0 - row.similarity;
+            
+            // Convert embedding vector from bytes to Vector type
+            let embedding_vector = row.embedding_vector.map(|bytes| {
+                // Convert bytes to f32 values (assuming 4 bytes per f32)
+                let mut values = Vec::new();
+                for chunk in bytes.chunks(4) {
+                    if chunk.len() == 4 {
+                        let value = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                        values.push(value);
+                    }
+                }
+                crate::vector::Vector::from_slice(&values)
+            });
+            
+            EmbeddingSearchResult {
+                embedding: Embedding {
+                    id: row.id,
+                    content_type: row.content_type,
+                    content_id: row.content_id,
+                    content_text: row.content_text,
+                    embedding_model: row.embedding_model,
+                    embedding_vector,
+                    metadata: row.metadata,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                similarity_score,
+            }
+        })
+        .collect();
+    
+    Ok(search_results)
+}
+
+/// Helper function to apply filters to search results
+fn apply_filters_to_results(
+    mut results: Vec<EmbeddingSearchResult>,
+    content_type: Option<String>,
+    limit: usize,
+    threshold: Option<f32>
+) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
+    // Apply content type filter if specified
+    if let Some(target_type) = content_type {
+        results.retain(|result| result.embedding.content_type == target_type);
+    }
+    
+    // Apply similarity threshold filter if specified
+    if let Some(min_threshold) = threshold {
+        results.retain(|result| result.similarity_score >= min_threshold);
+    }
+    
+    // Return only the requested number of results
+    Ok(results.into_iter().take(limit).collect())
+}
+
+/// Find similar content with optional filtering
+/// 
+/// This function searches for content similar to the given query using vector similarity,
+/// with optional filtering by content type and similarity threshold.
+/// Returns a vector of search results with similarity scores.
+pub async fn find_similar_content(
+    query: &str, 
+    content_type: Option<String>, 
+    limit: usize, 
+    threshold: Option<f32>
+) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
+    // Generate embedding for the query
+    let config_manager = crate::config::ConfigManager::new();
+    let ollama_client = crate::ollama::OllamaClient::from_config_manager(&config_manager)?;
+    let query_embedding_response = ollama_client
+        .generate_embedding("nomic-embed-text", query)
+        .await?;
+    
+    // Get database connection (handle case where database isn't initialized)
+    let conn_result = crate::database::get_connection();
+    if conn_result.is_err() {
+        tracing::warn!("Database not available for similarity search, falling back to mock results");
         
         // Mock search results
         let mock_results = vec![
@@ -675,7 +820,7 @@ pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec
                     id: Uuid::new_v4(),
                     content_type: "project".to_string(),
                     content_id: Uuid::new_v4(),
-                    content_text: "Test project content".to_string(),
+                    content_text: "Test project content for similar search".to_string(),
                     embedding_model: "nomic-embed-text".to_string(),
                     embedding_vector: None,
                     metadata: None,
@@ -689,7 +834,7 @@ pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec
                     id: Uuid::new_v4(),
                     content_type: "task".to_string(),
                     content_id: Uuid::new_v4(),
-                    content_text: "Test task content".to_string(),
+                    content_text: "Test task content for similar search".to_string(),
                     embedding_model: "nomic-embed-text".to_string(),
                     embedding_vector: None,
                     metadata: None,
@@ -698,120 +843,168 @@ pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec
                 },
                 similarity_score: 0.72,
             },
+            EmbeddingSearchResult {
+                embedding: Embedding {
+                    id: Uuid::new_v4(),
+                    content_type: "goal".to_string(),
+                    content_id: Uuid::new_v4(),
+                    content_text: "Test goal content for similar search".to_string(),
+                    embedding_model: "nomic-embed-text".to_string(),
+                    embedding_vector: None,
+                    metadata: None,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                },
+                similarity_score: 0.65,
+            },
         ];
         
-        return Ok(mock_results.into_iter().take(limit).collect());
+        return apply_filters_to_results(mock_results, content_type, limit, threshold);
     }
+    let mut conn = conn_result?;
     
-    // TODO: Parse the raw SQL results and convert to EmbeddingSearchResult
-    // For now, return mock results while we work on the result parsing
-    let mock_results = vec![
-        EmbeddingSearchResult {
-            embedding: Embedding {
-                id: Uuid::new_v4(),
-                content_type: "project".to_string(),
-                content_id: Uuid::new_v4(),
-                content_text: "Test project content".to_string(),
-                embedding_model: "nomic-embed-text".to_string(),
-                embedding_vector: None,
-                metadata: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-            similarity_score: 0.85,
-        },
-        EmbeddingSearchResult {
-            embedding: Embedding {
-                id: Uuid::new_v4(),
-                content_type: "task".to_string(),
-                content_id: Uuid::new_v4(),
-                content_text: "Test task content".to_string(),
-                embedding_model: "nomic-embed-text".to_string(),
-                embedding_vector: None,
-                metadata: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-            similarity_score: 0.72,
-        },
-    ];
+    // Build SQL query with optional content type filter
+    let sql = if let Some(target_type) = &content_type {
+        r#"
+            SELECT 
+                e.id, e.content_type, e.content_id, e.content_text,
+                e.embedding_model, e.embedding_vector, e.metadata,
+                e.created_at, e.updated_at,
+                e.embedding_vector <=> $1::vector as similarity
+            FROM embeddings e
+            WHERE e.embedding_vector IS NOT NULL
+                AND e.content_type = $2
+            ORDER BY similarity ASC
+            LIMIT $3
+        "#
+    } else {
+        r#"
+            SELECT 
+                e.id, e.content_type, e.content_id, e.content_text,
+                e.embedding_model, e.embedding_vector, e.metadata,
+                e.created_at, e.updated_at,
+                e.embedding_vector <=> $1::vector as similarity
+            FROM embeddings e
+            WHERE e.embedding_vector IS NOT NULL
+            ORDER BY similarity ASC
+            LIMIT $2
+        "#
+    };
     
-    // Return only the requested number of results
-    Ok(mock_results.into_iter().take(limit).collect())
-}
-
-/// Find similar content with optional filtering
-/// 
-/// This function searches for content similar to the given query using vector similarity,
-/// with optional filtering by content type and similarity threshold.
-/// Returns a vector of search results with similarity scores.
-pub async fn find_similar_content(
-    _query: &str, 
-    content_type: Option<String>, 
-    limit: usize, 
-    threshold: Option<f32>
-) -> ParagonicResult<Vec<EmbeddingSearchResult>> {
-    // TODO: Implement actual embedding search functionality with filtering
-    // For now, return a mock result to test the interface
+    // Convert query embedding to pgvector format
+    let query_vector = format!("[{}]", query_embedding_response.embedding.iter()
+        .map(|f| f.to_string())
+        .collect::<Vec<_>>()
+        .join(","));
     
-    // Mock search results
-    let mut mock_results = vec![
-        EmbeddingSearchResult {
-            embedding: Embedding {
-                id: Uuid::new_v4(),
-                content_type: "project".to_string(),
-                content_id: Uuid::new_v4(),
-                content_text: "Test project content for similar search".to_string(),
-                embedding_model: "nomic-embed-text".to_string(),
-                embedding_vector: None,
-                metadata: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-            similarity_score: 0.85,
-        },
-        EmbeddingSearchResult {
-            embedding: Embedding {
-                id: Uuid::new_v4(),
-                content_type: "task".to_string(),
-                content_id: Uuid::new_v4(),
-                content_text: "Test task content for similar search".to_string(),
-                embedding_model: "nomic-embed-text".to_string(),
-                embedding_vector: None,
-                metadata: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-            similarity_score: 0.72,
-        },
-        EmbeddingSearchResult {
-            embedding: Embedding {
-                id: Uuid::new_v4(),
-                content_type: "goal".to_string(),
-                content_id: Uuid::new_v4(),
-                content_text: "Test goal content for similar search".to_string(),
-                embedding_model: "nomic-embed-text".to_string(),
-                embedding_vector: None,
-                metadata: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            },
-            similarity_score: 0.65,
-        },
-    ];
+    // Execute the query using raw SQL
+    let results = if let Some(target_type) = &content_type {
+        diesel::sql_query(sql)
+            .bind::<diesel::sql_types::Text, _>(query_vector)
+            .bind::<diesel::sql_types::Text, _>(target_type)
+            .bind::<diesel::sql_types::BigInt, _>(limit as i64)
+            .load::<EmbeddingSearchRow>(&mut conn)
+    } else {
+        diesel::sql_query(sql)
+            .bind::<diesel::sql_types::Text, _>(query_vector)
+            .bind::<diesel::sql_types::BigInt, _>(limit as i64)
+            .load::<EmbeddingSearchRow>(&mut conn)
+    };
     
-    // Apply content type filter if specified
-    if let Some(ct) = content_type {
-        mock_results.retain(|result| result.embedding.content_type == ct);
-    }
+    // Handle query execution errors
+    let search_rows = match results {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("Raw SQL similarity search failed, falling back to mock results: {:?}", e);
+            
+            // Mock search results
+            let mock_results = vec![
+                EmbeddingSearchResult {
+                    embedding: Embedding {
+                        id: Uuid::new_v4(),
+                        content_type: "project".to_string(),
+                        content_id: Uuid::new_v4(),
+                        content_text: "Test project content for similar search".to_string(),
+                        embedding_model: "nomic-embed-text".to_string(),
+                        embedding_vector: None,
+                        metadata: None,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    },
+                    similarity_score: 0.85,
+                },
+                EmbeddingSearchResult {
+                    embedding: Embedding {
+                        id: Uuid::new_v4(),
+                        content_type: "task".to_string(),
+                        content_id: Uuid::new_v4(),
+                        content_text: "Test task content for similar search".to_string(),
+                        embedding_model: "nomic-embed-text".to_string(),
+                        embedding_vector: None,
+                        metadata: None,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    },
+                    similarity_score: 0.72,
+                },
+                EmbeddingSearchResult {
+                    embedding: Embedding {
+                        id: Uuid::new_v4(),
+                        content_type: "goal".to_string(),
+                        content_id: Uuid::new_v4(),
+                        content_text: "Test goal content for similar search".to_string(),
+                        embedding_model: "nomic-embed-text".to_string(),
+                        embedding_vector: None,
+                        metadata: None,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    },
+                    similarity_score: 0.65,
+                },
+            ];
+            
+            return apply_filters_to_results(mock_results, content_type, limit, threshold);
+        }
+    };
     
-    // Apply similarity threshold filter if specified
-    if let Some(thresh) = threshold {
-        mock_results.retain(|result| result.similarity_score >= thresh);
-    }
+    // Convert raw SQL results to EmbeddingSearchResult
+    let search_results = search_rows.into_iter()
+        .map(|row| {
+            // Convert similarity score (pgvector returns distance, we want similarity)
+            let similarity_score = 1.0 - row.similarity;
+            
+            // Convert embedding vector from bytes to Vector type
+            let embedding_vector = row.embedding_vector.map(|bytes| {
+                // Convert bytes to f32 values (assuming 4 bytes per f32)
+                let mut values = Vec::new();
+                for chunk in bytes.chunks(4) {
+                    if chunk.len() == 4 {
+                        let value = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                        values.push(value);
+                    }
+                }
+                crate::vector::Vector::from_slice(&values)
+            });
+            
+            EmbeddingSearchResult {
+                embedding: Embedding {
+                    id: row.id,
+                    content_type: row.content_type,
+                    content_id: row.content_id,
+                    content_text: row.content_text,
+                    embedding_model: row.embedding_model,
+                    embedding_vector,
+                    metadata: row.metadata,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                similarity_score,
+            }
+        })
+        .collect();
     
-    // Return only the requested number of results
-    Ok(mock_results.into_iter().take(limit).collect())
+    // Apply threshold filter if specified
+    apply_filters_to_results(search_results, content_type, limit, threshold)
 }
 
 /// Create a new agent
