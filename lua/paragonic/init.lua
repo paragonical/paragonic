@@ -1995,4 +1995,113 @@ function M.agent_create_file_with_template(template_name, file_name)
     return M.agent_create_file({file_name, content})
 end
 
+-- Save current file or specified file
+function M.agent_save_file(args)
+    local file_path = args[1]
+    local force = args[2] == "true"
+    
+    local target_buffer = nil
+    
+    if file_path and file_path ~= "" then
+        -- Find buffer by file path
+        local buffers = vim.api.nvim_list_bufs()
+        for _, buf in ipairs(buffers) do
+            local buf_name = vim.api.nvim_buf_get_name(buf)
+            if buf_name == file_path then
+                target_buffer = buf
+                break
+            end
+        end
+        
+        if not target_buffer then
+            vim.notify("File not found in session: " .. file_path, vim.log.levels.WARN)
+            return false
+        end
+    else
+        -- Use current buffer
+        target_buffer = vim.api.nvim_get_current_buf()
+        file_path = vim.api.nvim_buf_get_name(target_buffer)
+    end
+    
+    -- Check if buffer is modified
+    local modified = vim.api.nvim_buf_get_option(target_buffer, "modified")
+    if not modified and not force then
+        vim.notify("File is not modified: " .. file_path, vim.log.levels.INFO)
+        return true
+    end
+    
+    -- Get buffer content
+    local lines = vim.api.nvim_buf_get_lines(target_buffer, 0, -1, false)
+    
+    -- Ensure directory exists
+    local dir_path = vim.fn.fnamemodify(file_path, ":h")
+    if dir_path ~= "." and vim.fn.isdirectory(dir_path) == 0 then
+        vim.fn.mkdir(dir_path, "p")
+    end
+    
+    -- Write file
+    local result = vim.fn.writefile(lines, file_path)
+    if result == 0 then
+        -- Mark buffer as not modified
+        vim.api.nvim_buf_call(target_buffer, function()
+            vim.cmd("set nomodified")
+        end)
+        vim.notify("Saved file: " .. file_path, vim.log.levels.INFO)
+        return true
+    else
+        vim.notify("Failed to save file: " .. file_path, vim.log.levels.ERROR)
+        return false
+    end
+end
+
+-- Save all modified files
+function M.agent_save_all_files()
+    local buffers = vim.api.nvim_list_bufs()
+    local saved_count = 0
+    local failed_count = 0
+    
+    for _, buf in ipairs(buffers) do
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        local modified = vim.api.nvim_buf_get_option(buf, "modified")
+        
+        if buf_name ~= "" and modified then
+            local success = M.agent_save_file({buf_name})
+            if success then
+                saved_count = saved_count + 1
+            else
+                failed_count = failed_count + 1
+            end
+        end
+    end
+    
+    if saved_count > 0 then
+        vim.notify("Saved " .. saved_count .. " files", vim.log.levels.INFO)
+    end
+    if failed_count > 0 then
+        vim.notify("Failed to save " .. failed_count .. " files", vim.log.levels.WARN)
+    end
+    
+    return saved_count, failed_count
+end
+
+-- Save file with backup
+function M.agent_save_with_backup(args)
+    local file_path = args[1]
+    local create_backup = args[2] == "true"
+    
+    if create_backup and file_path then
+        local backup_path = file_path .. ".backup"
+        local success = M.agent_save_file({file_path})
+        if success then
+            -- Create backup by copying the file
+            local lines = vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false)
+            vim.fn.writefile(lines, backup_path)
+            vim.notify("Created backup: " .. backup_path, vim.log.levels.INFO)
+        end
+        return success
+    else
+        return M.agent_save_file(args)
+    end
+end
+
 return M 
