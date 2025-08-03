@@ -1798,4 +1798,104 @@ function M.get_agent_session_info()
     return session_info
 end
 
+-- Edit a file in the current session
+function M.agent_edit_file(args)
+    local file_path = args[1]
+    local line_number = tonumber(args[2]) or 1
+    local content = args[3] or ""
+    
+    if not file_path or file_path == "" then
+        vim.notify("File path is required", vim.log.levels.WARN)
+        return false
+    end
+    
+    -- Find buffer by file path
+    local target_buffer = nil
+    local buffers = vim.api.nvim_list_bufs()
+    
+    for _, buf in ipairs(buffers) do
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        if buf_name == file_path then
+            target_buffer = buf
+            break
+        end
+    end
+    
+    if not target_buffer then
+        vim.notify("File not found in current session: " .. file_path, vim.log.levels.WARN)
+        return false
+    end
+    
+    -- Check if buffer is modifiable
+    local modifiable = vim.api.nvim_buf_get_option(target_buffer, "modifiable")
+    if not modifiable then
+        vim.notify("File is not modifiable: " .. file_path, vim.log.levels.WARN)
+        return false
+    end
+    
+    -- Switch to the target buffer
+    vim.api.nvim_set_current_buf(target_buffer)
+    
+    -- Get current content
+    local current_lines = vim.api.nvim_buf_get_lines(target_buffer, 0, -1, false)
+    
+    -- Prepare new content
+    local new_lines = {}
+    if content ~= "" then
+        -- If content provided, replace the specified line
+        for i, line in ipairs(current_lines) do
+            if i == line_number then
+                table.insert(new_lines, content)
+            else
+                table.insert(new_lines, line)
+            end
+        end
+    else
+        -- If no content, just use current lines (for viewing)
+        new_lines = current_lines
+    end
+    
+    -- Update the buffer
+    if content ~= "" then
+        vim.api.nvim_buf_set_lines(target_buffer, 0, -1, false, new_lines)
+        vim.notify("Edited file: " .. file_path .. " at line " .. line_number, vim.log.levels.INFO)
+    else
+        vim.notify("Switched to file: " .. file_path, vim.log.levels.INFO)
+    end
+    
+    return true
+end
+
+-- Get file content from current session
+function M.agent_get_file_content(file_path)
+    if not file_path or file_path == "" then
+        return nil, "File path is required"
+    end
+    
+    -- Find buffer by file path
+    local target_buffer = nil
+    local buffers = vim.api.nvim_list_bufs()
+    
+    for _, buf in ipairs(buffers) do
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        if buf_name == file_path then
+            target_buffer = buf
+            break
+        end
+    end
+    
+    if not target_buffer then
+        return nil, "File not found in current session: " .. file_path
+    end
+    
+    -- Get file content
+    local lines = vim.api.nvim_buf_get_lines(target_buffer, 0, -1, false)
+    return {
+        file_path = file_path,
+        buffer_id = target_buffer,
+        line_count = #lines,
+        content = lines
+    }
+end
+
 return M 

@@ -54,6 +54,9 @@ test-lua-agent:
 	@echo "Testing agent session info..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_agent_session_info.lua
 	@echo ""
+	@echo "Testing agent file edit..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_agent_file_edit.lua
+	@echo ""
 	@echo "✓ Agent tests completed"
 
 # RPC-specific tests (standalone RPC client only)
