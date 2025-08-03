@@ -1649,6 +1649,36 @@ mod tests {
         assert!(get_result.is_err(), "Task should no longer exist");
     }
     
+    /// Test that search_embeddings function works correctly with mock data
+    #[tokio::test]
+    async fn test_search_embeddings_mock() {
+        // Test search with a query - should return mock results for now
+        let query = "machine learning AI";
+        let results = search_embeddings(query, 10).await.unwrap();
+        
+        // Verify we get results (mock results for now)
+        assert!(!results.is_empty(), "Search should return results for AI-related query");
+        
+        // Verify results are ordered by similarity (highest first)
+        for i in 1..results.len() {
+            assert!(
+                results[i-1].similarity_score >= results[i].similarity_score,
+                "Results should be ordered by similarity score (descending)"
+            );
+        }
+        
+        // Verify similarity scores are reasonable
+        for result in &results {
+            assert!(result.similarity_score > 0.0, "Similarity should be positive");
+            assert!(result.similarity_score <= 1.0, "Similarity should be <= 1.0");
+        }
+        
+        // Test with different query
+        let query2 = "neural network";
+        let results2 = search_embeddings(query2, 5).await.unwrap();
+        assert!(!results2.is_empty(), "Search should return results for neural network query");
+    }
+
     /// Test that search_embeddings function works correctly with actual embeddings
     #[tokio::test]
     async fn test_search_embeddings_with_real_embeddings() {
