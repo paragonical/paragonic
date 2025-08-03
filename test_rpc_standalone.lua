@@ -52,6 +52,10 @@ local function run_tests()
     -- Test 3: Hello method call
     run_test("Hello method call", function()
         local rpc_client = require('paragonic.rpc_standalone').new("127.0.0.1:2346")
+        -- Connect first
+        local connect_success = rpc_client:connect()
+        assert(connect_success == true, "Connect should succeed")
+        -- Then call hello
         local response = rpc_client:hello()
         assert(response == "world", "Hello should return 'world'")
         return true
