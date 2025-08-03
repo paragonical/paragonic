@@ -74,6 +74,11 @@ function M.setup(opts)
         local tools = M.list_mcp_tools()
         M.display_mcp_tools(tools)
     end, {})
+    vim.api.nvim_create_user_command("ParagonicMCPReadResource", function(args)
+        local uri = args[1] or "neovim://session"
+        local result = M.read_mcp_resource(uri)
+        M.display_resource_content(uri, result)
+    end, {nargs = "?"})
     
     -- Initialize backend
     M._initialize_backend()
@@ -2246,6 +2251,8 @@ function M.handle_mcp_message(message)
         }
     elseif method == "tools/call" then
         return M.handle_tool_call(id, params)
+    elseif method == "resources/read" then
+        return M.handle_resource_read(id, params)
     else
         return {
             id = id,
@@ -2255,6 +2262,101 @@ function M.handle_mcp_message(message)
             }
         }
     end
+end
+
+-- Handle MCP resource reading
+function M.handle_resource_read(id, params)
+    local uri = params.uri
+    if not uri then
+        return {
+            id = id,
+            error = {
+                code = -32602,
+                message = "URI is required for resources/read"
+            }
+        }
+    end
+    
+    local result = M.read_mcp_resource(uri)
+    if result.error then
+        return {
+            id = id,
+            error = result.error
+        }
+    else
+        return {
+            id = id,
+            result = result
+        }
+    end
+end
+
+-- Read MCP resource content
+function M.read_mcp_resource(uri)
+    if uri == "neovim://session" then
+        local session_info = M.get_agent_session_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(session_info)
+                }
+            }
+        }
+    elseif uri == "neovim://buffers" then
+        local session_info = M.get_agent_session_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(session_info.buffers)
+                }
+            }
+        }
+    elseif uri == "neovim://windows" then
+        local session_info = M.get_agent_session_info()
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(session_info.windows)
+                }
+            }
+        }
+    else
+        return {
+            error = {
+                code = -32602,
+                message = "Resource not found: " .. uri
+            }
+        }
+    end
+end
+
+-- Validate resource content
+function M.validate_resource_content(content)
+    if not content.uri then
+        return false, "Missing URI"
+    end
+    if not content.mime_type then
+        return false, "Missing MIME type"
+    end
+    if not content.text then
+        return false, "Missing text content"
+    end
+    
+    -- Validate JSON for JSON MIME types
+    if content.mime_type == "application/json" then
+        local success, _ = pcall(vim.json.decode, content.text)
+        if not success then
+            return false, "Invalid JSON content"
+        end
+    end
+    
+    return true, nil
 end
 
 -- Handle MCP tool calls
@@ -2410,6 +2512,83 @@ function M.display_mcp_tools(tools)
     vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
     
     vim.notify("Displayed " .. #tools .. " MCP tools", vim.log.levels.INFO)
+end
+
+-- Display MCP resource content in a floating window
+function M.display_resource_content(uri, result)
+    local lines = {
+        "📄 MCP Resource Content: " .. uri,
+        string.rep("─", 50),
+        ""
+    }
+    
+    if result.error then
+        table.insert(lines, "❌ Error: " .. result.error.message)
+        table.insert(lines, "Code: " .. result.error.code)
+    elseif result.contents then
+        for i, content in ipairs(result.contents) do
+            table.insert(lines, string.format("Content %d:", i))
+            table.insert(lines, "  URI: " .. content.uri)
+            table.insert(lines, "  MIME Type: " .. content.mime_type)
+            table.insert(lines, "  Content:")
+            
+            -- Format JSON content for display
+            if content.mime_type == "application/json" then
+                local success, decoded = pcall(vim.json.decode, content.text)
+                if success then
+                    local formatted = vim.json.encode(decoded, {indent = 2})
+                    for line in formatted:gmatch("[^\r\n]+") do
+                        table.insert(lines, "    " .. line)
+                    end
+                else
+                    table.insert(lines, "    [Invalid JSON]")
+                end
+            else
+                -- For non-JSON content, show first few lines
+                local content_lines = {}
+                for line in content.text:gmatch("[^\r\n]+") do
+                    table.insert(content_lines, line)
+                    if #content_lines >= 10 then
+                        table.insert(content_lines, "...")
+                        break
+                    end
+                end
+                for _, line in ipairs(content_lines) do
+                    table.insert(lines, "    " .. line)
+                end
+            end
+            table.insert(lines, "")
+        end
+    else
+        table.insert(lines, "No content available")
+    end
+    
+    -- Create floating window
+    local width = 100
+    local height = math.min(#lines + 2, 25)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "json")
+    
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "single"
+    })
+    
+    -- Set up keymaps
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    
+    vim.notify("Displayed resource content for: " .. uri, vim.log.levels.INFO)
 end
 
 return M 
