@@ -8,7 +8,7 @@ use tantivy::{
     doc,
     query::QueryParser,
     schema::{Field, IndexRecordOption, Schema, SchemaBuilder, TextFieldIndexing, TextOptions, STORED, STRING},
-    Index, IndexReader, IndexWriter, Term,
+    Index, IndexReader, IndexWriter, Term, Document,
 };
 use std::path::Path;
 use std::sync::Arc;

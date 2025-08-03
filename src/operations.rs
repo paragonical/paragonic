@@ -1049,9 +1049,9 @@ pub async fn create_agent(request: CreateAgentRequest) -> ParagonicResult<Agent>
         name: request.name,
         description: request.description,
         model_name: request.model_name,
-        configuration: request.configuration,
-        created_at: now,
-        updated_at: now,
+        configuration: Some(request.configuration),
+        created_at: Some(now),
+        updated_at: Some(now),
     };
     
     diesel::insert_into(agents::table)
@@ -1269,6 +1269,33 @@ pub async fn list_messages(conversation_id: Uuid) -> ParagonicResult<Vec<Message
             tracing::error!("Failed to list messages for conversation {}: {}", conversation_id, e);
             ParagonicError::Database(format!("Failed to list messages: {e}"))
         })
+}
+
+/// Get an agent by ID
+/// 
+/// This function retrieves an agent from the database by its ID.
+/// Returns the agent if found, or an error if not found or database error occurs.
+pub async fn get_agent(agent_id: Uuid) -> ParagonicResult<Agent> {
+    use crate::schema::agents;
+    use diesel::prelude::*;
+    
+    let pool = crate::database::get_pool()?;
+    let mut conn = pool.get()?;
+    
+    let agent = agents::table
+        .filter(agents::id.eq(agent_id))
+        .first::<Agent>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get agent {}: {}", agent_id, e);
+            match e {
+                diesel::result::Error::NotFound => {
+                    ParagonicError::NotFound(format!("Agent with ID {} not found", agent_id))
+                }
+                _ => ParagonicError::Database(format!("Failed to get agent: {e}"))
+            }
+        })?;
+    
+    Ok(agent)
 }
 
 #[cfg(test)]
@@ -2862,5 +2889,45 @@ mod tests {
             // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
             // when the test database is torn down
         }
+    }
+
+    /// Test getting an agent by ID
+    /// 
+    /// This function retrieves an agent from the database by its ID.
+    /// Returns the agent if found, or an error if not found or database error occurs.
+    #[tokio::test]
+    async fn test_get_agent() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for retrieval".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        let agent_id = agent.id;
+        
+        // Now get the agent by ID
+        let result = get_agent(agent_id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "get_agent should succeed");
+        let retrieved_agent = result.unwrap();
+        assert_eq!(retrieved_agent.id, agent_id);
+        assert_eq!(retrieved_agent.name, "Test Agent");
+        assert_eq!(retrieved_agent.description, Some("A test agent for retrieval".to_string()));
+        assert_eq!(retrieved_agent.model_name, "llama3.2:3b");
+        assert!(retrieved_agent.configuration.as_ref().unwrap().is_object());
+        
+        // Clean up
+        delete_agent(agent_id).await.unwrap();
     }
 } 

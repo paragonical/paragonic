@@ -79,9 +79,9 @@ pub struct Agent {
     pub name: String,
     pub description: Option<String>,
     pub model_name: String,
-    pub configuration: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub configuration: Option<serde_json::Value>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// Conversation model representing chat sessions
