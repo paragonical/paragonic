@@ -714,7 +714,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
     /// Handle search embeddings requests
     /// 
     /// This function searches for embeddings similar to the given query.
-    /// For now, returns a mock response to test the RPC infrastructure.
+    /// Returns search results with similarity scores.
     pub fn handle_search_embeddings(&self, params: &Option<Value>) -> Result<String, RpcError> {
         let params = params.as_ref()
             .and_then(|p| p.as_object())
@@ -728,53 +728,46 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .and_then(|l| l.as_u64())
             .unwrap_or(10) as usize;
         
-        // For now, return a mock response to test the RPC infrastructure
-        // TODO: Implement actual database call when async RPC is supported
-        let mock_results = vec![
-            serde_json::json!({
-                "embedding": {
-                    "id": "123e4567-e89b-12d3-a456-426614174000",
-                    "content_type": "project",
-                    "content_id": "456e7890-e89b-12d3-a456-426614174000",
-                    "content_text": "Test project content for search",
-                    "embedding_model": "nomic-embed-text",
-                    "embedding_vector": null,
-                    "metadata": null,
-                    "created_at": "2025-08-02T20:00:00Z",
-                    "updated_at": "2025-08-02T20:00:00Z"
-                },
-                "similarity_score": 0.85
-            }),
-            serde_json::json!({
-                "embedding": {
-                    "id": "789e0123-e89b-12d3-a456-426614174000",
-                    "content_type": "task",
-                    "content_id": "012e3456-e89b-12d3-a456-426614174000",
-                    "content_text": "Test task content for search",
-                    "embedding_model": "nomic-embed-text",
-                    "embedding_vector": null,
-                    "metadata": null,
-                    "created_at": "2025-08-02T20:00:00Z",
-                    "updated_at": "2025-08-02T20:00:00Z"
-                },
-                "similarity_score": 0.72
-            }),
-        ];
+        // Use real search functionality
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::operations::search_embeddings(query, limit).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::operations::search_embeddings(query, limit).await
+                })
+        };
         
-        let response = serde_json::json!({
-            "results": mock_results.into_iter().take(limit).collect::<Vec<_>>(),
-            "query": query,
-            "limit": limit
-        });
-        
-        serde_json::to_string(&response)
-            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+        match response {
+            Ok(search_results) => {
+                let response = serde_json::json!({
+                    "results": search_results,
+                    "query": query,
+                    "limit": limit
+                });
+                
+                serde_json::to_string(&response)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                error!("Search embeddings failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Search failed: {}", e))))
+            }
+        }
     }
     
     /// Handle find similar content requests
     /// 
     /// This function searches for content similar to the given query with optional filtering.
-    /// For now, returns a mock response to test the RPC infrastructure.
+    /// Returns search results with similarity scores and filtering applied.
     pub fn handle_find_similar_content(&self, params: &Option<Value>) -> Result<String, RpcError> {
         let params = params.as_ref()
             .and_then(|p| p.as_object())
@@ -796,84 +789,45 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .and_then(|t| t.as_f64())
             .map(|t| t as f32);
         
-        // For now, return a mock response to test the RPC infrastructure
-        // TODO: Implement actual database call when async RPC is supported
-        let mut mock_results = vec![
-            serde_json::json!({
-                "embedding": {
-                    "id": "123e4567-e89b-12d3-a456-426614174000",
-                    "content_type": "project",
-                    "content_id": "456e7890-e89b-12d3-a456-426614174000",
-                    "content_text": "Test project content for similar search",
-                    "embedding_model": "nomic-embed-text",
-                    "embedding_vector": null,
-                    "metadata": null,
-                    "created_at": "2025-08-02T20:00:00Z",
-                    "updated_at": "2025-08-02T20:00:00Z"
-                },
-                "similarity_score": 0.85
-            }),
-            serde_json::json!({
-                "embedding": {
-                    "id": "789e0123-e89b-12d3-a456-426614174000",
-                    "content_type": "task",
-                    "content_id": "012e3456-e89b-12d3-a456-426614174000",
-                    "content_text": "Test task content for similar search",
-                    "embedding_model": "nomic-embed-text",
-                    "embedding_vector": null,
-                    "metadata": null,
-                    "created_at": "2025-08-02T20:00:00Z",
-                    "updated_at": "2025-08-02T20:00:00Z"
-                },
-                "similarity_score": 0.72
-            }),
-            serde_json::json!({
-                "embedding": {
-                    "id": "345e6789-e89b-12d3-a456-426614174000",
-                    "content_type": "goal",
-                    "content_id": "678e9012-e89b-12d3-a456-426614174000",
-                    "content_text": "Test goal content for similar search",
-                    "embedding_model": "nomic-embed-text",
-                    "embedding_vector": null,
-                    "metadata": null,
-                    "created_at": "2025-08-02T20:00:00Z",
-                    "updated_at": "2025-08-02T20:00:00Z"
-                },
-                "similarity_score": 0.65
-            }),
-        ];
+        // Clone content_type for use in response
+        let content_type_for_response = content_type.clone();
         
-        // Apply content type filter if specified
-        if let Some(ct) = &content_type {
-            mock_results.retain(|result| {
-                result.get("embedding")
-                    .and_then(|e| e.get("content_type"))
-                    .and_then(|ct_field| ct_field.as_str())
-                    .map(|result_ct| result_ct == ct)
-                    .unwrap_or(false)
-            });
+        // Use real search functionality
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::operations::find_similar_content(query, content_type, limit, threshold).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::operations::find_similar_content(query, content_type, limit, threshold).await
+                })
+        };
+        
+        match response {
+            Ok(search_results) => {
+                let response = serde_json::json!({
+                    "results": search_results,
+                    "query": query,
+                    "content_type": content_type_for_response,
+                    "limit": limit,
+                    "threshold": threshold
+                });
+                
+                serde_json::to_string(&response)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                error!("Find similar content failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Search failed: {}", e))))
+            }
         }
-        
-        // Apply similarity threshold filter if specified
-        if let Some(thresh) = threshold {
-            mock_results.retain(|result| {
-                result.get("similarity_score")
-                    .and_then(|s| s.as_f64())
-                    .map(|score| score >= thresh as f64)
-                    .unwrap_or(false)
-            });
-        }
-        
-        let response = serde_json::json!({
-            "results": mock_results.into_iter().take(limit).collect::<Vec<_>>(),
-            "query": query,
-            "content_type": content_type,
-            "limit": limit,
-            "threshold": threshold
-        });
-        
-        serde_json::to_string(&response)
-            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
     
     /// Handle create agent requests
@@ -996,6 +950,77 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         serde_json::to_string(&mock_response)
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
+    
+    /// Handle hybrid search requests
+    /// 
+    /// This function performs hybrid search combining vector similarity with text-based filtering.
+    /// Returns search results with intelligent ranking based on both semantic and text relevance.
+    pub fn handle_hybrid_search(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let query = params.get("query")
+            .and_then(|q| q.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let content_type = params.get("content_type")
+            .and_then(|ct| ct.as_str())
+            .map(|ct| ct.to_string());
+        
+        let limit = params.get("limit")
+            .and_then(|l| l.as_u64())
+            .unwrap_or(10) as usize;
+        
+        let threshold = params.get("threshold")
+            .and_then(|t| t.as_f64())
+            .map(|t| t as f32);
+        
+        let include_text_filtering = params.get("include_text_filtering")
+            .and_then(|tf| tf.as_bool())
+            .unwrap_or(true);
+        
+        // Clone content_type for use in response
+        let content_type_for_response = content_type.clone();
+        
+        // Use real hybrid search functionality
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::operations::hybrid_search(query, content_type, limit, threshold, include_text_filtering).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::operations::hybrid_search(query, content_type, limit, threshold, include_text_filtering).await
+                })
+        };
+        
+        match response {
+            Ok(search_results) => {
+                let response = serde_json::json!({
+                    "results": search_results,
+                    "query": query,
+                    "content_type": content_type_for_response,
+                    "limit": limit,
+                    "threshold": threshold,
+                    "include_text_filtering": include_text_filtering
+                });
+                
+                serde_json::to_string(&response)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                error!("Hybrid search failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Search failed: {}", e))))
+            }
+        }
+    }
 }
 
 impl Server for ParagonicServer {
@@ -1063,6 +1088,8 @@ impl Server for ParagonicServer {
             "create_conversation" => Some(self.handle_create_conversation(params)),
             // Handle get conversation requests
             "get_conversation" => Some(self.handle_get_conversation(params)),
+            // Handle hybrid search requests
+            "hybrid_search" => Some(self.handle_hybrid_search(params)),
             _ => None
         }
     }
@@ -1964,5 +1991,54 @@ mod tests {
         assert_eq!(conversation.get("title").unwrap().as_str().unwrap(), "Mock Conversation");
         assert!(conversation.get("created_at").is_some());
         assert!(conversation.get("updated_at").is_some());
+    }
+    
+    /// Test hybrid search RPC handler
+    #[test]
+    fn test_server_hybrid_search() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid parameters
+        let params = serde_json::json!({
+            "query": "test hybrid search",
+            "content_type": "project",
+            "limit": 3,
+            "threshold": 0.5,
+            "include_text_filtering": true
+        });
+        
+        let result = server.handle_hybrid_search(&Some(params));
+        assert!(result.is_ok(), "handle_hybrid_search should return Ok");
+        
+        // Verify the response is valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify the response structure
+        assert!(response_json.get("results").is_some(), "Response should have results field");
+        let results = response_json.get("results").unwrap().as_array().unwrap();
+        assert!(!results.is_empty(), "Results should not be empty");
+        
+        // Verify each result has the expected structure
+        for result in results {
+            assert!(result.get("embedding").is_some(), "Each result should have embedding");
+            assert!(result.get("similarity_score").is_some(), "Each result should have similarity_score");
+            let embedding = result.get("embedding").unwrap();
+            assert!(embedding.get("content_text").is_some(), "Embedding should have content_text");
+            assert!(embedding.get("content_type").is_some(), "Embedding should have content_type");
+            
+            // Verify similarity score is above threshold
+            let similarity_score = result.get("similarity_score").unwrap().as_f64().unwrap();
+            assert!(similarity_score >= 0.5, "Similarity score should be above threshold");
+        }
+        
+        // Verify query parameters are returned
+        assert_eq!(response_json.get("query").unwrap().as_str(), Some("test hybrid search"));
+        assert_eq!(response_json.get("content_type").unwrap().as_str(), Some("project"));
+        assert_eq!(response_json.get("limit").unwrap().as_u64(), Some(3));
+        assert_eq!(response_json.get("threshold").unwrap().as_f64(), Some(0.5));
+        assert_eq!(response_json.get("include_text_filtering").unwrap().as_bool(), Some(true));
     }
 } 
