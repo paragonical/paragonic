@@ -37,6 +37,9 @@ test-lua-search:
 	@echo "Testing search functions..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_search_functions.lua
 	@echo ""
+	@echo "Testing enhanced search UI..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_enhanced_search_core.lua
+	@echo ""
 	@echo "✓ Search tests completed"
 
 # RPC-specific tests (standalone RPC client only)

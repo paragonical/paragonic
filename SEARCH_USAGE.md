@@ -26,6 +26,19 @@ Searches for content similar to the query using vector embeddings.
 :ParagonicSearch "neural network implementation"
 ```
 
+### Quick Search (Enhanced)
+```vim
+<leader>ps
+```
+
+Quick search with enhanced UI and better user experience.
+
+**Examples:**
+```vim
+<leader>ps                    # Interactive search prompt
+<leader>ps machine learning   # Direct search with query
+```
+
 ### Filtered Search
 ```vim
 :ParagonicSearchFiltered <query>
@@ -39,6 +52,19 @@ Searches for content similar to the query, filtered by content type.
 :ParagonicSearchFiltered "task implementation"
 ```
 
+### Quick Filtered Search (Enhanced)
+```vim
+<leader>pf
+```
+
+Quick filtered search with content type selection.
+
+**Examples:**
+```vim
+<leader>pf                    # Interactive filtered search
+<leader>pf AI project         # Direct filtered search
+```
+
 ### Hybrid Search
 ```vim
 :ParagonicSearchHybrid <query>
@@ -50,6 +76,19 @@ Performs hybrid search combining vector similarity with text-based filtering and
 ```vim
 :ParagonicSearchHybrid "machine learning development"
 :ParagonicSearchHybrid "project planning"
+```
+
+### Quick Hybrid Search (Enhanced)
+```vim
+<leader>ph
+```
+
+Quick hybrid search with advanced options.
+
+**Examples:**
+```vim
+<leader>ph                    # Interactive hybrid search
+<leader>ph "AI development"   # Direct hybrid search
 ```
 
 ## Interactive Mode
@@ -72,15 +111,16 @@ Search results are displayed in a floating window showing:
 
 **Example Output:**
 ```
-Basic Search: machine learning project
-=====================================
+🔍 Basic Search: machine learning project
+────────────────────────────────────────
 
-Found 2 results
+📊 Found 2 results
 
-1. [project] (0.850) Test project content about machine learning implementation
-2. [task] (0.720) Task for implementing neural network components
+1. 📁 [project] 🟢(0.850) Test project content about machine learning implementation
+2. ✅ [task] 🟡(0.720) Task for implementing neural network components
 
-Press q to close
+────────────────────────────────────────────────────────────────────────────────
+⌨️  Navigation: j/k to move, <CR> to select, q to close
 ```
 
 ## Configuration
@@ -94,9 +134,22 @@ The search functionality uses the same backend configuration as other Paragonic 
 
 ## Keyboard Shortcuts
 
-In the search results window:
+### Global Search Shortcuts
+- `<leader>ps` - Quick basic search
+- `<leader>pf` - Quick filtered search  
+- `<leader>ph` - Quick hybrid search
+
+### Visual Selection Search
+- Select text + `<leader>ps` - Search selected text
+- Select text + `<leader>pf` - Filtered search selected text
+- Select text + `<leader>ph` - Hybrid search selected text
+
+### Search Results Navigation
 - `q` or `<Esc>` - Close the results window
-- Arrow keys - Navigate through results
+- `j/k` - Navigate through results
+- `<CR>` - Select and view result details
+- `gg` - Go to first result
+- `G` - Go to last result
 
 ## Troubleshooting
 

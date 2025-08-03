@@ -35,6 +35,9 @@ function M.setup(opts)
     -- Initialize backend
     M._initialize_backend()
     
+    -- Set up keyboard mappings
+    M._setup_keymaps()
+    
     -- Add any autocommands here as needed
 end
 
@@ -767,12 +770,16 @@ function M.display_search_results(results, title)
     -- Create buffer for results
     local buf = vim.api.nvim_create_buf(false, true)
     
-    -- Format results
+    -- Store results data in buffer for interaction
+    vim.api.nvim_buf_set_var(buf, "paragonic_search_results", results)
+    vim.api.nvim_buf_set_var(buf, "paragonic_search_title", title)
+    
+    -- Format results with better styling
     local lines = {
-        title,
-        string.rep("=", #title),
+        "🔍 " .. title,
+        string.rep("─", #title + 2),
         "",
-        "Found " .. (results.results and #results.results or 0) .. " results",
+        "📊 Found " .. (results.results and #results.results or 0) .. " results",
         ""
     }
     
@@ -787,18 +794,45 @@ function M.display_search_results(results, title)
                 local score = result.similarity_score or 0
                 local content_type = result.embedding.content_type or "unknown"
                 
-                table.insert(lines, string.format("%d. [%s] (%.3f) %s", i, content_type, score, text))
+                -- Add emoji for content type
+                local type_emoji = {
+                    project = "📁",
+                    task = "✅",
+                    note = "📝",
+                    code = "💻",
+                    document = "📄"
+                }
+                local emoji = type_emoji[content_type] or "📄"
+                
+                -- Color-coded score
+                local score_color = ""
+                if score >= 0.8 then
+                    score_color = "🟢"
+                elseif score >= 0.6 then
+                    score_color = "🟡"
+                else
+                    score_color = "🔴"
+                end
+                
+                table.insert(lines, string.format("%d. %s [%s] %s(%.3f) %s", 
+                    i, emoji, content_type, score_color, score, text))
             end
         end
     end
     
     if #lines == 4 then -- Only title and "Found 0 results"
-        table.insert(lines, "No results found")
+        table.insert(lines, "❌ No results found")
+        table.insert(lines, "")
+        table.insert(lines, "💡 Try:")
+        table.insert(lines, "   • Different keywords")
+        table.insert(lines, "   • Lower similarity threshold")
+        table.insert(lines, "   • Different content type")
     end
     
-    -- Add footer
+    -- Add footer with enhanced help
     table.insert(lines, "")
-    table.insert(lines, "Press q to close")
+    table.insert(lines, string.rep("─", width - 2))
+    table.insert(lines, "⌨️  Navigation: j/k to move, <CR> to select, q to close")
     
     -- Set buffer content
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -809,7 +843,7 @@ function M.display_search_results(results, title)
     vim.api.nvim_buf_set_option(buf, "swapfile", false)
     vim.api.nvim_buf_set_option(buf, "filetype", "paragonic-search")
     
-    -- Create window
+    -- Create window with enhanced styling
     local win = vim.api.nvim_open_win(buf, true, {
         relative = "editor",
         width = width,
@@ -817,15 +851,230 @@ function M.display_search_results(results, title)
         row = row,
         col = col,
         style = "minimal",
-        border = "rounded"
+        border = "rounded",
+        title = " Paragonic Search ",
+        title_pos = "center"
+    })
+    
+    -- Set up enhanced keymaps
+    vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", function()
+        M.select_search_result(buf)
+    end, {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "j", "j", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "k", "k", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "gg", "gg", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "G", "G", {noremap = true, silent = true})
+    
+    -- Set cursor to first result line
+    local first_result_line = 5 -- After header
+    if results.results and #results.results > 0 then
+        vim.api.nvim_win_set_cursor(win, {first_result_line, 0})
+    else
+        vim.api.nvim_win_set_cursor(win, {1, 0})
+    end
+end
+
+-- Handle search result selection
+function M.select_search_result(buf)
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local line_num = cursor_pos[1]
+    
+    -- Get the results data
+    local success, results = pcall(vim.api.nvim_buf_get_var, buf, "paragonic_search_results")
+    if not success or not results or not results.results then
+        vim.notify("No search results available", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Calculate which result was selected (accounting for header lines)
+    local result_index = line_num - 4 -- Subtract header lines
+    if result_index >= 1 and result_index <= #results.results then
+        local selected_result = results.results[result_index]
+        
+        -- Display detailed information about the selected result
+        M.show_result_details(selected_result)
+    else
+        vim.notify("Invalid selection", vim.log.levels.WARN)
+    end
+end
+
+-- Show detailed information about a search result
+function M.show_result_details(result)
+    if not result or not result.embedding then
+        vim.notify("Invalid result data", vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Create a new buffer for detailed view
+    local detail_buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(detail_buf, "paragonic://result-details")
+    
+    -- Format detailed information
+    local lines = {
+        "📋 Search Result Details",
+        string.rep("─", 25),
+        "",
+        "📄 Content Type: " .. (result.embedding.content_type or "unknown"),
+        "🎯 Similarity Score: " .. string.format("%.3f", result.similarity_score or 0),
+        "🆔 Content ID: " .. (result.embedding.content_id or "unknown"),
+        "",
+        "📝 Content:",
+        string.rep("─", 10),
+        result.embedding.content_text or "No content available",
+        "",
+        "📅 Created: " .. (result.embedding.created_at or "unknown"),
+        "🔄 Updated: " .. (result.embedding.updated_at or "unknown"),
+        "",
+        string.rep("─", 50),
+        "Press q to close"
+    }
+    
+    -- Set buffer content
+    vim.api.nvim_buf_set_lines(detail_buf, 0, -1, false, lines)
+    
+    -- Set buffer options
+    vim.api.nvim_buf_set_option(detail_buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(detail_buf, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(detail_buf, "swapfile", false)
+    vim.api.nvim_buf_set_option(detail_buf, "filetype", "markdown")
+    
+    -- Create window
+    local width = math.min(70, vim.o.columns - 4)
+    local height = math.min(20, vim.o.lines - 4)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local detail_win = vim.api.nvim_open_win(detail_buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "rounded",
+        title = " Result Details ",
+        title_pos = "center"
     })
     
     -- Set up keymaps
-    vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(detail_buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(detail_buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
     
     -- Set cursor to first line
-    vim.api.nvim_win_set_cursor(win, {1, 0})
+    vim.api.nvim_win_set_cursor(detail_win, {1, 0})
+end
+
+-- Set up keyboard mappings
+function M._setup_keymaps()
+    -- Search keymaps (leader + ps for "paragonic search")
+    vim.keymap.set("n", "<leader>ps", "<cmd>ParagonicSearch<CR>", {desc = "Paragonic: Basic Search"})
+    vim.keymap.set("n", "<leader>pf", "<cmd>ParagonicSearchFiltered<CR>", {desc = "Paragonic: Filtered Search"})
+    vim.keymap.set("n", "<leader>ph", "<cmd>ParagonicSearchHybrid<CR>", {desc = "Paragonic: Hybrid Search"})
+    
+    -- Quick search with visual selection
+    vim.keymap.set("v", "<leader>ps", function()
+        local saved_reg = vim.fn.getreg('"')
+        vim.cmd('normal! y')
+        local selected_text = vim.fn.getreg('"')
+        vim.fn.setreg('"', saved_reg)
+        
+        if selected_text and selected_text ~= "" then
+            vim.cmd('ParagonicSearch ' .. vim.fn.shellescape(selected_text))
+        else
+            vim.cmd('ParagonicSearch')
+        end
+    end, {desc = "Paragonic: Search Selected Text"})
+    
+    -- Quick filtered search with visual selection
+    vim.keymap.set("v", "<leader>pf", function()
+        local saved_reg = vim.fn.getreg('"')
+        vim.cmd('normal! y')
+        local selected_text = vim.fn.getreg('"')
+        vim.fn.setreg('"', saved_reg)
+        
+        if selected_text and selected_text ~= "" then
+            vim.cmd('ParagonicSearchFiltered ' .. vim.fn.shellescape(selected_text))
+        else
+            vim.cmd('ParagonicSearchFiltered')
+        end
+    end, {desc = "Paragonic: Filtered Search Selected Text"})
+    
+    -- Quick hybrid search with visual selection
+    vim.keymap.set("v", "<leader>ph", function()
+        local saved_reg = vim.fn.getreg('"')
+        vim.cmd('normal! y')
+        local selected_text = vim.fn.getreg('"')
+        vim.fn.setreg('"', saved_reg)
+        
+        if selected_text and selected_text ~= "" then
+            vim.cmd('ParagonicSearchHybrid ' .. vim.fn.shellescape(selected_text))
+        else
+            vim.cmd('ParagonicSearchHybrid')
+        end
+    end, {desc = "Paragonic: Hybrid Search Selected Text"})
+end
+
+-- Enhanced search command with better UX
+function M.quick_search()
+    local query = vim.fn.input("🔍 Search: ")
+    if query == "" then
+        return
+    end
+    
+    -- Perform search
+    local results, err = M.search_embeddings(query, 10)
+    if not results then
+        vim.notify("Search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Display results in a floating window
+    M.display_search_results(results, "Quick Search: " .. query)
+end
+
+-- Enhanced filtered search with content type selection
+function M.quick_filtered_search()
+    local query = vim.fn.input("🔍 Search: ")
+    if query == "" then
+        return
+    end
+    
+    -- Content type selection
+    local content_types = {"project", "task", "note", "code", "document"}
+    local content_type = vim.fn.input("📁 Content Type (project/task/note/code/document): ")
+    
+    -- Perform filtered search
+    local results, err = M.find_similar_content(query, content_type ~= "" and content_type or nil, 10, 0.0)
+    if not results then
+        vim.notify("Filtered search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Display results in a floating window
+    M.display_search_results(results, "Filtered Search: " .. query)
+end
+
+-- Enhanced hybrid search with options
+function M.quick_hybrid_search()
+    local query = vim.fn.input("🔍 Search: ")
+    if query == "" then
+        return
+    end
+    
+    local content_type = vim.fn.input("📁 Content Type (optional): ")
+    local include_text_filtering = vim.fn.input("🔤 Include text filtering? (y/n, default y): "):lower() ~= "n"
+    
+    -- Perform hybrid search
+    local results, err = M.hybrid_search(query, content_type ~= "" and content_type or nil, 10, 0.0, include_text_filtering)
+    if not results then
+        vim.notify("Hybrid search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Display results in a floating window
+    M.display_search_results(results, "Hybrid Search: " .. query)
 end
 
 return M 
