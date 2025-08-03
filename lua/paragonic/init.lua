@@ -3375,4 +3375,205 @@ function M.get_autocommands_info()
     return result
 end
 
+-- Sample resource content based on criteria
+function M.sample_resource(uri, criteria)
+    if uri == "neovim://buffers" then
+        local buffers = M.get_buffers_info()
+        
+        -- Apply sampling criteria
+        if criteria and criteria.limit then
+            local sampled = {}
+            for i = 1, math.min(criteria.limit, #buffers) do
+                table.insert(sampled, buffers[i])
+            end
+            return sampled
+        end
+        
+        -- Apply filtering criteria
+        if criteria and criteria.filter then
+            local filtered = {}
+            for _, buf in ipairs(buffers) do
+                if criteria.filter.file_type and buf.name:match("%." .. criteria.filter.file_type .. "$") then
+                    table.insert(filtered, buf)
+                elseif criteria.filter.name_pattern and buf.name:match(criteria.filter.name_pattern) then
+                    table.insert(filtered, buf)
+                elseif criteria.filter.modifiable ~= nil and buf.modifiable == criteria.filter.modifiable then
+                    table.insert(filtered, buf)
+                end
+            end
+            return filtered
+        end
+        
+        return buffers
+    elseif uri == "neovim://session" then
+        local session = M.get_agent_session_info()
+        
+        -- Apply sampling criteria
+        if criteria and criteria.fields then
+            local sampled = {}
+            for _, field in ipairs(criteria.fields) do
+                if session[field] then
+                    sampled[field] = session[field]
+                end
+            end
+            return sampled
+        end
+        
+        return session
+    elseif uri == "neovim://marks" then
+        local marks = M.get_marks_info()
+        
+        -- Apply sampling criteria
+        if criteria and criteria.limit then
+            local sampled = {}
+            for i = 1, math.min(criteria.limit, #marks) do
+                table.insert(sampled, marks[i])
+            end
+            return sampled
+        end
+        
+        -- Apply filtering criteria
+        if criteria and criteria.filter then
+            local filtered = {}
+            for _, mark in ipairs(marks) do
+                if criteria.filter.file_pattern and mark.file_path:match(criteria.filter.file_pattern) then
+                    table.insert(filtered, mark)
+                elseif criteria.filter.mark_pattern and mark.mark:match(criteria.filter.mark_pattern) then
+                    table.insert(filtered, mark)
+                end
+            end
+            return filtered
+        end
+        
+        return marks
+    else
+        return nil, "Unsupported resource for sampling: " .. uri
+    end
+end
+
+-- Define resource roots (context boundaries)
+function M.define_resource_roots(uri, roots)
+    if uri == "neovim://buffers" then
+        -- Define which buffers are in scope
+        local all_buffers = M.get_buffers_info()
+        local scoped_buffers = {}
+        
+        if roots and roots.buffer_ids then
+            for _, buf in ipairs(all_buffers) do
+                for _, root_id in ipairs(roots.buffer_ids) do
+                    if buf.id == root_id then
+                        table.insert(scoped_buffers, buf)
+                        break
+                    end
+                end
+            end
+            return scoped_buffers
+        elseif roots and roots.file_patterns then
+            for _, buf in ipairs(all_buffers) do
+                for _, pattern in ipairs(roots.file_patterns) do
+                    if buf.name:match(pattern) then
+                        table.insert(scoped_buffers, buf)
+                        break
+                    end
+                end
+            end
+            return scoped_buffers
+        end
+        
+        return all_buffers
+    elseif uri == "neovim://session" then
+        local session = M.get_agent_session_info()
+        
+        if roots and roots.current_only then
+            return {
+                current_file = session.current_file,
+                current_directory = session.current_directory,
+                mode = session.mode
+            }
+        end
+        
+        return session
+    elseif uri == "neovim://marks" then
+        local all_marks = M.get_marks_info()
+        local scoped_marks = {}
+        
+        if roots and roots.file_patterns then
+            for _, mark in ipairs(all_marks) do
+                for _, pattern in ipairs(roots.file_patterns) do
+                    if mark.file_path:match(pattern) then
+                        table.insert(scoped_marks, mark)
+                        break
+                    end
+                end
+            end
+            return scoped_marks
+        end
+        
+        return all_marks
+    else
+        return nil, "Unsupported resource for roots: " .. uri
+    end
+end
+
+-- Extend MCP message handler for sampling and roots
+local old_handle_mcp_message = M.handle_mcp_message
+function M.handle_mcp_message(message)
+    if message.method == "resources/sample" then
+        local uri = message.params.uri
+        local criteria = message.params.criteria
+        local result = M.sample_resource(uri, criteria)
+        if result then
+            return {
+                id = message.id,
+                result = {
+                    content = {
+                        {
+                            type = "text",
+                            text = vim.json.encode(result)
+                        }
+                    }
+                }
+            }
+        else
+            return {
+                id = message.id,
+                error = {
+                    code = -32602,
+                    message = "Failed to sample resource: " .. uri
+                }
+            }
+        end
+    elseif message.method == "resources/roots" then
+        local uri = message.params.uri
+        local roots = message.params.roots
+        local result = M.define_resource_roots(uri, roots)
+        if result then
+            return {
+                id = message.id,
+                result = {
+                    content = {
+                        {
+                            type = "text",
+                            text = vim.json.encode(result)
+                        }
+                    }
+                }
+            }
+        else
+            return {
+                id = message.id,
+                error = {
+                    code = -32602,
+                    message = "Failed to define roots for resource: " .. uri
+                }
+            }
+        end
+    end
+    
+    if old_handle_mcp_message then
+        return old_handle_mcp_message(message)
+    end
+    return { error = { code = -32601, message = "Unknown MCP method: " .. tostring(message.method) } }
+end
+
 return M 
