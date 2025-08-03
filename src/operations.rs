@@ -864,7 +864,7 @@ pub async fn find_similar_content(
     let mut conn = conn_result?;
     
     // Build SQL query with optional content type filter
-    let sql = if let Some(target_type) = &content_type {
+    let sql = if let Some(_target_type) = &content_type {
         r#"
             SELECT 
                 e.id, e.content_type, e.content_id, e.content_text,
@@ -2109,7 +2109,7 @@ mod tests {
         assert!(!results2.is_empty(), "Search should return results for neural network query");
         
         // Clean up embeddings
-        for embedding in created_embeddings {
+        for _embedding in created_embeddings {
             // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
             // when the test database is torn down
         }
@@ -2242,7 +2242,7 @@ mod tests {
         assert!(content_types.len() > 1, "Should return multiple content types when no filter applied");
         
         // Clean up embeddings
-        for embedding in created_embeddings {
+        for _embedding in created_embeddings {
             // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
             // when the test database is torn down
         }
@@ -2793,7 +2793,7 @@ mod tests {
         }
         
         // Clean up - delete test embeddings
-        for embedding in stored_embeddings {
+        for _embedding in stored_embeddings {
             // Note: We don't have a delete_embedding function yet, so we'll leave them
             // This is fine for testing as the database is isolated
         }
@@ -2875,7 +2875,7 @@ mod tests {
         assert!(!results2.is_empty(), "Hybrid search should return results for neural network query");
         
         // Clean up embeddings
-        for embedding in created_embeddings {
+        for _embedding in created_embeddings {
             // Note: We don't have a delete_embedding function yet, but the test data will be cleaned up
             // when the test database is torn down
         }

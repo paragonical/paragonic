@@ -15,7 +15,6 @@ use tracing::error;
 use crate::ollama::OllamaClient;
 use crate::error::ParagonicResult;
 use crate::ollama::ChatMessage;
-use crate::config::ConfigManager;
 
 /// JSON-RPC server for Paragonic
 pub struct ParagonicServer {
@@ -785,7 +784,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             Err(e) => {
                 // Log the error and return a user-friendly error message
                 error!("Search embeddings failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("Search failed: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("Search failed: {e}"))))
             }
         }
     }
@@ -851,7 +850,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             Err(e) => {
                 // Log the error and return a user-friendly error message
                 error!("Find similar content failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("Search failed: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("Search failed: {e}"))))
             }
         }
     }
@@ -1093,7 +1092,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             Err(e) => {
                 // Log the error and return a user-friendly error message
                 error!("Hybrid search failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("Search failed: {}", e))))
+                Err(RpcError::invalid_params(Some(format!("Search failed: {e}"))))
             }
         }
     }
@@ -1183,6 +1182,7 @@ impl Clone for ParagonicServer {
 mod tests {
     use super::*;
     use crate::ollama::OllamaConfig;
+    use crate::config::ConfigManager;
     
     /// Test that the server can be created successfully
     #[test]
