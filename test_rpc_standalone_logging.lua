@@ -16,7 +16,7 @@ local function test_logging_method_exists()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that logging method exists
     assert(type(client.logging) == "function", "logging method should exist and be a function")
@@ -33,7 +33,7 @@ local function test_logging_method_implementation()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -93,7 +93,7 @@ local function test_logging_error_handling()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test logging with invalid parameters
     local invalid_result1 = client:logging(nil)
@@ -121,7 +121,7 @@ local function test_logging_parameter_validation()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -180,7 +180,7 @@ local function test_logging_consistency()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -233,7 +233,7 @@ local function test_logging_with_different_levels()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -284,7 +284,7 @@ local function test_logging_getter()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that we can get the current logging configuration
     local current_log = client:get_logging_config()
@@ -317,7 +317,7 @@ local function test_logging_with_batch_operations()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -373,7 +373,7 @@ local function test_logging_with_retry_operations()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -436,7 +436,7 @@ local function test_logging_with_connection_pooling()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"

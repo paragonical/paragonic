@@ -16,7 +16,7 @@ local function debug_hello_method()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"

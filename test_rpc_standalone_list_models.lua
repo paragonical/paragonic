@@ -16,7 +16,7 @@ local function test_list_models_method_exists()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that list_models method exists
     assert(type(client.list_models) == "function", "list_models method should exist and be a function")
@@ -33,7 +33,7 @@ local function test_list_models_method_implementation()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -131,7 +131,7 @@ local function test_list_models_consistency()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"

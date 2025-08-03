@@ -16,7 +16,7 @@ local function test_timeout_operations_method_exists()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that timeout_operations method exists
     assert(type(client.timeout_operations) == "function", "timeout_operations method should exist and be a function")
@@ -33,7 +33,7 @@ local function test_timeout_operations_method_implementation()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -93,7 +93,7 @@ local function test_timeout_operations_error_handling()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test timeout_operations with invalid timeout values
     local invalid_result1 = client:timeout_operations(nil)
@@ -121,7 +121,7 @@ local function test_timeout_operations_parameter_validation()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -171,7 +171,7 @@ local function test_timeout_operations_consistency()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -224,7 +224,7 @@ local function test_timeout_operations_with_slow_operations()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -276,7 +276,7 @@ local function test_timeout_operations_getter()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that we can get the current timeout value
     local current_timeout = client:get_timeout()

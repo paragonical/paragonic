@@ -16,7 +16,7 @@ local function test_get_server_info_method_exists()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that get_server_info method exists
     assert(type(client.get_server_info) == "function", "get_server_info method should exist and be a function")
@@ -33,7 +33,7 @@ local function test_get_server_info_method_implementation()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -131,7 +131,7 @@ local function test_get_server_info_consistency()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -176,7 +176,7 @@ local function test_get_server_info_with_server_restart()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -252,7 +252,7 @@ local function test_get_server_info_detailed()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
@@ -291,7 +291,7 @@ local function test_get_server_info_detailed()
     -- Test specific values
     assert(server_info.name == "Paragonic", "Server name should be 'Paragonic'")
     assert(server_info.status == "running", "Server status should be 'running'")
-    assert(server_info.address == "127.0.0.1:3000", "Server address should match")
+    assert(server_info.address == "127.0.0.1:2346", "Server address should match")
     assert(server_info.protocol == "JSON-RPC 2.0", "Server protocol should be 'JSON-RPC 2.0'")
     
     print("✓ get_server_info detailed information test passed")

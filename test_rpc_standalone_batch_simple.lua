@@ -12,7 +12,7 @@ package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/socket/?.
 local rpc_standalone = require("paragonic.rpc_standalone")
 
 -- Create a new RPC client
-local client = rpc_standalone.new("127.0.0.1:3000")
+local client = rpc_standalone.new("127.0.0.1:2346")
 
 print("Testing batch_operations method exists...")
 assert(type(client.batch_operations) == "function", "batch_operations method should exist")

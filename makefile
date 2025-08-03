@@ -18,6 +18,54 @@ test-lua-unit:
 	@echo "Testing simple functionality..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_simple.lua
 	@echo ""
+	@echo "Testing JSON parsing..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_json_parsing.lua
+	@echo ""
+	@echo "Testing database bypass simple..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_database_bypass_simple.lua
+	@echo ""
+	@echo "Testing database bypass complete..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_database_bypass_complete.lua
+	@echo ""
+	@echo "Testing PostgreSQL workaround..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_postgresql_workaround.lua
+	@echo ""
+	@echo "Testing socket communication..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_socket_communication.lua
+	@echo ""
+	@echo "Testing socket logic..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_socket_logic.lua
+	@echo ""
+	@echo "Testing raw TCP communication..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_raw_tcp_communication.lua
+	@echo ""
+	@echo "Testing real socket communication..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_real_socket_communication.lua
+	@echo ""
+	@echo "Testing working TCP communication..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_working_tcp_communication.lua
+	@echo ""
+	@echo "Testing RPC chat completion..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_chat_completion.lua
+	@echo ""
+	@echo "Testing RPC connect..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_connect.lua
+	@echo ""
+	@echo "Testing RPC debug..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_debug.lua
+	@echo ""
+	@echo "Testing RPC hello..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_hello.lua
+	@echo ""
+	@echo "Testing RPC models..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_models.lua
+	@echo ""
+	@echo "Testing RPC search..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_search.lua
+	@echo ""
+	@echo "Testing RPC..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc.lua
+	@echo ""
 	@echo "✓ Unit tests completed"
 
 # Integration tests (with backend, using standalone RPC client)
@@ -25,6 +73,30 @@ test-lua-integration:
 	@echo "=== Running Lua Integration Tests ==="
 	@echo "Testing search functionality integration..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_lua_search_integration.lua
+	@echo ""
+	@echo "Testing enhanced search UI..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_enhanced_search_ui.lua
+	@echo ""
+	@echo "Testing Neovim search integration..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_neovim_search_integration.lua
+	@echo ""
+	@echo "Testing open chat integration..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_open_chat_integration.lua
+	@echo ""
+	@echo "Testing open config..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_open_config.lua
+	@echo ""
+	@echo "Testing open projects..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_open_projects.lua
+	@echo ""
+	@echo "Testing projects integration..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_projects_integration.lua
+	@echo ""
+	@echo "Testing backend init..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_backend_init.lua
+	@echo ""
+	@echo "Testing Rust backend server..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rust_backend_server.lua
 	@echo ""
 	@echo "✓ Integration tests completed"
 
@@ -96,6 +168,30 @@ test-lua-agent:
 	@echo "Testing MCP commands and autocommands..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_commands_autocommands.lua
 	@echo ""
+	@echo "Testing configuration integration..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_config_integration.lua
+	@echo ""
+	@echo "Testing chat backend..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_chat_backend.lua
+	@echo ""
+	@echo "Testing chat interactive..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_chat_interactive.lua
+	@echo ""
+	@echo "Testing chat interface..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_chat_interface.lua
+	@echo ""
+	@echo "Testing database bypass..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_database_bypass.lua
+	@echo ""
+	@echo "Testing Ollama integration..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_ollama_integration.lua
+	@echo ""
+	@echo "Testing Ollama integration fixed..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_ollama_integration_fixed.lua
+	@echo ""
+	@echo "Testing Ollama runtime debug..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_ollama_runtime_debug.lua
+	@echo ""
 	@echo "✓ Agent tests completed"
 
 # RPC-specific tests (standalone RPC client only)
@@ -106,6 +202,42 @@ test-lua-rpc:
 	@echo ""
 	@echo "Testing RPC standalone functionality..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone.lua
+	@echo ""
+	@echo "Testing RPC standalone batch operations..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_batch_operations.lua
+	@echo ""
+	@echo "Testing RPC standalone batch simple..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_batch_simple.lua
+	@echo ""
+	@echo "Testing RPC standalone connection pooling..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_connection_pooling.lua
+	@echo ""
+	@echo "Testing RPC standalone connection..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_connection.lua
+	@echo ""
+	@echo "Testing RPC standalone debug..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_debug.lua
+	@echo ""
+	@echo "Testing RPC standalone disconnect..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_disconnect.lua
+	@echo ""
+	@echo "Testing RPC standalone list models..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_list_models.lua
+	@echo ""
+	@echo "Testing RPC standalone logging..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_logging.lua
+	@echo ""
+	@echo "Testing RPC standalone ping..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_ping.lua
+	@echo ""
+	@echo "Testing RPC standalone retry operations..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_retry_operations.lua
+	@echo ""
+	@echo "Testing RPC standalone server info..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_server_info.lua
+	@echo ""
+	@echo "Testing RPC standalone timeout operations..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_timeout_operations.lua
 	@echo ""
 	@echo "✓ RPC tests completed"
 

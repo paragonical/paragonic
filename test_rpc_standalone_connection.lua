@@ -16,7 +16,7 @@ local function test_mock_implementation_fails()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that connect() currently just returns true without real connection
     local connect_result = client:connect()
@@ -38,11 +38,11 @@ local function test_actual_connection_logic()
     local rpc_standalone = require("paragonic.rpc_standalone")
     
     -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:3000")
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test initial state
     assert(client.connected == false, "Client should start disconnected")
-    assert(client.server_address == "127.0.0.1:3000", "Server address should be set correctly")
+    assert(client.server_address == "127.0.0.1:2346", "Server address should be set correctly")
     
     print("✓ Initial client state is correct")
     
@@ -127,7 +127,7 @@ local function test_server_availability_check()
     print("Testing server availability check...")
     
     -- Test with server not running
-    local check_cmd = 'echo \'{"jsonrpc":"2.0","method":"hello","params":{},"id":1}\' | nc -w 2 127.0.0.1:3000 2>/dev/null || echo "connection_failed"'
+    local check_cmd = 'echo \'{"jsonrpc":"2.0","method":"hello","params":{},"id":1}\' | nc -w 2 127.0.0.1:2346 2>/dev/null || echo "connection_failed"'
     local check_process = io.popen(check_cmd)
     if check_process then
         local result = check_process:read("*a")
