@@ -124,8 +124,26 @@ local function test_mcp_commands_autocommands()
     -- Test commands info
     local commands = M.get_commands_info()
     assert(#commands == 3, "Should get 3 commands")
-    assert(commands[1].name == "ParagonicChat" or commands[2].name == "ParagonicChat", "Should include ParagonicChat command")
-    assert(commands[3].name == "Write" or commands[2].name == "Write", "Should include Write command")
+    
+    -- Check for ParagonicChat command (order-independent)
+    local has_paragonic_chat = false
+    for _, cmd in ipairs(commands) do
+        if cmd.name == "ParagonicChat" then
+            has_paragonic_chat = true
+            break
+        end
+    end
+    assert(has_paragonic_chat, "Should include ParagonicChat command")
+    
+    -- Check for Write command (order-independent)
+    local has_write = false
+    for _, cmd in ipairs(commands) do
+        if cmd.name == "Write" then
+            has_write = true
+            break
+        end
+    end
+    assert(has_write, "Should include Write command")
     print("  ✓ Commands info retrieval works")
 
     -- Test autocommands info

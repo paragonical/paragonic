@@ -510,6 +510,121 @@ function M.get_configuration_as_resource()
     }
 end
 
+-- MCP Commands and Autocommands functions
+
+-- Get commands information
+function M.get_commands_info()
+    local commands = vim.api.nvim_get_commands({})
+    local result = {}
+    for name, cmd in pairs(commands) do
+        table.insert(result, {
+            name = name,
+            definition = cmd.definition,
+            nargs = cmd.nargs,
+            bang = cmd.bang
+        })
+    end
+    return result
+end
+
+-- Get autocommands information
+function M.get_autocommands_info()
+    local autocmds = vim.api.nvim_get_autocmds({})
+    local result = {}
+    for _, ac in ipairs(autocmds) do
+        table.insert(result, {
+            event = ac.event,
+            group = ac.group,
+            group_name = ac.group_name,
+            pattern = ac.pattern,
+            command = ac.command,
+            desc = ac.desc
+        })
+    end
+    return result
+end
+
+-- List MCP resources for commands and autocommands
+function M.list_commands_autocommands_resources()
+    return {
+        { uri = "neovim://commands", name = "Neovim Commands", description = "List of all available commands", mime_type = "application/json" },
+        { uri = "neovim://autocommands", name = "Neovim Autocommands", description = "List of all autocommands", mime_type = "application/json" }
+    }
+end
+
+-- Read MCP resource for commands and autocommands
+function M.read_commands_autocommands_resource(uri)
+    if uri == "neovim://commands" then
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(M.get_commands_info())
+                }
+            }
+        }
+    elseif uri == "neovim://autocommands" then
+        return {
+            contents = {
+                {
+                    uri = uri,
+                    mime_type = "application/json",
+                    text = vim.json.encode(M.get_autocommands_info())
+                }
+            }
+        }
+    else
+        return { error = { code = -32601, message = "Unknown resource URI: " .. tostring(uri) } }
+    end
+end
+
+-- Handle MCP commands and autocommands methods
+function M.handle_commands_autocommands_method(method, params)
+    if method == "commands/list" then
+        local commands = M.get_commands_info()
+        return {
+            commands = commands
+        }
+    elseif method == "autocommands/list" then
+        local autocmds = M.get_autocommands_info()
+        return {
+            autocommands = autocmds
+        }
+    elseif method == "resources/list" then
+        local resources = M.list_commands_autocommands_resources()
+        return {
+            resources = resources
+        }
+    elseif method == "resources/read" then
+        local uri = params.uri
+        if not uri then
+            return {
+                error = {
+                    code = -32602,
+                    message = "Resource URI is required"
+                }
+            }
+        end
+        
+        local result = M.read_commands_autocommands_resource(uri)
+        if result.error then
+            return result
+        else
+            return {
+                contents = result.contents
+            }
+        end
+    else
+        return {
+            error = {
+                code = -32601,
+                message = "Unknown commands/autocommands method: " .. method
+            }
+        }
+    end
+end
+
 -- RPC Client constructor
 function M.new(server_address)
     local client = {
