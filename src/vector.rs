@@ -9,6 +9,7 @@ use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sql_types::Binary;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use crate::schema::sql_types::Vector as PgVector;
 
 /// Custom Vector type for pgvector integration
 /// 
@@ -92,7 +93,7 @@ impl From<Vector> for Vec<f32> {
 }
 
 // Diesel integration for Vector type
-impl ToSql<Binary, Pg> for Vector {
+impl ToSql<PgVector, Pg> for Vector {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
         let bytes = self.to_bytes();
         out.write_all(&bytes)?;
@@ -100,7 +101,7 @@ impl ToSql<Binary, Pg> for Vector {
     }
 }
 
-impl FromSql<Binary, Pg> for Vector {
+impl FromSql<PgVector, Pg> for Vector {
     fn from_sql(bytes: diesel::pg::PgValue) -> deserialize::Result<Self> {
         let bytes = <Vec<u8> as FromSql<Binary, Pg>>::from_sql(bytes)?;
         Vector::from_bytes(&bytes)
