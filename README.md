@@ -152,13 +152,14 @@ possible.
 We might also consider a "tokencode" format for machines that can be used to
 track the cost of running models and other resources.  In either case, there is
 work (tasks from projects an operations) that is a cost that can be tracked in
-the ledger.  A possible tokencode could be a floating point number that
-represents the ln(tokens) used over a period of time by the agent of human.
+the ledger.  A possible tokencode could be a tuple of floating point numbers
+that represents the ln(tokens) used over a period of time for input, thinking,
+and output by the agent of human.
 
 ```
 8/3: work_identifier
-     PersonA: .... 11.06
-     Agent:         8.7
+     PersonA: ....  (2.0 40.0 11.06)
+     Agent:         (3.4 79    7.8)
 ```
 
 ### Communications & Work
