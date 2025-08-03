@@ -185,6 +185,9 @@ contribute to the development of new prompts and workflows.
 ### Standards and Practices
 
 Standards and practices are the "how to do things" regardless of the human or
-agent doing the work.
+agent doing the work. Standards would be things like the OWASP Top 20 that
+provide guidance for security.  Practices would be for checklists or runbooks.
+We see practices like this in the form of "agentic guides" like AgentOS or the
+Three Documents (e.g. generate-prd, generate-tasks, process-tasks). 
 
 
