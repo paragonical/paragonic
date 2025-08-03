@@ -919,6 +919,28 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         serde_json::to_string(&mock_response)
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
+    
+    /// Handle delete agent requests
+    pub fn handle_delete_agent(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let agent_id = params.get("agent_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_response = serde_json::json!({
+            "success": true,
+            "message": "Agent deleted successfully",
+            "agent_id": agent_id
+        });
+        
+        serde_json::to_string(&mock_response)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+    }
 }
 
 impl Server for ParagonicServer {
@@ -980,6 +1002,8 @@ impl Server for ParagonicServer {
             "find_similar_content" => Some(self.handle_find_similar_content(params)),
             // Handle create agent requests
             "create_agent" => Some(self.handle_create_agent(params)),
+            // Handle delete agent requests
+            "delete_agent" => Some(self.handle_delete_agent(params)),
             _ => None
         }
     }
@@ -1796,5 +1820,31 @@ mod tests {
         assert!(agent.get("id").is_some());
         assert!(agent.get("created_at").is_some());
         assert!(agent.get("updated_at").is_some());
+    }
+    
+    /// Test delete agent RPC handler
+    #[test]
+    fn test_server_delete_agent() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid parameters
+        let params = serde_json::json!({
+            "agent_id": "123e4567-e89b-12d3-a456-426614174000"
+        });
+        
+        let result = server.handle_delete_agent(&Some(params));
+        assert!(result.is_ok(), "handle_delete_agent should succeed");
+        
+        let response = result.unwrap();
+        let response_value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify the mock response structure
+        assert!(response_value.get("success").is_some());
+        assert!(response_value.get("message").is_some());
+        assert!(response_value.get("agent_id").is_some());
+        assert_eq!(response_value.get("agent_id").unwrap().as_str().unwrap(), "123e4567-e89b-12d3-a456-426614174000");
+        assert_eq!(response_value.get("message").unwrap().as_str().unwrap(), "Agent deleted successfully");
     }
 } 
