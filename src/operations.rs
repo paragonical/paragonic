@@ -904,6 +904,22 @@ pub async fn send_message(request: SendMessageRequest) -> ParagonicResult<Messag
     Ok(message)
 }
 
+/// Get a message by ID
+/// 
+/// This function retrieves a message from the database by its ID.
+/// Returns the message if found, or an error if not found.
+pub async fn get_message(message_id: Uuid) -> ParagonicResult<Message> {
+    let mut conn = get_connection()?;
+    
+    messages::table
+        .filter(messages::id.eq(message_id))
+        .first::<Message>(&mut conn)
+        .map_err(|e| {
+            tracing::error!("Failed to get message {}: {}", message_id, e);
+            ParagonicError::Database(format!("Failed to get message: {e}"))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2006,6 +2022,57 @@ mod tests {
         assert_eq!(message.content, "Hello, this is a test message!");
         assert_eq!(message.role, MessageRole::User.to_string());
         assert!(message.id != Uuid::nil());
+        assert!(message.created_at.is_some());
+        assert!(message.created_at.unwrap() <= Utc::now());
+        
+        // Clean up
+        delete_agent(agent.id).await.unwrap();
+    }
+    
+    /// Test getting a message by ID
+    #[tokio::test]
+    async fn test_get_message() {
+        // Initialize database first
+        let db_result = crate::database::initialize().await;
+        if let Err(e) = &db_result {
+            println!("Database initialization failed: {:?}", e);
+            // Skip test if database can't be initialized
+            return;
+        }
+        
+        // First create an agent (required for conversation)
+        let agent_request = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            description: Some("A test agent for message retrieval".to_string()),
+            model_name: "llama3.2:3b".to_string(),
+            configuration: serde_json::json!({}),
+        };
+        let agent = create_agent(agent_request).await.unwrap();
+        
+        // Create a conversation for the message
+        let conversation_request = CreateConversationRequest {
+            agent_id: agent.id,
+            title: Some("Test Conversation for Message Retrieval".to_string()),
+        };
+        let conversation = create_conversation(conversation_request).await.unwrap();
+        
+        // Send a message to retrieve
+        let message_request = SendMessageRequest {
+            conversation_id: conversation.id,
+            content: "Test message for retrieval".to_string(),
+        };
+        let created_message = send_message(message_request).await.unwrap();
+        
+        // Test getting the message
+        let result = get_message(created_message.id).await;
+        
+        // Test should now pass (green phase)
+        assert!(result.is_ok(), "get_message should succeed");
+        let message = result.unwrap();
+        assert_eq!(message.id, created_message.id);
+        assert_eq!(message.conversation_id, Some(conversation.id));
+        assert_eq!(message.content, "Test message for retrieval");
+        assert_eq!(message.role, MessageRole::User.to_string());
         assert!(message.created_at.is_some());
         assert!(message.created_at.unwrap() <= Utc::now());
         
