@@ -84,6 +84,9 @@ test-lua-agent:
 	@echo "Testing MCP sampling and roots..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_sampling_roots.lua
 	@echo ""
+	@echo "Testing MCP cancellation..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_cancellation.lua
+	@echo ""
 	@echo "✓ Agent tests completed"
 
 # RPC-specific tests (standalone RPC client only)

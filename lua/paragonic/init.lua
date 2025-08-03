@@ -3576,4 +3576,246 @@ function M.handle_mcp_message(message)
     return { error = { code = -32601, message = "Unknown MCP method: " .. tostring(message.method) } }
 end
 
+-- MCP Cancellation state management
+M.cancellation_state = {
+    active_operations = {},
+    next_operation_id = 1
+}
+
+-- Register a cancellable operation
+function M.register_cancellable_operation(operation_type, description)
+    local operation_id = "op-" .. M.cancellation_state.next_operation_id
+    M.cancellation_state.next_operation_id = M.cancellation_state.next_operation_id + 1
+    
+    M.cancellation_state.active_operations[operation_id] = {
+        type = operation_type,
+        description = description,
+        start_time = os.time(),
+        cancelled = false
+    }
+    
+    return operation_id
+end
+
+-- Check if operation is cancelled
+function M.is_operation_cancelled(operation_id)
+    local operation = M.cancellation_state.active_operations[operation_id]
+    return operation and operation.cancelled
+end
+
+-- Cancel an operation
+function M.cancel_operation(operation_id)
+    local operation = M.cancellation_state.active_operations[operation_id]
+    if operation then
+        operation.cancelled = true
+        operation.cancel_time = os.time()
+        return true
+    end
+    return false
+end
+
+-- Complete an operation (remove from active list)
+function M.complete_operation(operation_id)
+    M.cancellation_state.active_operations[operation_id] = nil
+end
+
+-- Enhanced tool call with cancellation support
+function M.handle_tool_call_with_cancellation(id, params)
+    local tool_name = params.name
+    local arguments = params.arguments or {}
+    
+    if not tool_name then
+        return {
+            id = id,
+            error = {
+                code = -32602,
+                message = "Tool name is required"
+            }
+        }
+    end
+    
+    -- Register operation for cancellation
+    local operation_id = M.register_cancellable_operation("tool_call", "Tool: " .. tool_name)
+    
+    if tool_name == "agent_edit_file" then
+        local file_path = arguments.file_path
+        local line_number = arguments.line_number or 1
+        local content = arguments.content or ""
+        
+        if not file_path then
+            M.complete_operation(operation_id)
+            return {
+                id = id,
+                error = {
+                    code = -32602,
+                    message = "file_path is required for agent_edit_file"
+                }
+            }
+        end
+        
+        -- Check for cancellation before starting
+        if M.is_operation_cancelled(operation_id) then
+            M.complete_operation(operation_id)
+            return {
+                id = id,
+                error = {
+                    code = -32800,
+                    message = "Operation cancelled before start"
+                }
+            }
+        end
+        
+        -- Find buffer by file path
+        local target_buf = nil
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+            -- Check for cancellation during search
+            if M.is_operation_cancelled(operation_id) then
+                M.complete_operation(operation_id)
+                return {
+                    id = id,
+                    error = {
+                        code = -32800,
+                        message = "Operation cancelled during file search"
+                    }
+                }
+            end
+            
+            local buf_name = vim.api.nvim_buf_get_name(buf)
+            if buf_name == file_path then
+                target_buf = buf
+                break
+            end
+        end
+        
+        if not target_buf then
+            M.complete_operation(operation_id)
+            return {
+                id = id,
+                error = {
+                    code = -32602,
+                    message = "File not found in session: " .. file_path
+                }
+            }
+        end
+        
+        -- Check for cancellation before edit
+        if M.is_operation_cancelled(operation_id) then
+            M.complete_operation(operation_id)
+            return {
+                id = id,
+                error = {
+                    code = -32800,
+                    message = "Operation cancelled before edit"
+                }
+            }
+        end
+        
+        -- Perform the edit
+        vim.api.nvim_set_current_buf(target_buf)
+        vim.api.nvim_buf_set_lines(target_buf, line_number - 1, line_number, false, {content})
+        
+        M.complete_operation(operation_id)
+        return {
+            id = id,
+            result = {
+                content = {
+                    {
+                        type = "text",
+                        text = "Successfully edited file: " .. file_path .. " at line " .. line_number
+                    }
+                },
+                metadata = {
+                    file_path = file_path,
+                    line_number = line_number,
+                    content_length = #content,
+                    timestamp = os.time(),
+                    operation_id = operation_id
+                }
+            }
+        }
+    else
+        M.complete_operation(operation_id)
+        return {
+            id = id,
+            error = {
+                code = -32601,
+                message = "Tool not found: " .. tool_name
+            }
+        }
+    end
+end
+
+-- Handle MCP cancellation messages
+function M.handle_cancellation_message(message)
+    if message.method == "cancel" then
+        local operation_id = message.params.operation_id
+        if operation_id then
+            local cancelled = M.cancel_operation(operation_id)
+            if cancelled then
+                return {
+                    id = message.id,
+                    result = {
+                        cancelled = true,
+                        message = "Operation cancelled successfully"
+                    }
+                }
+            else
+                return {
+                    id = message.id,
+                    error = {
+                        code = -32602,
+                        message = "Operation not found: " .. operation_id
+                    }
+                }
+            end
+        else
+            return {
+                id = message.id,
+                error = {
+                    code = -32602,
+                    message = "Operation ID is required for cancellation"
+                }
+            }
+        end
+    elseif message.method == "cancel/list" then
+        local active_operations = {}
+        for op_id, op in pairs(M.cancellation_state.active_operations) do
+            table.insert(active_operations, {
+                operation_id = op_id,
+                type = op.type,
+                description = op.description,
+                start_time = op.start_time,
+                cancelled = op.cancelled
+            })
+        end
+        return {
+            id = message.id,
+            result = {
+                operations = active_operations
+            }
+        }
+    else
+        return {
+            id = message.id,
+            error = {
+                code = -32601,
+                message = "Unknown cancellation method: " .. tostring(message.method)
+            }
+        }
+    end
+end
+
+-- Extend MCP message handler for cancellation
+local old_handle_mcp_message = M.handle_mcp_message
+function M.handle_mcp_message(message)
+    if message.method == "cancel" or message.method == "cancel/list" then
+        return M.handle_cancellation_message(message)
+    end
+    
+    if old_handle_mcp_message then
+        return old_handle_mcp_message(message)
+    end
+    return { error = { code = -32601, message = "Unknown MCP method: " .. tostring(message.method) } }
+end
+
 return M 
