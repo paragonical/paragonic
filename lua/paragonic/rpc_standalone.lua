@@ -16,6 +16,43 @@ M.logging_config = {
     max_log_files = 5
 }
 
+-- MCP Configuration schema definition
+M.config_schema = {
+    ollama_host = {
+        type = "string",
+        description = "Ollama server host and port",
+        default = "http://localhost:11434"
+    },
+    ollama_model = {
+        type = "string",
+        description = "Default Ollama model to use",
+        default = "llama3.2:3b"
+    },
+    database_path = {
+        type = "string",
+        description = "Path to the database directory",
+        default = "/tmp/paragonic/db"
+    },
+    log_level = {
+        type = "string",
+        description = "Logging level",
+        default = "info",
+        enum = {"debug", "info", "warn", "error"}
+    },
+    search_history_size = {
+        type = "integer",
+        description = "Maximum number of search history entries",
+        default = 50,
+        minimum = 10,
+        maximum = 1000
+    },
+    auto_save = {
+        type = "boolean",
+        description = "Automatically save files after edits",
+        default = true
+    }
+}
+
 -- Initialize logging
 function M.initialize_logging()
     if not M.logging_config.log_file then
@@ -258,6 +295,219 @@ function M.clear_logs()
         vim.fn.writefile({}, M.logging_config.log_file)
         M.log_info("Logs cleared")
     end
+end
+
+-- MCP Configuration management functions
+
+-- Get current configuration
+function M.get_configuration()
+    local config = vim.api.nvim_get_var("g:paragonic_config") or {}
+    
+    -- Apply defaults from schema
+    for key, schema in pairs(M.config_schema) do
+        if config[key] == nil and schema.default ~= nil then
+            config[key] = schema.default
+        end
+    end
+    
+    return config
+end
+
+-- Validate configuration value
+function M.validate_config_value(key, value)
+    local schema = M.config_schema[key]
+    if not schema then
+        return false, "Unknown configuration key: " .. key
+    end
+    
+    -- Type validation
+    if schema.type == "string" and type(value) ~= "string" then
+        return false, "Value must be a string for key: " .. key
+    elseif schema.type == "integer" and type(value) ~= "number" then
+        return false, "Value must be a number for key: " .. key
+    elseif schema.type == "boolean" and type(value) ~= "boolean" then
+        return false, "Value must be a boolean for key: " .. key
+    end
+    
+    -- Pattern validation
+    if schema.pattern and type(value) == "string" then
+        if not value:match(schema.pattern) then
+            return false, "Value does not match pattern for key: " .. key
+        end
+    end
+    
+    -- Enum validation
+    if schema.enum and type(value) == "string" then
+        local valid = false
+        for _, enum_value in ipairs(schema.enum) do
+            if value == enum_value then
+                valid = true
+                break
+            end
+        end
+        if not valid then
+            return false, "Value must be one of: " .. table.concat(schema.enum, ", ")
+        end
+    end
+    
+    -- Range validation
+    if schema.minimum and type(value) == "number" and value < schema.minimum then
+        return false, "Value must be at least " .. schema.minimum .. " for key: " .. key
+    end
+    if schema.maximum and type(value) == "number" and value > schema.maximum then
+        return false, "Value must be at most " .. schema.maximum .. " for key: " .. key
+    end
+    
+    return true, nil
+end
+
+-- Set configuration value
+function M.set_configuration_value(key, value)
+    local valid, error = M.validate_config_value(key, value)
+    if not valid then
+        return false, error
+    end
+    
+    local config = M.get_configuration()
+    config[key] = value
+    
+    vim.api.nvim_set_var("g:paragonic_config", config)
+    return true, nil
+end
+
+-- Get configuration schema as MCP resource
+function M.get_configuration_schema()
+    local schema_resources = {}
+    
+    for key, schema in pairs(M.config_schema) do
+        table.insert(schema_resources, {
+            key = key,
+            type = schema.type,
+            description = schema.description,
+            default = schema.default,
+            pattern = schema.pattern,
+            enum = schema.enum,
+            minimum = schema.minimum,
+            maximum = schema.maximum
+        })
+    end
+    
+    return schema_resources
+end
+
+-- Handle MCP configuration methods
+function M.handle_configuration_method(method, params)
+    if method == "config/get" then
+        local config = M.get_configuration()
+        return {
+            config = config
+        }
+    elseif method == "config/set" then
+        local key = params.key
+        local value = params.value
+        
+        if not key then
+            return {
+                error = {
+                    code = -32602,
+                    message = "Configuration key is required"
+                }
+            }
+        end
+        
+        local success, error = M.set_configuration_value(key, value)
+        if success then
+            return {
+                success = true,
+                message = "Configuration updated successfully"
+            }
+        else
+            return {
+                error = {
+                    code = -32602,
+                    message = error
+                }
+            }
+        end
+    elseif method == "config/schema" then
+        local schema = M.get_configuration_schema()
+        return {
+            schema = schema
+        }
+    elseif method == "config/validate" then
+        local key = params.key
+        local value = params.value
+        
+        if not key then
+            return {
+                error = {
+                    code = -32602,
+                    message = "Configuration key is required"
+                }
+            }
+        end
+        
+        local valid, error = M.validate_config_value(key, value)
+        return {
+            valid = valid,
+            error = error
+        }
+    else
+        return {
+            error = {
+                code = -32601,
+                message = "Unknown configuration method: " .. method
+            }
+        }
+    end
+end
+
+-- Configuration persistence functions
+function M.save_configuration_to_file(config, file_path)
+    local config_dir = vim.fn.fnamemodify(file_path, ":h")
+    if not vim.fn.isdirectory(config_dir) then
+        vim.fn.mkdir(config_dir, "p")
+    end
+    
+    local config_json = vim.json.encode(config)
+    vim.fn.writefile({config_json}, file_path)
+    return true
+end
+
+function M.load_configuration_from_file(file_path)
+    if vim.fn.filereadable(file_path) == 0 then
+        return nil, "Configuration file not found: " .. file_path
+    end
+    
+    local lines = vim.fn.readfile(file_path)
+    if #lines == 0 then
+        return nil, "Configuration file is empty: " .. file_path
+    end
+    
+    local success, config = pcall(vim.json.decode, lines[1])
+    if not success then
+        return nil, "Invalid JSON in configuration file: " .. file_path
+    end
+    
+    return config
+end
+
+-- Get configuration as MCP resource
+function M.get_configuration_as_resource()
+    local config = M.get_configuration()
+    local schema = M.get_configuration_schema()
+    
+    return {
+        uri = "neovim://configuration",
+        name = "Neovim Configuration",
+        description = "Current configuration settings and schema",
+        mime_type = "application/json",
+        content = {
+            config = config,
+            schema = schema,
+            timestamp = os.time()
+        }
+    }
 end
 
 -- RPC Client constructor
