@@ -320,19 +320,26 @@ pub fn handle_create_goal(&self, params: &Option<Value>) -> Result<String, RpcEr
         .and_then(|d| d.as_str())
         .map(|d| d.to_string());
     
-    // For now, return a mock response to test the RPC infrastructure
-    // TODO: Implement actual database call when async RPC is supported
-    let mock_goal = serde_json::json!({
-        "id": "456e7890-e89b-12d3-a456-426614174000",
-        "project_id": project_id,
-        "name": name.clone(),
-        "description": description.clone(),
-        "status": "active",
-        "created_at": null,
-        "updated_at": null
-    });
+    // Parse the project ID
+    let project_uuid = uuid::Uuid::parse_str(project_id)
+        .map_err(|e| RpcError::invalid_params(Some(format!("Invalid project ID: {e}"))))?;
     
-    serde_json::to_string(&mock_goal)
+    // Create the goal request
+    let request = crate::models::CreateGoalRequest {
+        project_id: project_uuid,
+        name,
+        description,
+    };
+    
+    // DONE: Implement actual database call when async RPC is supported
+    // Call the actual database operation using the current runtime
+    let goal = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(crate::operations::create_goal(request))
+    })
+    .map_err(|e| RpcError::server_error(Some(format!("Failed to create goal: {e}"))))?;
+    
+    // Serialize the goal to JSON
+    serde_json::to_string(&goal)
         .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize goal: {e}"))))
 }
     
@@ -1525,27 +1532,40 @@ mod tests {
     /// Test that the server can handle create goal requests
     #[test]
     fn test_server_create_goal() {
-        let config = OllamaConfig::default();
-        let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        // Create a runtime for the test
+        let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
         
-        // Test that server can handle create goal
-        let params = Some(serde_json::json!({
-            "project_id": "123e4567-e89b-12d3-a456-426614174000",
-            "name": "Test Goal",
-            "description": "A test goal created via RPC"
-        }));
-        let result = server.handle_create_goal(&params);
-        assert!(result.is_ok(), "handle_create_goal should return Ok");
-        
-        // Verify the response is valid JSON
-        let response = result.unwrap();
-        let response_json: serde_json::Value = serde_json::from_str(&response)
-            .expect("Response should be valid JSON");
-        assert!(response_json.get("id").is_some(), "Should have an id field");
-        assert!(response_json.get("name").is_some(), "Should have a name field");
-        assert_eq!(response_json.get("name").unwrap().as_str(), Some("Test Goal"));
-        assert_eq!(response_json.get("project_id").unwrap().as_str(), Some("123e4567-e89b-12d3-a456-426614174000"));
+        runtime.block_on(async {
+            // Initialize test database
+            let db_result = crate::database::initialize().await;
+            if let Err(e) = &db_result {
+                println!("Database initialization failed: {e:?}");
+                // Skip test if database can't be initialized
+                return;
+            }
+            
+            let config = OllamaConfig::default();
+            let client = OllamaClient::new(config).unwrap();
+            let server = ParagonicServer::new(client);
+            
+            // Test that server can handle create goal
+            let params = Some(serde_json::json!({
+                "project_id": "123e4567-e89b-12d3-a456-426614174000",
+                "name": "Test Goal",
+                "description": "A test goal created via RPC"
+            }));
+            let result = server.handle_create_goal(&params);
+            assert!(result.is_ok(), "handle_create_goal should return Ok");
+            
+            // Verify the response is valid JSON
+            let response = result.unwrap();
+            let response_json: serde_json::Value = serde_json::from_str(&response)
+                .expect("Response should be valid JSON");
+            assert!(response_json.get("id").is_some(), "Should have an id field");
+            assert!(response_json.get("name").is_some(), "Should have a name field");
+            assert_eq!(response_json.get("name").unwrap().as_str(), Some("Test Goal"));
+            assert_eq!(response_json.get("project_id").unwrap().as_str(), Some("123e4567-e89b-12d3-a456-426614174000"));
+        });
     }
     
     /// Test that the server can handle get goal requests
@@ -2258,6 +2278,68 @@ mod tests {
                 .filter(|name| name == "Mock Project 1" || name == "Mock Project 2")
                 .collect();
             assert!(mock_project_names.is_empty(), "Mock projects should not exist in real database");
+        });
+    }
+
+    #[test]
+    fn test_handle_create_goal_with_real_database() {
+        // Create a runtime for the test
+        let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+        
+        runtime.block_on(async {
+            // Initialize test database
+            let db_result = crate::database::initialize().await;
+            if let Err(e) = &db_result {
+                println!("Database initialization failed: {e:?}");
+                // Skip test if database can't be initialized
+                return;
+            }
+            
+            let mut config = ConfigManager::new();
+            config.load_from_standard_locations().expect("Failed to load config");
+            
+            let ollama_client = OllamaClient::from_config_manager(&config).expect("Failed to create Ollama client");
+            let server = ParagonicServer::new(ollama_client);
+            
+            // Use a mock project ID for testing create_goal
+            // This will test the current mock implementation
+            let project_id = "123e4567-e89b-12d3-a456-426614174000";
+            
+            // Now test creating a goal
+            let create_goal_params = serde_json::json!({
+                "project_id": project_id,
+                "name": "Test Goal for Real DB",
+                "description": "A test goal created via RPC with real database"
+            });
+            
+            let result = server.handle_create_goal(&Some(create_goal_params));
+            if let Err(e) = &result {
+                println!("Create goal failed with error: {e:?}");
+            }
+            assert!(result.is_ok(), "create_goal should succeed");
+            
+            let response_str = result.unwrap();
+            let response: serde_json::Value = serde_json::from_str(&response_str)
+                .expect("Response should be valid JSON");
+            
+            // Verify response structure
+            assert!(response.get("id").is_some(), "Response should have id field");
+            assert_eq!(response.get("project_id").unwrap(), project_id);
+            assert_eq!(response.get("name").unwrap(), "Test Goal for Real DB");
+            assert_eq!(response.get("description").unwrap(), "A test goal created via RPC with real database");
+            assert!(response.get("status").is_some(), "Response should have status field");
+            assert!(response.get("created_at").is_some(), "Response should have created_at field");
+            assert!(response.get("updated_at").is_some(), "Response should have updated_at field");
+            
+            // This should fail with the current mock implementation
+            // because the goal wasn't actually created in the database
+            let goal_id = response.get("id").unwrap().as_str().unwrap();
+            let uuid = uuid::Uuid::parse_str(goal_id).expect("Should be valid UUID");
+            let goal = crate::operations::get_goal(uuid).await;
+            assert!(goal.is_ok(), "Goal should exist in database");
+            let goal = goal.unwrap();
+            assert_eq!(goal.name, "Test Goal for Real DB");
+            assert_eq!(goal.description, Some("A test goal created via RPC with real database".to_string()));
         });
     }
 } 
