@@ -64,6 +64,17 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicAgentCreate", M.agent_create_file, {nargs = "*"})
     vim.api.nvim_create_user_command("ParagonicAgentSave", M.agent_save_file, {})
     
+    -- MCP commands
+    vim.api.nvim_create_user_command("ParagonicMCPInit", M.initialize_mcp_server, {})
+    vim.api.nvim_create_user_command("ParagonicMCPResources", function() 
+        local resources = M.list_mcp_resources()
+        M.display_mcp_resources(resources)
+    end, {})
+    vim.api.nvim_create_user_command("ParagonicMCPTools", function()
+        local tools = M.list_mcp_tools()
+        M.display_mcp_tools(tools)
+    end, {})
+    
     -- Initialize backend
     M._initialize_backend()
     
@@ -2102,6 +2113,303 @@ function M.agent_save_with_backup(args)
     else
         return M.agent_save_file(args)
     end
+end
+
+-- MCP Server functionality
+
+-- MCP Server configuration
+M.mcp_server = {
+    protocol_version = "2025-06-18",
+    server_info = {
+        name = "paragonic-neovim",
+        version = "1.0.0"
+    },
+    capabilities = {
+        resources = {
+            list_resources = true,
+            read_resources = true
+        },
+        tools = {
+            list_tools = true,
+            call_tools = true
+        },
+        prompts = {
+            list_prompts = true,
+            show_prompts = true
+        }
+    }
+}
+
+-- Initialize MCP server
+function M.initialize_mcp_server()
+    local initialize_result = {
+        protocol_version = M.mcp_server.protocol_version,
+        capabilities = M.mcp_server.capabilities,
+        server_info = M.mcp_server.server_info
+    }
+    
+    vim.notify("MCP Server initialized with protocol version: " .. initialize_result.protocol_version, vim.log.levels.INFO)
+    return initialize_result
+end
+
+-- List MCP Resources
+function M.list_mcp_resources()
+    return {
+        {
+            uri = "neovim://session",
+            name = "Neovim Session",
+            description = "Current Neovim session information",
+            mime_type = "application/json"
+        },
+        {
+            uri = "neovim://buffers",
+            name = "Neovim Buffers", 
+            description = "List of all buffers in the session",
+            mime_type = "application/json"
+        },
+        {
+            uri = "neovim://windows",
+            name = "Neovim Windows",
+            description = "List of all windows in the session", 
+            mime_type = "application/json"
+        }
+    }
+end
+
+-- List MCP Tools
+function M.list_mcp_tools()
+    return {
+        {
+            name = "agent_edit_file",
+            description = "Edit a file in the current Neovim session",
+            input_schema = {
+                type = "object",
+                properties = {
+                    file_path = {type = "string"},
+                    line_number = {type = "integer"},
+                    content = {type = "string"}
+                },
+                required = {"file_path"}
+            }
+        },
+        {
+            name = "agent_create_file", 
+            description = "Create a new file in the current Neovim session",
+            input_schema = {
+                type = "object",
+                properties = {
+                    file_name = {type = "string"},
+                    content = {type = "string"},
+                    open_in_window = {type = "boolean"}
+                },
+                required = {"file_name"}
+            }
+        },
+        {
+            name = "agent_save_file",
+            description = "Save a file to disk",
+            input_schema = {
+                type = "object", 
+                properties = {
+                    file_path = {type = "string"},
+                    force = {type = "boolean"}
+                }
+            }
+        }
+    }
+end
+
+-- Handle MCP messages
+function M.handle_mcp_message(message)
+    local id = message.id
+    local method = message.method
+    local params = message.params or {}
+    
+    if method == "initialize" then
+        return {
+            id = id,
+            result = M.initialize_mcp_server()
+        }
+    elseif method == "resources/list" then
+        return {
+            id = id,
+            result = {
+                resources = M.list_mcp_resources()
+            }
+        }
+    elseif method == "tools/list" then
+        return {
+            id = id,
+            result = {
+                tools = M.list_mcp_tools()
+            }
+        }
+    elseif method == "tools/call" then
+        return M.handle_tool_call(id, params)
+    else
+        return {
+            id = id,
+            error = {
+                code = -32601,
+                message = "Method not found: " .. method
+            }
+        }
+    end
+end
+
+-- Handle MCP tool calls
+function M.handle_tool_call(id, params)
+    local tool_name = params.name
+    local arguments = params.arguments or {}
+    
+    if tool_name == "agent_edit_file" then
+        local success = M.agent_edit_file({
+            arguments.file_path,
+            tostring(arguments.line_number or 1),
+            arguments.content or ""
+        })
+        return {
+            id = id,
+            result = {
+                content = {
+                    {type = "text", text = success and "File edited successfully" or "Failed to edit file"}
+                }
+            }
+        }
+    elseif tool_name == "agent_create_file" then
+        local success = M.agent_create_file({
+            arguments.file_name,
+            arguments.content or "",
+            tostring(arguments.open_in_window or false)
+        })
+        return {
+            id = id,
+            result = {
+                content = {
+                    {type = "text", text = success and "File created successfully" or "Failed to create file"}
+                }
+            }
+        }
+    elseif tool_name == "agent_save_file" then
+        local success = M.agent_save_file({
+            arguments.file_path or "",
+            tostring(arguments.force or false)
+        })
+        return {
+            id = id,
+            result = {
+                content = {
+                    {type = "text", text = success and "File saved successfully" or "Failed to save file"}
+                }
+            }
+        }
+    else
+        return {
+            id = id,
+            error = {
+                code = -32601,
+                message = "Tool not found: " .. tool_name
+            }
+        }
+    end
+end
+
+-- Display MCP resources in a floating window
+function M.display_mcp_resources(resources)
+    local lines = {
+        "📋 MCP Resources",
+        string.rep("─", 30),
+        ""
+    }
+    
+    for i, resource in ipairs(resources) do
+        table.insert(lines, string.format("%d. %s", i, resource.name))
+        table.insert(lines, string.format("   URI: %s", resource.uri))
+        table.insert(lines, string.format("   Description: %s", resource.description))
+        table.insert(lines, string.format("   MIME Type: %s", resource.mime_type))
+        table.insert(lines, "")
+    end
+    
+    -- Create floating window
+    local width = 80
+    local height = math.min(#lines + 2, 20)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
+    
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "single"
+    })
+    
+    -- Set up keymaps
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    
+    vim.notify("Displayed " .. #resources .. " MCP resources", vim.log.levels.INFO)
+end
+
+-- Display MCP tools in a floating window
+function M.display_mcp_tools(tools)
+    local lines = {
+        "🔧 MCP Tools",
+        string.rep("─", 30),
+        ""
+    }
+    
+    for i, tool in ipairs(tools) do
+        table.insert(lines, string.format("%d. %s", i, tool.name))
+        table.insert(lines, string.format("   Description: %s", tool.description))
+        
+        -- Show input schema
+        if tool.input_schema and tool.input_schema.properties then
+            table.insert(lines, "   Parameters:")
+            for param_name, param_schema in pairs(tool.input_schema.properties) do
+                local required = tool.input_schema.required and 
+                    vim.fn.index(tool.input_schema.required, param_name) >= 0
+                local required_mark = required and " (required)" or " (optional)"
+                table.insert(lines, string.format("     - %s: %s%s", 
+                    param_name, param_schema.type, required_mark))
+            end
+        end
+        table.insert(lines, "")
+    end
+    
+    -- Create floating window
+    local width = 80
+    local height = math.min(#lines + 2, 20)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
+    
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "single"
+    })
+    
+    -- Set up keymaps
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    
+    vim.notify("Displayed " .. #tools .. " MCP tools", vim.log.levels.INFO)
 end
 
 return M 

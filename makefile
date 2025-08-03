@@ -63,6 +63,9 @@ test-lua-agent:
 	@echo "Testing agent file save..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_agent_file_save.lua
 	@echo ""
+	@echo "Testing MCP server init..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_server_init.lua
+	@echo ""
 	@echo "✓ Agent tests completed"
 
 # RPC-specific tests (standalone RPC client only)
