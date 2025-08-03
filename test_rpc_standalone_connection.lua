@@ -15,16 +15,15 @@ local function test_mock_implementation_fails()
     -- Load the rpc_standalone module
     local rpc_standalone = require("paragonic.rpc_standalone")
     
-    -- Create a new RPC client
-    local client = rpc_standalone.new("127.0.0.1:2346")
+    -- Create a new RPC client with invalid address for red phase test
+    local client = rpc_standalone.new("127.0.0.1:9999")
     
-    -- Test that connect() currently just returns true without real connection
+    -- Test that connect() fails with invalid address
     local connect_result = client:connect()
     
-    -- This should fail because we want real connection logic
-    -- The mock implementation just returns true, but we want it to actually test the connection
-    assert(connect_result == false, "Connect should fail with mock implementation")
-    assert(client.connected == false, "Client should remain disconnected with mock implementation")
+    -- This should fail because the address is invalid
+    assert(connect_result == false, "Connect should fail with invalid address")
+    assert(client.connected == false, "Client should remain disconnected with invalid address")
     
     print("✓ Mock implementation correctly fails (red phase)")
     return true
