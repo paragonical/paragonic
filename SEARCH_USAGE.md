@@ -127,6 +127,42 @@ Save the most recent search for future use.
 :ParagonicSaveSearch         # Save current search
 ```
 
+### Export Data
+```vim
+:ParagonicExportData
+```
+
+Export search history and saved searches to a JSON file.
+
+**Examples:**
+```vim
+:ParagonicExportData         # Export data to file
+```
+
+### Import Data
+```vim
+:ParagonicImportData
+```
+
+Import search history and saved searches from a JSON file.
+
+**Examples:**
+```vim
+:ParagonicImportData         # Import data from file
+```
+
+### Backup Data
+```vim
+:ParagonicBackupData
+```
+
+Create a timestamped backup of all search data.
+
+**Examples:**
+```vim
+:ParagonicBackupData         # Create backup
+```
+
 ## Interactive Mode
 
 If you don't provide arguments to the commands, they will prompt you for:
@@ -167,6 +203,16 @@ The search functionality uses the same backend configuration as other Paragonic 
 - **Timeout**: 15 seconds
 - **Retries**: 2 attempts
 - **Logging**: Disabled by default
+
+### Persistent Storage
+
+Search history and saved searches are automatically persisted:
+
+- **Data Directory**: `~/.local/share/nvim/paragonic/`
+- **History File**: `search_history.json`
+- **Saved Searches File**: `saved_searches.json`
+- **Backup Directory**: `backups/`
+- **Auto-save**: Enabled by default
 
 ## Keyboard Shortcuts
 
@@ -245,6 +291,12 @@ local saved = paragonic.get_saved_searches()
 paragonic.save_search("name", "query", "basic", nil, 10, 0.0)
 paragonic.delete_saved_search("name")
 paragonic.execute_saved_search("name")
+
+-- Persistent storage
+paragonic.export_data()
+paragonic.import_data()
+paragonic.backup_data()
+```
 ```
 
 ### Custom Result Display
@@ -275,4 +327,6 @@ The search functionality integrates with other Paragonic features:
 - Consider using hybrid search for the best balance of relevance and speed
 - Save frequently used searches to avoid retyping
 - Use search history to quickly repeat recent searches
-- Clear old history entries to maintain performance 
+- Clear old history entries to maintain performance
+- Regular backups ensure data safety across sessions
+- Export data for sharing between different installations 

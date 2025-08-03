@@ -43,6 +43,9 @@ test-lua-search:
 	@echo "Testing search history..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_search_history.lua
 	@echo ""
+	@echo "Testing persistent storage..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_persistent_storage.lua
+	@echo ""
 	@echo "✓ Search tests completed"
 
 # RPC-specific tests (standalone RPC client only)

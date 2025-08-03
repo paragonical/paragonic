@@ -18,6 +18,11 @@ local search_history = {}
 local saved_searches = {}
 local max_history_size = 50
 
+-- Persistent storage paths
+local data_dir = vim.fn.stdpath("data") .. "/paragonic"
+local history_file = data_dir .. "/search_history.json"
+local saved_searches_file = data_dir .. "/saved_searches.json"
+
 -- Initialize the plugin
 function M.setup(opts)
     -- Merge options with defaults
@@ -42,11 +47,19 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicSavedSearches", M.show_saved_searches, {})
     vim.api.nvim_create_user_command("ParagonicSaveSearch", M.save_current_search, {})
     
+    -- Persistent storage commands
+    vim.api.nvim_create_user_command("ParagonicExportData", M.export_data, {})
+    vim.api.nvim_create_user_command("ParagonicImportData", M.import_data, {})
+    vim.api.nvim_create_user_command("ParagonicBackupData", M.backup_data, {})
+    
     -- Initialize backend
     M._initialize_backend()
     
     -- Set up keyboard mappings
     M._setup_keymaps()
+    
+    -- Load persistent data
+    M._load_persistent_data()
     
     -- Add any autocommands here as needed
 end
@@ -1131,6 +1144,9 @@ function M.add_to_search_history(query, search_type, results_count, timestamp)
     if #search_history > max_history_size then
         table.remove(search_history, #search_history)
     end
+    
+    -- Auto-save to disk
+    M._save_search_history()
 end
 
 -- Get search history
@@ -1141,6 +1157,10 @@ end
 -- Clear search history
 function M.clear_search_history()
     search_history = {}
+    
+    -- Auto-save to disk
+    M._save_search_history()
+    
     vim.notify("Search history cleared", vim.log.levels.INFO)
 end
 
@@ -1171,6 +1191,10 @@ function M.save_search(name, query, search_type, content_type, limit, threshold)
     }
     
     table.insert(saved_searches, saved_search)
+    
+    -- Auto-save to disk
+    M._save_saved_searches()
+    
     vim.notify("Search '" .. name .. "' saved successfully", vim.log.levels.INFO)
     return true
 end
@@ -1184,9 +1208,13 @@ end
 function M.delete_saved_search(name)
     for i, saved in ipairs(saved_searches) do
         if saved.name == name then
-            table.remove(saved_searches, i)
-            vim.notify("Saved search '" .. name .. "' deleted", vim.log.levels.INFO)
-            return true
+                    table.remove(saved_searches, i)
+        
+        -- Auto-save to disk
+        M._save_saved_searches()
+        
+        vim.notify("Saved search '" .. name .. "' deleted", vim.log.levels.INFO)
+        return true
         end
     end
     vim.notify("Saved search '" .. name .. "' not found", vim.log.levels.WARN)
@@ -1484,6 +1512,223 @@ function M.save_current_search()
         M.save_search(name, last_search.query, last_search.type, nil, 10, 0.0)
     else
         vim.notify("No recent searches to save", vim.log.levels.WARN)
+    end
+end
+
+-- Persistent storage functionality
+
+-- Ensure data directory exists
+function M._ensure_data_directory()
+    local dir = vim.fn.stdpath("data") .. "/paragonic"
+    if vim.fn.isdirectory(dir) == 0 then
+        vim.fn.mkdir(dir, "p")
+    end
+end
+
+-- Save data to JSON file
+function M._save_to_json(data, file_path)
+    M._ensure_data_directory()
+    
+    local json_string = vim.json.encode(data)
+    if not json_string then
+        vim.notify("Failed to encode data to JSON", vim.log.levels.ERROR)
+        return false
+    end
+    
+    local success = pcall(vim.fn.writefile, {json_string}, file_path)
+    if not success then
+        vim.notify("Failed to write data to " .. file_path, vim.log.levels.ERROR)
+        return false
+    end
+    
+    return true
+end
+
+-- Load data from JSON file
+function M._load_from_json(file_path)
+    if vim.fn.filereadable(file_path) == 0 then
+        return {}
+    end
+    
+    local lines = vim.fn.readfile(file_path)
+    if #lines == 0 then
+        return {}
+    end
+    
+    local json_string = table.concat(lines, "\n")
+    local success, data = pcall(vim.json.decode, json_string)
+    
+    if not success or not data then
+        vim.notify("Failed to parse JSON from " .. file_path, vim.log.levels.ERROR)
+        return {}
+    end
+    
+    return data
+end
+
+-- Save search history to disk
+function M._save_search_history()
+    return M._save_to_json(search_history, history_file)
+end
+
+-- Load search history from disk
+function M._load_search_history()
+    local data = M._load_from_json(history_file)
+    
+    -- Validate and clean data
+    local cleaned_data = {}
+    for _, entry in ipairs(data) do
+        if entry.query and entry.type and entry.results_count then
+            -- Ensure all required fields are present
+            entry.timestamp = entry.timestamp or os.time()
+            entry.date = entry.date or os.date("%Y-%m-%d %H:%M:%S", entry.timestamp)
+            table.insert(cleaned_data, entry)
+        end
+    end
+    
+    return cleaned_data
+end
+
+-- Save saved searches to disk
+function M._save_saved_searches()
+    return M._save_to_json(saved_searches, saved_searches_file)
+end
+
+-- Load saved searches from disk
+function M._load_saved_searches()
+    local data = M._load_from_json(saved_searches_file)
+    
+    -- Validate and clean data
+    local cleaned_data = {}
+    for _, saved in ipairs(data) do
+        if saved.name and saved.query and saved.type then
+            -- Ensure all required fields are present
+            saved.limit = saved.limit or 10
+            saved.threshold = saved.threshold or 0.0
+            saved.created_at = saved.created_at or os.time()
+            saved.created_date = saved.created_date or os.date("%Y-%m-%d %H:%M:%S", saved.created_at)
+            table.insert(cleaned_data, saved)
+        end
+    end
+    
+    return cleaned_data
+end
+
+-- Load all persistent data
+function M._load_persistent_data()
+    search_history = M._load_search_history()
+    saved_searches = M._load_saved_searches()
+    
+    vim.notify("Loaded " .. #search_history .. " history entries and " .. #saved_searches .. " saved searches", vim.log.levels.INFO)
+end
+
+-- Auto-save function
+function M._auto_save()
+    M._save_search_history()
+    M._save_saved_searches()
+end
+
+-- Export data to a file
+function M.export_data()
+    local export_path = vim.fn.input("Export to file: ")
+    if export_path == "" then
+        vim.notify("Export path is required", vim.log.levels.WARN)
+        return
+    end
+    
+    local export_data = {
+        search_history = search_history,
+        saved_searches = saved_searches,
+        export_date = os.date("%Y-%m-%d %H:%M:%S"),
+        version = "1.0"
+    }
+    
+    local success = M._save_to_json(export_data, export_path)
+    if success then
+        vim.notify("Data exported successfully to " .. export_path, vim.log.levels.INFO)
+    else
+        vim.notify("Failed to export data", vim.log.levels.ERROR)
+    end
+end
+
+-- Import data from a file
+function M.import_data()
+    local import_path = vim.fn.input("Import from file: ")
+    if import_path == "" then
+        vim.notify("Import path is required", vim.log.levels.WARN)
+        return
+    end
+    
+    if vim.fn.filereadable(import_path) == 0 then
+        vim.notify("Import file does not exist", vim.log.levels.ERROR)
+        return
+    end
+    
+    local import_data = M._load_from_json(import_path)
+    if not import_data or not import_data.search_history or not import_data.saved_searches then
+        vim.notify("Invalid import file format", vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Validate and merge data
+    local imported_history = 0
+    local imported_saved = 0
+    
+    -- Import search history
+    for _, entry in ipairs(import_data.search_history) do
+        if entry.query and entry.type and entry.results_count then
+            table.insert(search_history, entry)
+            imported_history = imported_history + 1
+        end
+    end
+    
+    -- Import saved searches
+    for _, saved in ipairs(import_data.saved_searches) do
+        if saved.name and saved.query and saved.type then
+            -- Check for duplicates
+            local exists = false
+            for _, existing in ipairs(saved_searches) do
+                if existing.name == saved.name then
+                    exists = true
+                    break
+                end
+            end
+            
+            if not exists then
+                table.insert(saved_searches, saved)
+                imported_saved = imported_saved + 1
+            end
+        end
+    end
+    
+    -- Save to disk
+    M._auto_save()
+    
+    vim.notify(string.format("Imported %d history entries and %d saved searches", imported_history, imported_saved), vim.log.levels.INFO)
+end
+
+-- Backup data
+function M.backup_data()
+    local backup_dir = vim.fn.stdpath("data") .. "/paragonic/backups"
+    if vim.fn.isdirectory(backup_dir) == 0 then
+        vim.fn.mkdir(backup_dir, "p")
+    end
+    
+    local timestamp = os.date("%Y%m%d_%H%M%S")
+    local backup_path = backup_dir .. "/backup_" .. timestamp .. ".json"
+    
+    local backup_data = {
+        search_history = search_history,
+        saved_searches = saved_searches,
+        backup_date = os.date("%Y-%m-%d %H:%M:%S"),
+        version = "1.0"
+    }
+    
+    local success = M._save_to_json(backup_data, backup_path)
+    if success then
+        vim.notify("Backup created successfully: " .. backup_path, vim.log.levels.INFO)
+    else
+        vim.notify("Failed to create backup", vim.log.levels.ERROR)
     end
 end
 
