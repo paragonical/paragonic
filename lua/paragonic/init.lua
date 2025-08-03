@@ -18,10 +18,16 @@ local search_history = {}
 local saved_searches = {}
 local max_history_size = 50
 
+-- AI-powered search enhancement
+local search_insights = {}
+local context_cache = {}
+local suggestion_cache = {}
+
 -- Persistent storage paths
 local data_dir = vim.fn.stdpath("data") .. "/paragonic"
 local history_file = data_dir .. "/search_history.json"
 local saved_searches_file = data_dir .. "/saved_searches.json"
+local insights_file = data_dir .. "/search_insights.json"
 
 -- Initialize the plugin
 function M.setup(opts)
@@ -51,6 +57,12 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicExportData", M.export_data, {})
     vim.api.nvim_create_user_command("ParagonicImportData", M.import_data, {})
     vim.api.nvim_create_user_command("ParagonicBackupData", M.backup_data, {})
+    
+    -- Agentic collaboration commands
+    vim.api.nvim_create_user_command("ParagonicAgentSession", M.get_agent_session_info, {})
+    vim.api.nvim_create_user_command("ParagonicAgentEdit", M.agent_edit_file, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicAgentCreate", M.agent_create_file, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicAgentSave", M.agent_save_file, {})
     
     -- Initialize backend
     M._initialize_backend()
@@ -1730,6 +1742,60 @@ function M.backup_data()
     else
         vim.notify("Failed to create backup", vim.log.levels.ERROR)
     end
+end
+
+-- Agentic collaboration functionality
+
+-- Get comprehensive session information for agent
+function M.get_agent_session_info()
+    local session_info = {
+        timestamp = os.time(),
+        current_directory = vim.fn.getcwd(),
+        current_file = vim.fn.expand("%:p"),
+        buffers = {},
+        windows = {},
+        mode = vim.api.nvim_get_mode(),
+        terminal_info = {
+            columns = vim.o.columns,
+            lines = vim.o.lines
+        }
+    }
+    
+    -- Get buffer information
+    local buffers = vim.api.nvim_list_bufs()
+    for _, buf in ipairs(buffers) do
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        local buftype = vim.api.nvim_buf_get_option(buf, "buftype")
+        local modifiable = vim.api.nvim_buf_get_option(buf, "modifiable")
+        local line_count = vim.api.nvim_buf_line_count(buf)
+        
+        -- Only include file buffers (not special buffers)
+        if buftype == "" and buf_name ~= "" then
+            table.insert(session_info.buffers, {
+                id = buf,
+                name = buf_name,
+                line_count = line_count,
+                modifiable = modifiable,
+                is_current = (buf == vim.api.nvim_get_current_buf())
+            })
+        end
+    end
+    
+    -- Get window information
+    local windows = vim.api.nvim_list_wins()
+    for _, win in ipairs(windows) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        local cursor = vim.api.nvim_win_get_cursor(win)
+        
+        table.insert(session_info.windows, {
+            id = win,
+            buffer_id = buf,
+            cursor_line = cursor[1],
+            cursor_column = cursor[2]
+        })
+    end
+    
+    return session_info
 end
 
 return M 

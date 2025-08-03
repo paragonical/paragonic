@@ -48,6 +48,14 @@ test-lua-search:
 	@echo ""
 	@echo "✓ Search tests completed"
 
+# Agentic collaboration tests
+test-lua-agent:
+	@echo "=== Running Lua Agent Tests ==="
+	@echo "Testing agent session info..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_agent_session_info.lua
+	@echo ""
+	@echo "✓ Agent tests completed"
+
 # RPC-specific tests (standalone RPC client only)
 test-lua-rpc:
 	@echo "=== Running Lua RPC Tests ==="
