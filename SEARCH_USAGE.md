@@ -91,6 +91,42 @@ Quick hybrid search with advanced options.
 <leader>ph "AI development"   # Direct hybrid search
 ```
 
+### Search History
+```vim
+:ParagonicSearchHistory
+```
+
+View and manage your search history.
+
+**Examples:**
+```vim
+:ParagonicSearchHistory      # Show search history
+```
+
+### Saved Searches
+```vim
+:ParagonicSavedSearches
+```
+
+View and manage your saved searches.
+
+**Examples:**
+```vim
+:ParagonicSavedSearches      # Show saved searches
+```
+
+### Save Current Search
+```vim
+:ParagonicSaveSearch
+```
+
+Save the most recent search for future use.
+
+**Examples:**
+```vim
+:ParagonicSaveSearch         # Save current search
+```
+
 ## Interactive Mode
 
 If you don't provide arguments to the commands, they will prompt you for:
@@ -151,6 +187,18 @@ The search functionality uses the same backend configuration as other Paragonic 
 - `gg` - Go to first result
 - `G` - Go to last result
 
+### Search History Navigation
+- `q` or `<Esc>` - Close the history window
+- `j/k` - Navigate through history entries
+- `<CR>` - Repeat the selected search
+- `d` - Delete the selected entry
+
+### Saved Searches Navigation
+- `q` or `<Esc>` - Close the saved searches window
+- `j/k` - Navigate through saved searches
+- `<CR>` - Execute the selected saved search
+- `d` - Delete the selected saved search
+
 ## Troubleshooting
 
 ### No Results Found
@@ -187,6 +235,16 @@ local results = paragonic.find_similar_content("query", "project", 10, 0.3)
 
 -- Hybrid search
 local results = paragonic.hybrid_search("query", "project", 10, 0.3, true)
+
+-- Search history
+local history = paragonic.get_search_history()
+paragonic.clear_search_history()
+
+-- Saved searches
+local saved = paragonic.get_saved_searches()
+paragonic.save_search("name", "query", "basic", nil, 10, 0.0)
+paragonic.delete_saved_search("name")
+paragonic.execute_saved_search("name")
 ```
 
 ### Custom Result Display
@@ -206,10 +264,15 @@ The search functionality integrates with other Paragonic features:
 - **Tasks**: Find tasks related to specific topics
 - **Chat**: Use search results in conversations with the AI
 - **Configuration**: Search through configuration settings
+- **History**: Track and repeat previous searches
+- **Saved Searches**: Store and reuse complex search queries
 
 ## Performance Tips
 
 - Use specific queries for better results
 - Set appropriate limits to avoid overwhelming results
 - Use content type filtering to narrow down results
-- Consider using hybrid search for the best balance of relevance and speed 
+- Consider using hybrid search for the best balance of relevance and speed
+- Save frequently used searches to avoid retyping
+- Use search history to quickly repeat recent searches
+- Clear old history entries to maintain performance 
