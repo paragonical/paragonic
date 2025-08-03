@@ -12,7 +12,7 @@ use chrono::Utc;
 
 use crate::schema::{projects, goals, tasks, agents, conversations, messages};
 
-/// Raw SQL result structure for embedding search results
+/// Row structure for embedding search results
 #[derive(QueryableByName)]
 struct EmbeddingSearchRow {
     #[diesel(sql_type = diesel::sql_types::Uuid)]
@@ -25,8 +25,8 @@ struct EmbeddingSearchRow {
     pub content_text: String,
     #[diesel(sql_type = diesel::sql_types::Text)]
     pub embedding_model: String,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Binary>)]
-    pub embedding_vector: Option<Vec<u8>>,
+    #[diesel(sql_type = diesel::sql_types::Nullable<crate::schema::sql_types::Vector>)]
+    pub embedding_vector: Option<crate::vector::Vector>,
     #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Jsonb>)]
     pub metadata: Option<serde_json::Value>,
     #[diesel(sql_type = diesel::sql_types::Timestamptz)]
@@ -731,23 +731,10 @@ pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec
     };
     
     // Convert raw SQL results to EmbeddingSearchResult
-    let search_results = search_rows.into_iter()
+    let search_results: Vec<EmbeddingSearchResult> = search_rows
+        .into_iter()
         .map(|row| {
-            // Convert similarity score (pgvector returns distance, we want similarity)
-            let similarity_score = 1.0 - row.similarity;
-            
-            // Convert embedding vector from bytes to Vector type
-            let embedding_vector = row.embedding_vector.map(|bytes| {
-                // Convert bytes to f32 values (assuming 4 bytes per f32)
-                let mut values = Vec::new();
-                for chunk in bytes.chunks(4) {
-                    if chunk.len() == 4 {
-                        let value = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                        values.push(value);
-                    }
-                }
-                crate::vector::Vector::from_slice(&values)
-            });
+            let similarity_score = row.similarity;
             
             EmbeddingSearchResult {
                 embedding: Embedding {
@@ -756,7 +743,7 @@ pub async fn search_embeddings(query: &str, limit: usize) -> ParagonicResult<Vec
                     content_id: row.content_id,
                     content_text: row.content_text,
                     embedding_model: row.embedding_model,
-                    embedding_vector,
+                    embedding_vector: row.embedding_vector,
                     metadata: row.metadata,
                     created_at: row.created_at,
                     updated_at: row.updated_at,
@@ -968,23 +955,10 @@ pub async fn find_similar_content(
     };
     
     // Convert raw SQL results to EmbeddingSearchResult
-    let search_results = search_rows.into_iter()
+    let search_results: Vec<EmbeddingSearchResult> = search_rows
+        .into_iter()
         .map(|row| {
-            // Convert similarity score (pgvector returns distance, we want similarity)
-            let similarity_score = 1.0 - row.similarity;
-            
-            // Convert embedding vector from bytes to Vector type
-            let embedding_vector = row.embedding_vector.map(|bytes| {
-                // Convert bytes to f32 values (assuming 4 bytes per f32)
-                let mut values = Vec::new();
-                for chunk in bytes.chunks(4) {
-                    if chunk.len() == 4 {
-                        let value = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                        values.push(value);
-                    }
-                }
-                crate::vector::Vector::from_slice(&values)
-            });
+            let similarity_score = row.similarity;
             
             EmbeddingSearchResult {
                 embedding: Embedding {
@@ -993,7 +967,7 @@ pub async fn find_similar_content(
                     content_id: row.content_id,
                     content_text: row.content_text,
                     embedding_model: row.embedding_model,
-                    embedding_vector,
+                    embedding_vector: row.embedding_vector,
                     metadata: row.metadata,
                     created_at: row.created_at,
                     updated_at: row.updated_at,
