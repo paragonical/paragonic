@@ -878,6 +878,47 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         serde_json::to_string(&response)
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
+    
+    /// Handle create agent requests
+    pub fn handle_create_agent(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let name = params.get("name")
+            .and_then(|n| n.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let description = params.get("description")
+            .and_then(|d| d.as_str())
+            .map(|d| d.to_string());
+        
+        let model_name = params.get("model_name")
+            .and_then(|m| m.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let configuration = params.get("configuration")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_response = serde_json::json!({
+            "success": true,
+            "agent": {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "name": name,
+                "description": description,
+                "model_name": model_name,
+                "configuration": configuration,
+                "created_at": "2025-08-02T20:00:00Z",
+                "updated_at": "2025-08-02T20:00:00Z"
+            }
+        });
+        
+        serde_json::to_string(&mock_response)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+    }
 }
 
 impl Server for ParagonicServer {
@@ -937,6 +978,8 @@ impl Server for ParagonicServer {
             "search_embeddings" => Some(self.handle_search_embeddings(params)),
             // Handle find similar content requests
             "find_similar_content" => Some(self.handle_find_similar_content(params)),
+            // Handle create agent requests
+            "create_agent" => Some(self.handle_create_agent(params)),
             _ => None
         }
     }
@@ -1720,5 +1763,38 @@ mod tests {
         assert_eq!(response_json.get("content_type").unwrap().as_str(), Some("project"));
         assert_eq!(response_json.get("limit").unwrap().as_u64(), Some(3));
         assert_eq!(response_json.get("threshold").unwrap().as_f64(), Some(0.5));
+    }
+    
+    /// Test create agent RPC handler
+    #[test]
+    fn test_server_create_agent() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid parameters
+        let params = serde_json::json!({
+            "name": "Test Agent",
+            "description": "A test agent for RPC",
+            "model_name": "llama3.2:3b",
+            "configuration": {}
+        });
+        
+        let result = server.handle_create_agent(&Some(params));
+        assert!(result.is_ok(), "handle_create_agent should succeed");
+        
+        let response = result.unwrap();
+        let response_value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify the mock response structure
+        assert!(response_value.get("success").is_some());
+        assert!(response_value.get("agent").is_some());
+        let agent = response_value.get("agent").unwrap();
+        assert_eq!(agent.get("name").unwrap().as_str().unwrap(), "Test Agent");
+        assert_eq!(agent.get("description").unwrap().as_str().unwrap(), "A test agent for RPC");
+        assert_eq!(agent.get("model_name").unwrap().as_str().unwrap(), "llama3.2:3b");
+        assert!(agent.get("id").is_some());
+        assert!(agent.get("created_at").is_some());
+        assert!(agent.get("updated_at").is_some());
     }
 } 
