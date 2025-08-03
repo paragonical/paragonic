@@ -27,6 +27,11 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
     vim.api.nvim_create_user_command("ParagonicSaveConfig", M.save_config_command, {})
     
+    -- Search commands
+    vim.api.nvim_create_user_command("ParagonicSearch", M.search_command, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicSearchFiltered", M.search_filtered_command, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicSearchHybrid", M.search_hybrid_command, {nargs = "*"})
+    
     -- Initialize backend
     M._initialize_backend()
     
@@ -616,6 +621,211 @@ function M.save_config_command()
     vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, confirmation_lines)
     
     vim.notify("Configuration saved successfully", vim.log.levels.INFO)
+end
+
+-- Search functionality
+function M.search_embeddings(query, limit)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Use default limit if not specified
+    limit = limit or 10
+    
+    -- Perform search
+    local response = rpc_client:search_embeddings(query, limit)
+    if not response then
+        return nil, "Failed to perform search"
+    end
+    
+    return response
+end
+
+function M.find_similar_content(query, content_type, limit, threshold)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Use default values if not specified
+    limit = limit or 10
+    threshold = threshold or 0.0
+    
+    -- Perform filtered search
+    local response = rpc_client:find_similar_content(query, content_type, limit, threshold)
+    if not response then
+        return nil, "Failed to perform filtered search"
+    end
+    
+    return response
+end
+
+function M.hybrid_search(query, content_type, limit, threshold, include_text_filtering)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Use default values if not specified
+    limit = limit or 10
+    threshold = threshold or 0.0
+    include_text_filtering = include_text_filtering ~= false -- Default to true
+    
+    -- Perform hybrid search
+    local response = rpc_client:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
+    if not response then
+        return nil, "Failed to perform hybrid search"
+    end
+    
+    return response
+end
+
+-- Search command handlers
+function M.search_command(args)
+    local query = table.concat(args, " ")
+    if query == "" then
+        query = vim.fn.input("Search query: ")
+        if query == "" then
+            vim.notify("Search query cannot be empty", vim.log.levels.WARN)
+            return
+        end
+    end
+    
+    local limit = tonumber(vim.fn.input("Limit (default 10): ")) or 10
+    
+    -- Perform search
+    local results, err = M.search_embeddings(query, limit)
+    if not results then
+        vim.notify("Search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Display results in a floating window
+    M.display_search_results(results, "Basic Search: " .. query)
+end
+
+function M.search_filtered_command(args)
+    local query = table.concat(args, " ")
+    if query == "" then
+        query = vim.fn.input("Search query: ")
+        if query == "" then
+            vim.notify("Search query cannot be empty", vim.log.levels.WARN)
+            return
+        end
+    end
+    
+    local content_type = vim.fn.input("Content type (optional): ")
+    local limit = tonumber(vim.fn.input("Limit (default 10): ")) or 10
+    local threshold = tonumber(vim.fn.input("Threshold (default 0.0): ")) or 0.0
+    
+    -- Perform filtered search
+    local results, err = M.find_similar_content(query, content_type ~= "" and content_type or nil, limit, threshold)
+    if not results then
+        vim.notify("Filtered search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Display results in a floating window
+    M.display_search_results(results, "Filtered Search: " .. query)
+end
+
+function M.search_hybrid_command(args)
+    local query = table.concat(args, " ")
+    if query == "" then
+        query = vim.fn.input("Search query: ")
+        if query == "" then
+            vim.notify("Search query cannot be empty", vim.log.levels.WARN)
+            return
+        end
+    end
+    
+    local content_type = vim.fn.input("Content type (optional): ")
+    local limit = tonumber(vim.fn.input("Limit (default 10): ")) or 10
+    local threshold = tonumber(vim.fn.input("Threshold (default 0.0): ")) or 0.0
+    local include_text_filtering = vim.fn.input("Include text filtering? (y/n, default y): "):lower() ~= "n"
+    
+    -- Perform hybrid search
+    local results, err = M.hybrid_search(query, content_type ~= "" and content_type or nil, limit, threshold, include_text_filtering)
+    if not results then
+        vim.notify("Hybrid search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    -- Display results in a floating window
+    M.display_search_results(results, "Hybrid Search: " .. query)
+end
+
+-- Display search results in a floating window
+function M.display_search_results(results, title)
+    -- Create floating window
+    local width = math.min(80, vim.o.columns - 4)
+    local height = math.min(20, vim.o.lines - 4)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    -- Create buffer for results
+    local buf = vim.api.nvim_create_buf(false, true)
+    
+    -- Format results
+    local lines = {
+        title,
+        string.rep("=", #title),
+        "",
+        "Found " .. (results.results and #results.results or 0) .. " results",
+        ""
+    }
+    
+    if results.results then
+        for i, result in ipairs(results.results) do
+            if result.embedding and result.embedding.content_text then
+                local text = result.embedding.content_text
+                if #text > 60 then
+                    text = text:sub(1, 60) .. "..."
+                end
+                
+                local score = result.similarity_score or 0
+                local content_type = result.embedding.content_type or "unknown"
+                
+                table.insert(lines, string.format("%d. [%s] (%.3f) %s", i, content_type, score, text))
+            end
+        end
+    end
+    
+    if #lines == 4 then -- Only title and "Found 0 results"
+        table.insert(lines, "No results found")
+    end
+    
+    -- Add footer
+    table.insert(lines, "")
+    table.insert(lines, "Press q to close")
+    
+    -- Set buffer content
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    
+    -- Set buffer options
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(buf, "swapfile", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "paragonic-search")
+    
+    -- Create window
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "rounded"
+    })
+    
+    -- Set up keymaps
+    vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
+    
+    -- Set cursor to first line
+    vim.api.nvim_win_set_cursor(win, {1, 0})
 end
 
 return M 
