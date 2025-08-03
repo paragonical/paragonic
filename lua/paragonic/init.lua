@@ -2427,6 +2427,78 @@ function M.validate_resource_content(content)
     return true, nil
 end
 
+-- MCP Progress tracking state
+M.progress_state = {
+    active_operations = {},
+    next_progress_id = 1
+}
+
+-- Create a progress notification
+function M.create_progress_notification(progress_id, message, percentage, done)
+    return {
+        method = "notifications/progress",
+        params = {
+            id = progress_id,
+            message = message,
+            percentage = percentage or 0,
+            done = done or false
+        }
+    }
+end
+
+-- Start a progress operation
+function M.start_progress_operation(operation_name, initial_message)
+    local progress_id = "progress-" .. M.progress_state.next_progress_id
+    M.progress_state.next_progress_id = M.progress_state.next_progress_id + 1
+    
+    M.progress_state.active_operations[progress_id] = {
+        name = operation_name,
+        message = initial_message,
+        percentage = 0,
+        start_time = os.time()
+    }
+    
+    return progress_id, M.create_progress_notification(progress_id, initial_message, 0, false)
+end
+
+-- Update progress
+function M.update_progress(progress_id, message, percentage)
+    local operation = M.progress_state.active_operations[progress_id]
+    if not operation then
+        return nil, "Progress operation not found: " .. progress_id
+    end
+    
+    operation.message = message or operation.message
+    operation.percentage = percentage or operation.percentage
+    
+    return M.create_progress_notification(progress_id, operation.message, operation.percentage, false)
+end
+
+-- Complete progress operation
+function M.complete_progress_operation(progress_id, final_message)
+    local operation = M.progress_state.active_operations[progress_id]
+    if not operation then
+        return nil, "Progress operation not found: " .. progress_id
+    end
+    
+    local final_notification = M.create_progress_notification(progress_id, final_message or operation.message, 100, true)
+    M.progress_state.active_operations[progress_id] = nil
+    
+    return final_notification
+end
+
+-- Format progress summary
+function M.format_progress_summary(progress_notifications)
+    local summary = {
+        total_notifications = #progress_notifications,
+        start_percentage = progress_notifications[1] and progress_notifications[1].params.percentage or 0,
+        end_percentage = progress_notifications[#progress_notifications] and progress_notifications[#progress_notifications].params.percentage or 0,
+        final_message = progress_notifications[#progress_notifications] and progress_notifications[#progress_notifications].params.message or "",
+        completed = progress_notifications[#progress_notifications] and progress_notifications[#progress_notifications].params.done or false
+    }
+    return summary
+end
+
 -- Handle MCP tool calls with enhanced error handling and metadata
 function M.handle_tool_call(id, params)
     local tool_name = params.name
@@ -2443,6 +2515,10 @@ function M.handle_tool_call(id, params)
         }
     end
     
+    -- Start progress for long-running operations
+    local progress_id = nil
+    local progress_notifications = {}
+    
     if tool_name == "agent_edit_file" then
         local file_path = arguments.file_path
         local line_number = arguments.line_number or 1
@@ -2458,6 +2534,10 @@ function M.handle_tool_call(id, params)
             }
         end
         
+        -- Start progress
+        progress_id, start_notification = M.start_progress_operation("file_edit", "Editing file: " .. file_path)
+        table.insert(progress_notifications, start_notification)
+        
         -- Find buffer by file path
         local target_buf = nil
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
@@ -2469,6 +2549,7 @@ function M.handle_tool_call(id, params)
         end
         
         if not target_buf then
+            M.complete_progress_operation(progress_id, "Error: File not found")
             return {
                 id = id,
                 error = {
@@ -2478,8 +2559,13 @@ function M.handle_tool_call(id, params)
             }
         end
         
+        -- Update progress
+        local update_notification = M.update_progress(progress_id, "Found file, performing edit...", 50)
+        table.insert(progress_notifications, update_notification)
+        
         -- Check if buffer is modifiable
         if not vim.api.nvim_buf_get_option(target_buf, "modifiable") then
+            M.complete_progress_operation(progress_id, "Error: File not modifiable")
             return {
                 id = id,
                 error = {
@@ -2492,6 +2578,10 @@ function M.handle_tool_call(id, params)
         -- Perform the edit
         vim.api.nvim_set_current_buf(target_buf)
         vim.api.nvim_buf_set_lines(target_buf, line_number - 1, line_number, false, {content})
+        
+        -- Complete progress
+        local complete_notification = M.complete_progress_operation(progress_id, "File edit completed successfully")
+        table.insert(progress_notifications, complete_notification)
         
         return {
             id = id,
@@ -2506,7 +2596,8 @@ function M.handle_tool_call(id, params)
                     file_path = file_path,
                     line_number = line_number,
                     content_length = #content,
-                    timestamp = os.time()
+                    timestamp = os.time(),
+                    progress_notifications = progress_notifications
                 }
             }
         }
@@ -2526,10 +2617,15 @@ function M.handle_tool_call(id, params)
             }
         end
         
+        -- Start progress
+        progress_id, start_notification = M.start_progress_operation("file_create", "Creating file: " .. file_name)
+        table.insert(progress_notifications, start_notification)
+        
         -- Check if file already exists
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
             local buf_name = vim.api.nvim_buf_get_name(buf)
             if buf_name == file_name then
+                M.complete_progress_operation(progress_id, "Error: File already exists")
                 return {
                     id = id,
                     error = {
@@ -2539,6 +2635,10 @@ function M.handle_tool_call(id, params)
                 }
             end
         end
+        
+        -- Update progress
+        local update_notification = M.update_progress(progress_id, "Creating new buffer...", 50)
+        table.insert(progress_notifications, update_notification)
         
         -- Create new buffer
         local new_buf = vim.api.nvim_create_buf(true, false)
@@ -2550,6 +2650,10 @@ function M.handle_tool_call(id, params)
         else
             vim.api.nvim_set_current_buf(new_buf)
         end
+        
+        -- Complete progress
+        local complete_notification = M.complete_progress_operation(progress_id, "File created successfully")
+        table.insert(progress_notifications, complete_notification)
         
         return {
             id = id,
@@ -2565,7 +2669,8 @@ function M.handle_tool_call(id, params)
                     buffer_id = new_buf,
                     content_length = #content,
                     opened_in_window = open_in_window,
-                    timestamp = os.time()
+                    timestamp = os.time(),
+                    progress_notifications = progress_notifications
                 }
             }
         }
@@ -2573,6 +2678,10 @@ function M.handle_tool_call(id, params)
     elseif tool_name == "agent_save_file" then
         local file_path = arguments.file_path
         local force = arguments.force or false
+        
+        -- Start progress
+        progress_id, start_notification = M.start_progress_operation("file_save", "Saving file: " .. (file_path or "current file"))
+        table.insert(progress_notifications, start_notification)
         
         local target_buf = nil
         if file_path then
@@ -2586,6 +2695,7 @@ function M.handle_tool_call(id, params)
             end
             
             if not target_buf then
+                M.complete_progress_operation(progress_id, "Error: File not found")
                 return {
                     id = id,
                     error = {
@@ -2600,8 +2710,13 @@ function M.handle_tool_call(id, params)
             file_path = vim.api.nvim_buf_get_name(target_buf)
         end
         
+        -- Update progress
+        local update_notification = M.update_progress(progress_id, "Checking file status...", 30)
+        table.insert(progress_notifications, update_notification)
+        
         -- Check if file is modified
         if not force and not vim.api.nvim_buf_get_option(target_buf, "modified") then
+            M.complete_progress_operation(progress_id, "File is not modified")
             return {
                 id = id,
                 result = {
@@ -2614,11 +2729,16 @@ function M.handle_tool_call(id, params)
                     metadata = {
                         file_path = file_path,
                         modified = false,
-                        timestamp = os.time()
+                        timestamp = os.time(),
+                        progress_notifications = progress_notifications
                     }
                 }
             }
         end
+        
+        -- Update progress
+        local save_notification = M.update_progress(progress_id, "Writing file to disk...", 70)
+        table.insert(progress_notifications, save_notification)
         
         -- Save the file
         local lines = vim.api.nvim_buf_get_lines(target_buf, 0, -1, false)
@@ -2630,6 +2750,10 @@ function M.handle_tool_call(id, params)
         
         vim.fn.writefile(lines, file_path)
         vim.cmd("set nomodified")
+        
+        -- Complete progress
+        local complete_notification = M.complete_progress_operation(progress_id, "File saved successfully")
+        table.insert(progress_notifications, complete_notification)
         
         return {
             id = id,
@@ -2644,7 +2768,8 @@ function M.handle_tool_call(id, params)
                     file_path = file_path,
                     lines_saved = #lines,
                     directory_created = not vim.fn.isdirectory(dir_path),
-                    timestamp = os.time()
+                    timestamp = os.time(),
+                    progress_notifications = progress_notifications
                 }
             }
         }
