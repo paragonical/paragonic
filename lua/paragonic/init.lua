@@ -2427,52 +2427,228 @@ function M.validate_resource_content(content)
     return true, nil
 end
 
--- Handle MCP tool calls
+-- Handle MCP tool calls with enhanced error handling and metadata
 function M.handle_tool_call(id, params)
     local tool_name = params.name
     local arguments = params.arguments or {}
     
+    -- Validate required parameters
+    if not tool_name then
+        return {
+            id = id,
+            error = {
+                code = -32602,
+                message = "Tool name is required"
+            }
+        }
+    end
+    
     if tool_name == "agent_edit_file" then
-        local success = M.agent_edit_file({
-            arguments.file_path,
-            tostring(arguments.line_number or 1),
-            arguments.content or ""
-        })
+        local file_path = arguments.file_path
+        local line_number = arguments.line_number or 1
+        local content = arguments.content or ""
+        
+        if not file_path then
+            return {
+                id = id,
+                error = {
+                    code = -32602,
+                    message = "file_path is required for agent_edit_file"
+                }
+            }
+        end
+        
+        -- Find buffer by file path
+        local target_buf = nil
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+            local buf_name = vim.api.nvim_buf_get_name(buf)
+            if buf_name == file_path then
+                target_buf = buf
+                break
+            end
+        end
+        
+        if not target_buf then
+            return {
+                id = id,
+                error = {
+                    code = -32602,
+                    message = "File not found in session: " .. file_path
+                }
+            }
+        end
+        
+        -- Check if buffer is modifiable
+        if not vim.api.nvim_buf_get_option(target_buf, "modifiable") then
+            return {
+                id = id,
+                error = {
+                    code = -32602,
+                    message = "File is not modifiable: " .. file_path
+                }
+            }
+        end
+        
+        -- Perform the edit
+        vim.api.nvim_set_current_buf(target_buf)
+        vim.api.nvim_buf_set_lines(target_buf, line_number - 1, line_number, false, {content})
+        
         return {
             id = id,
             result = {
                 content = {
-                    {type = "text", text = success and "File edited successfully" or "Failed to edit file"}
+                    {
+                        type = "text",
+                        text = "Successfully edited file: " .. file_path .. " at line " .. line_number
+                    }
+                },
+                metadata = {
+                    file_path = file_path,
+                    line_number = line_number,
+                    content_length = #content,
+                    timestamp = os.time()
                 }
             }
         }
+        
     elseif tool_name == "agent_create_file" then
-        local success = M.agent_create_file({
-            arguments.file_name,
-            arguments.content or "",
-            tostring(arguments.open_in_window or false)
-        })
+        local file_name = arguments.file_name
+        local content = arguments.content or ""
+        local open_in_window = arguments.open_in_window or false
+        
+        if not file_name then
+            return {
+                id = id,
+                error = {
+                    code = -32602,
+                    message = "file_name is required for agent_create_file"
+                }
+            }
+        end
+        
+        -- Check if file already exists
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+            local buf_name = vim.api.nvim_buf_get_name(buf)
+            if buf_name == file_name then
+                return {
+                    id = id,
+                    error = {
+                        code = -32602,
+                        message = "File already exists: " .. file_name
+                    }
+                }
+            end
+        end
+        
+        -- Create new buffer
+        local new_buf = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_buf_set_name(new_buf, file_name)
+        vim.api.nvim_buf_set_lines(new_buf, 0, -1, false, {content})
+        
+        if open_in_window then
+            vim.api.nvim_open_win(new_buf, true, {relative = "editor", width = 80, height = 20, row = 1, col = 1})
+        else
+            vim.api.nvim_set_current_buf(new_buf)
+        end
+        
         return {
             id = id,
             result = {
                 content = {
-                    {type = "text", text = success and "File created successfully" or "Failed to create file"}
+                    {
+                        type = "text",
+                        text = "Successfully created file: " .. file_name
+                    }
+                },
+                metadata = {
+                    file_name = file_name,
+                    buffer_id = new_buf,
+                    content_length = #content,
+                    opened_in_window = open_in_window,
+                    timestamp = os.time()
                 }
             }
         }
+        
     elseif tool_name == "agent_save_file" then
-        local success = M.agent_save_file({
-            arguments.file_path or "",
-            tostring(arguments.force or false)
-        })
+        local file_path = arguments.file_path
+        local force = arguments.force or false
+        
+        local target_buf = nil
+        if file_path then
+            -- Save specific file
+            for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+                local buf_name = vim.api.nvim_buf_get_name(buf)
+                if buf_name == file_path then
+                    target_buf = buf
+                    break
+                end
+            end
+            
+            if not target_buf then
+                return {
+                    id = id,
+                    error = {
+                        code = -32602,
+                        message = "File not found in session: " .. file_path
+                    }
+                }
+            end
+        else
+            -- Save current file
+            target_buf = vim.api.nvim_get_current_buf()
+            file_path = vim.api.nvim_buf_get_name(target_buf)
+        end
+        
+        -- Check if file is modified
+        if not force and not vim.api.nvim_buf_get_option(target_buf, "modified") then
+            return {
+                id = id,
+                result = {
+                    content = {
+                        {
+                            type = "text",
+                            text = "File is not modified: " .. file_path
+                        }
+                    },
+                    metadata = {
+                        file_path = file_path,
+                        modified = false,
+                        timestamp = os.time()
+                    }
+                }
+            }
+        end
+        
+        -- Save the file
+        local lines = vim.api.nvim_buf_get_lines(target_buf, 0, -1, false)
+        local dir_path = vim.fn.fnamemodify(file_path, ":h")
+        
+        if not vim.fn.isdirectory(dir_path) then
+            vim.fn.mkdir(dir_path, "p")
+        end
+        
+        vim.fn.writefile(lines, file_path)
+        vim.cmd("set nomodified")
+        
         return {
             id = id,
             result = {
                 content = {
-                    {type = "text", text = success and "File saved successfully" or "Failed to save file"}
+                    {
+                        type = "text",
+                        text = "Successfully saved file: " .. file_path
+                    }
+                },
+                metadata = {
+                    file_path = file_path,
+                    lines_saved = #lines,
+                    directory_created = not vim.fn.isdirectory(dir_path),
+                    timestamp = os.time()
                 }
             }
         }
+        
     else
         return {
             id = id,
