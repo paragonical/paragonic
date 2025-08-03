@@ -119,7 +119,8 @@ automate repetitive tasks.</li>
 <li><strong>Tasks</strong>   Individual units of work that can be
 defined within <em>projects</em> or <em>opereations</em> assigned to the
 agent or human, enabling users to break down larger projects into
-manageable pieces.</li>
+manageable pieces. Project tasks are usually single-occurrence events
+and operations tasks are often recurring events.</li>
 <li><strong>Resources</strong>   Contextual information and data that
 can be used by the agent or human, enabling users to provide the
 necessary information for the agent or human to complete their tasks
@@ -165,5 +166,48 @@ interleaving to enhance retention and understanding. It involves
 presenting information in a non-linear fashion, allowing users to
 revisit concepts at spaced intervals while interleaving different topics
 or tasks. While there are widespread fears that everyone using AI will
-become lazy and forgetful, ISRL is a way to ensure that users continue
-to learn and retain knowledge while using AI tools. e</p>
+become lazy and forgetful, ISRL is a way to ensure that humans continue
+to learn and retain knowledge while using AI tools and provides metrics
+for identifying expertise and knowledge gaps. This may be potentially
+useful for way to routing review requests for PRs to humans from humans
+or agents for units of work.</p>
+<h3 id="ledgers-work">Ledgers &amp; Work</h3>
+<p>You could say that the only score that matters in an ongoing
+organization is the burn rate or when funding is exhausted. There is a
+plain-text ledger format that can be used for time and monetary
+tracking. Time tracking implemented by <code>hledger</code> is done in a
+“timedot” format which is great for people. Each dot is often
+representive of a 15-minute block of time, such as four dots
+<code>....</code> representing an hour. One of the nuisances of
+contracting is filling out timecards, which should be as automated and
+transparent as possible.</p>
+<p>We might also consider a “tokencode” format for machines that can be
+used to track the cost of running models and other resources. In either
+case, there is work (tasks from projects an operations) that is a cost
+that can be tracked in the ledger. A possible tokencode could be a tuple
+of floating point numbers that represents the ln(tokens) used over a
+period of time for input, thinking, and output by the agent of
+human.</p>
+<pre><code>8/3: work_identifier
+     PersonA: ....  (2.0 40.0 11.06)
+     Agent:         (3.4 79    7.8)</code></pre>
+<h3 id="communications-work">Communications &amp; Work</h3>
+<p>One of the basic nuisances of collaboration is communication–figuring
+out where you find the people you need to talk to, and how to talk to
+them. Paragonic provides a set of dynaic communication channels derived
+from the tracked work that can be used to facilitate communication
+between agents and humans. This is meant to be an alternative to Slack
+and Discord, and JIRA where channels are manually created and archived
+creating a lot of friction for “where to look.”</p>
+<h3 id="agent-guilds">Agent Guilds</h3>
+<p>The Agent Guilds are a collection of prompts and workflows that can
+be used to guide the agent or human, enabling users to provide
+structured guidance and instructions for the agent or human to follow.
+The guilds are designed to be extensible and customizable, allowing
+users to create their own prompts and workflows to suit their needs. The
+guilds are also designed to be collaborative, allowing users to share
+their prompts and workflows with others and to contribute to the
+development of new prompts and workflows.</p>
+<h3 id="standards-and-practices">Standards and Practices</h3>
+<p>Standards and practices are the “how to do things” regardless of the
+human or agent doing the work.</p>
