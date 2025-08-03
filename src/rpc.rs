@@ -972,6 +972,33 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         serde_json::to_string(&mock_response)
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
+    
+    /// Handle get conversation requests
+    pub fn handle_get_conversation(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let conversation_id = params.get("conversation_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        // For now, return a mock response to test the RPC infrastructure
+        // TODO: Implement actual database call when async RPC is supported
+        let mock_response = serde_json::json!({
+            "success": true,
+            "conversation": {
+                "id": conversation_id,
+                "agent_id": "123e4567-e89b-12d3-a456-426614174000",
+                "title": "Mock Conversation",
+                "created_at": "2025-08-02T20:00:00Z",
+                "updated_at": "2025-08-02T20:00:00Z"
+            }
+        });
+        
+        serde_json::to_string(&mock_response)
+            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+    }
 }
 
 impl Server for ParagonicServer {
@@ -1037,6 +1064,8 @@ impl Server for ParagonicServer {
             "delete_agent" => Some(self.handle_delete_agent(params)),
             // Handle create conversation requests
             "create_conversation" => Some(self.handle_create_conversation(params)),
+            // Handle get conversation requests
+            "get_conversation" => Some(self.handle_get_conversation(params)),
             _ => None
         }
     }
@@ -1907,6 +1936,35 @@ mod tests {
         assert_eq!(conversation.get("agent_id").unwrap().as_str().unwrap(), "123e4567-e89b-12d3-a456-426614174000");
         assert_eq!(conversation.get("title").unwrap().as_str().unwrap(), "Test Conversation");
         assert!(conversation.get("id").is_some());
+        assert!(conversation.get("created_at").is_some());
+        assert!(conversation.get("updated_at").is_some());
+    }
+    
+    /// Test get conversation RPC handler
+    #[test]
+    fn test_server_get_conversation() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid parameters
+        let params = serde_json::json!({
+            "conversation_id": "456e7890-e89b-12d3-a456-426614174000"
+        });
+        
+        let result = server.handle_get_conversation(&Some(params));
+        assert!(result.is_ok(), "handle_get_conversation should succeed");
+        
+        let response = result.unwrap();
+        let response_value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify the mock response structure
+        assert!(response_value.get("success").is_some());
+        assert!(response_value.get("conversation").is_some());
+        let conversation = response_value.get("conversation").unwrap();
+        assert_eq!(conversation.get("id").unwrap().as_str().unwrap(), "456e7890-e89b-12d3-a456-426614174000");
+        assert_eq!(conversation.get("agent_id").unwrap().as_str().unwrap(), "123e4567-e89b-12d3-a456-426614174000");
+        assert_eq!(conversation.get("title").unwrap().as_str().unwrap(), "Mock Conversation");
         assert!(conversation.get("created_at").is_some());
         assert!(conversation.get("updated_at").is_some());
     }
