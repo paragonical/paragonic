@@ -133,6 +133,7 @@ impl std::fmt::Display for MessageRole {
 pub struct CreateProjectRequest {
     pub name: String,
     pub description: Option<String>,
+    pub organization_id: Option<Uuid>,
 }
 
 /// Update project request
@@ -456,10 +457,12 @@ mod tests {
         let request = CreateProjectRequest {
             name: "New Project".to_string(),
             description: Some("A new project".to_string()),
+            organization_id: None,
         };
         
         assert_eq!(request.name, "New Project");
         assert_eq!(request.description, Some("A new project".to_string()));
+        assert_eq!(request.organization_id, None);
     }
 
     /// Test organization creation

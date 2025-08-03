@@ -171,7 +171,7 @@ impl FullTextSearchEngine {
         let parsed_query = query_parser.parse_query(query)?;
         
         // Execute search
-        let top_docs = searcher.search(&parsed_query, &TopDocs::with_limit(limit))?;
+        let top_docs: Vec<(f32, tantivy::DocAddress)> = searcher.search(&parsed_query, &TopDocs::with_limit(limit))?;
         
         // Convert results
         let mut results = Vec::new();
