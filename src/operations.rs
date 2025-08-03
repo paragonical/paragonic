@@ -1652,8 +1652,8 @@ mod tests {
     /// Test that search_embeddings function works correctly
     #[tokio::test]
     async fn test_search_embeddings() {
-        // Initialize database
-        crate::database::initialize().await.unwrap();
+        // Initialize database (ignore if already initialized)
+        let _ = crate::database::initialize().await;
         
         // Create a test project with some content
         let project_request = CreateProjectRequest {
@@ -1701,8 +1701,8 @@ mod tests {
     /// Test that find_similar_content function works correctly
     #[tokio::test]
     async fn test_find_similar_content() {
-        // Initialize database
-        crate::database::initialize().await.unwrap();
+        // Initialize database (ignore if already initialized)
+        let _ = crate::database::initialize().await;
         
         // Create a test project with some content
         let project_request = CreateProjectRequest {
