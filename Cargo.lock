@@ -2496,6 +2496,7 @@ dependencies = [
  "mockall",
  "postgresql_embedded",
  "r2d2",
+ "regex",
  "reqwest",
  "rust_decimal",
  "serde",
