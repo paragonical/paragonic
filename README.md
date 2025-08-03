@@ -95,11 +95,12 @@ Paragonic provides a set of structures to facilitate this collaboration, includi
   organize their work and track progress.
 - **Operations** &emsp; A set of tasks that can be executed in parallel or sequentially,
   allowing users to define workflows and automate repetitive tasks.
-- **Tasks** &emsp; Individual units of work that can be defined within _projects_ or
-  _opereations_ assigned to the agent or human, enabling users to break down
-  larger projects into manageable pieces.
-- **Resources** &emsp; Contextual information and data that can be used by the agent or
-  human, enabling users to provide the necessary information for the agent or
+- **Tasks** &emsp; Individual units of work that can be defined within
+  _projects_ or _opereations_ assigned to the agent or human, enabling users to
+  break down larger projects into manageable pieces.  Project tasks are usually
+  single-occurrence events and operations tasks are often recurring events.
+- **Resources** &emsp; Contextual information and data that can be used by the
+  agent or human, enabling users to provide the necessary information for the agent or
   human to complete their tasks effectively.
    - **Repositories** &emsp; A collection of files and directories that can be used by the
      agent or human, enabling users to provide the necessary code and resources for
@@ -127,10 +128,62 @@ Paragonic provides a set of structures to facilitate this collaboration, includi
 
 ### Interleaved Spaced Repetition Learning (ISRL)
 
-ISRL is a learning technique that combines spaced repetition with interleaving to
-enhance retention and understanding. It involves presenting information in a
-non-linear fashion, allowing users to revisit concepts at spaced intervals while
-interleaving different topics or tasks.  While there are widespread fears that 
-everyone using AI will become lazy and forgetful, ISRL is a way to ensure that
-users continue to learn and retain knowledge while using AI tools. e
+ISRL is a learning technique that combines spaced repetition with interleaving
+to enhance retention and understanding. It involves presenting information in a
+non-linear fashion, allowing users to revisit concepts at spaced intervals
+while interleaving different topics or tasks.  While there are widespread fears
+that everyone using AI will become lazy and forgetful, ISRL is a way to ensure
+that humans continue to learn and retain knowledge while using AI tools and
+provides metrics for identifying expertise and knowledge gaps.  This may be
+potentially useful for way to routing review requests for PRs to humans from
+humans or agents for units of work.
+
+### Ledgers & Work
+
+You could say that the only score that matters in an ongoing organization is
+the burn rate or when funding is exhausted.  There is a plain-text ledger
+format that can be used for time and monetary tracking.  Time tracking
+implemented by `hledger` is done in a "timedot" format which is great for
+people. Each dot is often representive of a 15-minute block of time, such as
+four dots `....` representing an hour. One of the nuisances of contracting is
+filling out timecards, which should be as automated and transparent as
+possible.
+
+We might also consider a "tokencode" format for machines that can be used to
+track the cost of running models and other resources.  In either case, there is
+work (tasks from projects an operations) that is a cost that can be tracked in
+the ledger.  A possible tokencode could be a floating point number that
+represents the ln(tokens) used over a period of time by the agent of human.
+
+```
+8/3: work_identifier
+     PersonA: .... 11.06
+     Agent:         8.7
+```
+
+### Communications & Work
+
+One of the basic nuisances of collaboration is communication--figuring out
+where you find the people you need to talk to, and how to talk to them.
+Paragonic provides a set of dynaic communication channels derived from the
+tracked work that can be used to facilitate communication between agents and
+humans.  This is meant to be an alternative to Slack and Discord, and JIRA
+where channels are manually created and archived creating a lot of friction for
+"where to look."
+
+### Agent Guilds
+
+The Agent Guilds are a collection of prompts and workflows that can be
+used to guide the agent or human, enabling users to provide structured guidance
+and instructions for the agent or human to follow.  The guilds are designed to
+be extensible and customizable, allowing users to create their own prompts and
+workflows to suit their needs.  The guilds are also designed to be collaborative,
+allowing users to share their prompts and workflows with others and to
+contribute to the development of new prompts and workflows.
+
+### Standards and Practices
+
+Standards and practices are the "how to do things" regardless of the human or
+agent doing the work.
+
 
