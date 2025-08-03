@@ -1289,7 +1289,7 @@ pub async fn get_agent(agent_id: Uuid) -> ParagonicResult<Agent> {
             tracing::error!("Failed to get agent {}: {}", agent_id, e);
             match e {
                 diesel::result::Error::NotFound => {
-                    ParagonicError::NotFound(format!("Agent with ID {} not found", agent_id))
+                    ParagonicError::NotFound(format!("Agent with ID {agent_id} not found"))
                 }
                 _ => ParagonicError::Database(format!("Failed to get agent: {e}"))
             }

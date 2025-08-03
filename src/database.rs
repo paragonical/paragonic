@@ -25,17 +25,11 @@ static DB_POOL: OnceCell<Arc<Pool<ConnectionManager<PgConnection>>>> = OnceCell:
 static EMBEDDED_DB: OnceCell<Arc<PostgreSQL>> = OnceCell::const_new();
 
 /// Test database type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum TestDatabaseType {
     PostgreSQL,
+    #[default]
     SQLite,
-}
-
-impl Default for TestDatabaseType {
-    fn default() -> Self {
-        // Default to SQLite for tests to avoid shared memory issues
-        TestDatabaseType::SQLite
-    }
 }
 
 /// Database configuration
