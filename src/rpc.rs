@@ -3440,12 +3440,28 @@ mod tests {
             assert!(agent.get("created_at").is_some(), "Agent should have created_at field");
             assert!(agent.get("updated_at").is_some(), "Agent should have updated_at field");
             
-            // TODO: Verify the agent was actually created in the database
-            // This requires implementing get_agent function in operations module
+            // Verify the agent was actually created in the database
             let agent_id = agent.get("id").unwrap().as_str().unwrap();
-            // For now, just verify the ID is a valid UUID
-            let uuid = uuid::Uuid::parse_str(agent_id).expect("Should be valid UUID");
-            assert!(!uuid.to_string().contains("123e4567"), "Should not be the mock UUID");
+            let agent_uuid = uuid::Uuid::parse_str(agent_id).expect("Should be valid UUID");
+            let retrieved_agent = crate::operations::get_agent(agent_uuid).await;
+            assert!(retrieved_agent.is_ok(), "Agent should exist in database");
+            let retrieved_agent = retrieved_agent.unwrap();
+            assert_eq!(retrieved_agent.name, "Test Agent for Creation");
+            assert_eq!(retrieved_agent.model_name, "llama3.2:3b");
+            
+            // Clean up
+            crate::operations::delete_agent(agent_uuid).await.unwrap();
+            
+            // Verify the agent was actually created in the database
+            let agent_uuid = uuid::Uuid::parse_str(agent_id).expect("Should be valid UUID");
+            let retrieved_agent = crate::operations::get_agent(agent_uuid).await;
+            assert!(retrieved_agent.is_ok(), "Agent should exist in database");
+            let retrieved_agent = retrieved_agent.unwrap();
+            assert_eq!(retrieved_agent.name, "Test Agent for Real DB");
+            assert_eq!(retrieved_agent.model_name, "llama3.2:3b");
+            
+            // Clean up
+            crate::operations::delete_agent(agent_uuid).await.unwrap();
         });
     }
 
@@ -3510,11 +3526,16 @@ mod tests {
             assert!(response.get("agent_id").is_some(), "Response should have agent_id field");
             assert_eq!(response.get("agent_id").unwrap(), agent_id);
             
-            // TODO: Verify the agent was actually deleted from the database
-            // This requires implementing get_agent function in operations module
+            // Verify the agent was actually deleted from the database
             let uuid = uuid::Uuid::parse_str(agent_id).expect("Should be valid UUID");
-            // For now, just verify the ID is a valid UUID and not the mock UUID
-            assert!(!uuid.to_string().contains("123e4567"), "Should not be the mock UUID");
+            let retrieved_agent = crate::operations::get_agent(uuid).await;
+            assert!(retrieved_agent.is_err(), "Agent should not exist in database after deletion");
+            match retrieved_agent.unwrap_err() {
+                crate::error::ParagonicError::NotFound(_) => {
+                    // Expected - agent was successfully deleted
+                }
+                _ => panic!("Expected NotFound error for deleted agent"),
+            }
         });
     }
 
