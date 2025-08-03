@@ -301,7 +301,13 @@ end
 
 -- Get current configuration
 function M.get_configuration()
-    local config = vim.api.nvim_get_var("g:paragonic_config") or {}
+    local config = {}
+    
+    -- Try to get existing configuration, but don't fail if it doesn't exist
+    local success, existing_config = pcall(vim.api.nvim_get_var, "g:paragonic_config")
+    if success and existing_config then
+        config = existing_config
+    end
     
     -- Apply defaults from schema
     for key, schema in pairs(M.config_schema) do
@@ -1400,6 +1406,63 @@ function M:get_search_stats(search_results)
         content_types = content_types,
         query = search_results.query or "unknown"
     }
+end
+
+-- Configuration methods for RPC client
+
+-- Get configuration from backend
+function M:get_config()
+    if not self.connected then
+        log_message(self, "error", "Not connected to server")
+        return nil, "Not connected to server"
+    end
+    
+    -- Use the MCP configuration method
+    local result = M.handle_configuration_method("config/get", {})
+    if result.error then
+        log_message(self, "error", "Failed to get configuration: " .. (result.error.message or "unknown error"))
+        return nil, result.error.message
+    end
+    
+    -- Return as JSON-RPC response
+    return vim.json.encode({
+        jsonrpc = "2.0",
+        result = result.config,
+        id = 1
+    })
+end
+
+-- Save configuration to backend
+function M:save_config(config_data)
+    if not self.connected then
+        log_message(self, "error", "Not connected to server")
+        return nil, "Not connected to server"
+    end
+    
+    -- Validate config_data
+    if not config_data or type(config_data) ~= "table" then
+        log_message(self, "error", "Invalid configuration data")
+        return nil, "Invalid configuration data"
+    end
+    
+    -- Save each configuration item
+    for key, value in pairs(config_data) do
+        local result = M.handle_configuration_method("config/set", {key = key, value = value})
+        if result.error then
+            log_message(self, "error", "Failed to save configuration key " .. key .. ": " .. (result.error.message or "unknown error"))
+            return nil, "Failed to save configuration: " .. result.error.message
+        end
+    end
+    
+    -- Return success as JSON-RPC response
+    return vim.json.encode({
+        jsonrpc = "2.0",
+        result = {
+            success = true,
+            message = "Configuration saved successfully"
+        },
+        id = 1
+    })
 end
 
 return M 

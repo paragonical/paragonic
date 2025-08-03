@@ -230,23 +230,8 @@ function M.get_config()
         return nil, "Failed to get configuration"
     end
     
-    -- Parse JSON response
-    local parsed_response = M.parse_json_response(response)
-    if not parsed_response then
-        return nil, "Failed to parse configuration response"
-    end
-    
-    -- Check for error in response
-    if parsed_response.error then
-        return nil, "Configuration error: " .. (parsed_response.error.message or "Unknown error")
-    end
-    
-    -- Extract configuration data
-    if parsed_response.result then
-        return parsed_response.result
-    else
-        return nil, "Unexpected configuration response format"
-    end
+    -- Return the full JSON-RPC response as a string
+    return response
 end
 
 -- Save configuration to backend

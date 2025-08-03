@@ -195,12 +195,62 @@ end
 
 -- Get configuration
 function M:get_config()
-    return self:call("get_config", {})
+    -- Use MCP configuration method instead of backend call
+    local rpc_standalone = require("paragonic.rpc_standalone")
+    local result = rpc_standalone.handle_configuration_method("config/get", {})
+    
+    if result.error then
+        return encode_json({
+            jsonrpc = "2.0",
+            error = result.error,
+            id = 1
+        })
+    end
+    
+    return encode_json({
+        jsonrpc = "2.0",
+        result = result.config,
+        id = 1
+    })
 end
 
 -- Save configuration
 function M:save_config(config_data)
-    return self:call("save_config", config_data)
+    -- Use MCP configuration method instead of backend call
+    local rpc_standalone = require("paragonic.rpc_standalone")
+    
+    -- Validate config_data
+    if not config_data or type(config_data) ~= "table" then
+        return encode_json({
+            jsonrpc = "2.0",
+            error = {
+                code = -32602,
+                message = "Invalid configuration data"
+            },
+            id = 1
+        })
+    end
+    
+    -- Save each configuration item
+    for key, value in pairs(config_data) do
+        local result = rpc_standalone.handle_configuration_method("config/set", {key = key, value = value})
+        if result.error then
+            return encode_json({
+                jsonrpc = "2.0",
+                error = result.error,
+                id = 1
+            })
+        end
+    end
+    
+    return encode_json({
+        jsonrpc = "2.0",
+        result = {
+            success = true,
+            message = "Configuration saved successfully"
+        },
+        id = 1
+    })
 end
 
 return M
