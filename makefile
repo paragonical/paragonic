@@ -87,6 +87,15 @@ test-lua-agent:
 	@echo "Testing MCP cancellation..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_cancellation.lua
 	@echo ""
+	@echo "Testing MCP logging..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_logging.lua
+	@echo ""
+	@echo "Testing MCP configuration..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_configuration.lua
+	@echo ""
+	@echo "Testing MCP commands and autocommands..."
+	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_commands_autocommands.lua
+	@echo ""
 	@echo "✓ Agent tests completed"
 
 # RPC-specific tests (standalone RPC client only)
