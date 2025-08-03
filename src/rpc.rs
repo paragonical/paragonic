@@ -103,6 +103,57 @@ impl ParagonicServer {
         }
     }
     
+    /// Handle agent chat completion with tool calling capabilities
+    pub fn handle_agent_chat_completion(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_array())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        if params.len() < 2 {
+            return Err(RpcError::invalid_params(None));
+        }
+        
+        let message = params[0].as_str()
+            .ok_or_else(|| RpcError::invalid_params(None))?
+            .to_string();
+        let model = params[1].as_str()
+            .ok_or_else(|| RpcError::invalid_params(None))?
+            .to_string();
+        
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message,
+        };
+        
+        // TODO: Implement tool calling logic
+        // For now, just use regular chat completion
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                })
+        };
+        
+        match response {
+            Ok(chat_response) => {
+                serde_json::to_string(&chat_response)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                error!("Ollama chat completion failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
+            }
+        }
+    }
+    
     /// Handle list models request
     pub fn handle_list_models(&self) -> Result<String, RpcError> {
         // Make actual Ollama API call
@@ -1147,6 +1198,8 @@ impl Server for ParagonicServer {
             },
             // Handle chat completion requests
             "chat_completion" => Some(self.handle_chat_completion(params)),
+            // Handle agent chat completion with tool calling
+            "agent_chat_completion" => Some(self.handle_agent_chat_completion(params)),
             // Handle list models requests
             "list_models" => Some(self.handle_list_models()),
             // Handle model info requests
@@ -1273,6 +1326,23 @@ mod tests {
         // Test that server can handle chat completion
         let params = Some(serde_json::json!(["Hello", "llama3.2:3b"]));
         let result = server.handle_chat_completion(&params);
+        assert!(result.is_ok());
+        // Now it returns real AI responses, so we just verify it's valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
+    }
+    
+    #[test]
+    fn test_server_agent_chat_completion() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that server can handle agent chat completion
+        let params = Some(serde_json::json!(["Please edit the file src/main.rs to add a comment", "llama3.2:3b"]));
+        let result = server.handle_agent_chat_completion(&params);
         assert!(result.is_ok());
         // Now it returns real AI responses, so we just verify it's valid JSON
         let response = result.unwrap();
