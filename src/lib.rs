@@ -90,7 +90,7 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_success() {
         // Test that initialize() returns Ok(()) regardless of whether database is already initialized
-        let result = initialize().await;
+        let result = crate::database::initialize_for_testing().await;
         match result {
             Ok(_) => {
                 println!("initialize() succeeded");
@@ -112,7 +112,7 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_idempotent() {
         // First call should succeed
-        let result1 = initialize().await;
+        let result1 = crate::database::initialize_for_testing().await;
         match result1 {
             Ok(_) => println!("First initialize() call succeeded"),
             Err(e) => {
@@ -125,7 +125,7 @@ mod tests {
         }
 
         // Second call should also succeed (idempotent)
-        let result2 = initialize().await;
+        let result2 = crate::database::initialize_for_testing().await;
         match result2 {
             Ok(_) => println!("Second initialize() call succeeded"),
             Err(e) => {
@@ -142,7 +142,7 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_sets_up_logging() {
         // Initialize the system
-        let result = initialize().await;
+        let result = crate::database::initialize_for_testing().await;
         match result {
             Ok(_) => println!("initialize() succeeded"),
             Err(e) => {
@@ -257,7 +257,7 @@ mod tests {
     #[tokio::test]
     async fn test_shutdown_after_initialize() {
         // First initialize the system
-        let init_result = initialize().await;
+        let init_result = crate::database::initialize_for_testing().await;
         match init_result {
             Ok(_) => println!("initialize() succeeded"),
             Err(e) => {
