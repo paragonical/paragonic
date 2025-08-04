@@ -1,4 +1,4 @@
-use paragonic::{initialize, start_rpc_server};
+use paragonic::{initialize, start_rpc_server, iragl::demonstrate_iragl_capabilities};
 use std::process;
 use std::env;
 
@@ -6,6 +6,44 @@ use std::env;
 async fn main() {
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
+    
+    // Check for special commands
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "demonstrate-iragl" => {
+                println!("Running IRAGL capability demonstration...");
+                match demonstrate_iragl_capabilities().await {
+                    Ok(_) => {
+                        println!("✅ IRAGL demonstration completed successfully!");
+                        process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("❌ IRAGL demonstration failed: {e}");
+                        eprintln!("Note: This requires a PostgreSQL database with pgvector extension");
+                        process::exit(1);
+                    }
+                }
+            }
+            "--help" | "-h" => {
+                println!("Paragonic - Advanced Knowledge Management System");
+                println!();
+                println!("Usage:");
+                println!("  paragonic                    - Start the RPC server");
+                println!("  paragonic --no-database      - Start without database initialization");
+                println!("  paragonic demonstrate-iragl  - Demonstrate IRAGL capabilities");
+                println!("  paragonic --help             - Show this help message");
+                println!();
+                println!("Commands:");
+                println!("  demonstrate-iragl            - Run comprehensive IRAGL demonstration");
+                println!("                                (requires PostgreSQL with pgvector)");
+                process::exit(0);
+            }
+            _ => {
+                // Continue with normal server startup
+            }
+        }
+    }
+    
     let skip_database = args.iter().any(|arg| arg == "--no-database");
     
     if skip_database {
