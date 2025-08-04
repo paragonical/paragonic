@@ -111,7 +111,7 @@ impl ParagonicServer {
         }
     }
     
-    /// Handle agent chat completion with tool calling capabilities
+    /// Handle agent chat completion with enhanced tool calling
     pub fn handle_agent_chat_completion(&self, params: &Option<Value>) -> Result<String, RpcError> {
         let params = params.as_ref()
             .and_then(|p| p.as_array())
@@ -134,64 +134,101 @@ impl ParagonicServer {
             content: message,
         };
         
-        // Get initial AI response
-        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            tokio::task::block_in_place(|| {
-                handle.block_on(async {
-                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
-                })
-            })
-        } else {
-            tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
-                .block_on(async {
-                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
-                })
-        };
+        // Execute multi-step tool calling with context
+        self.execute_enhanced_tool_calling(&model, vec![chat_message])
+    }
+    
+    /// Execute enhanced tool calling with multi-step sequences and context
+    pub fn execute_enhanced_tool_calling(&self, model: &str, messages: Vec<ChatMessage>) -> Result<String, RpcError> {
+        let mut current_messages = messages;
+        let mut tool_results = Vec::new();
+        let mut iteration_count = 0;
+        const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
         
-        match response {
-            Ok(chat_response) => {
-                // Check if the response contains tool calls
-                let response_content = chat_response.message.content.clone();
-                let tool_calls = self.parse_tool_calls(&response_content)?;
-                
-                if tool_calls.is_empty() {
-                    // No tool calls, return the original response
-                    serde_json::to_string(&chat_response)
-                        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
-                } else {
-                    // Execute tool calls and create enhanced response
-                    let mut tool_results = Vec::new();
-                    for tool_call in &tool_calls {
-                        match self.execute_tool_call(tool_call) {
-                            Ok(result) => {
-                                tool_results.push(format!("Tool '{}' executed successfully: {}", tool_call.tool, result));
-                            }
-                            Err(e) => {
-                                tool_results.push(format!("Tool '{}' failed: {:?}", tool_call.tool, e));
+        loop {
+            iteration_count += 1;
+            if iteration_count > MAX_ITERATIONS {
+                return Err(RpcError::invalid_params(Some("Maximum tool calling iterations reached".to_string())));
+            }
+            
+            // Get AI response
+            let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                tokio::task::block_in_place(|| {
+                    handle.block_on(async {
+                        self.ollama_client.chat_completion(model, current_messages.clone(), false).await
+                    })
+                })
+            } else {
+                tokio::runtime::Runtime::new()
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                    .block_on(async {
+                        self.ollama_client.chat_completion(model, current_messages.clone(), false).await
+                    })
+            };
+            
+            match response {
+                Ok(chat_response) => {
+                    let response_content = chat_response.message.content.clone();
+                    let tool_calls = self.parse_tool_calls(&response_content)?;
+                    
+                    if tool_calls.is_empty() {
+                        // No more tool calls, return final response
+                        let final_response = if tool_results.is_empty() {
+                            // No tools were used, return original response
+                            serde_json::to_string(&chat_response)
+                                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                        } else {
+                            // Tools were used, create enhanced response
+                            let enhanced_response = serde_json::json!({
+                                "message": {
+                                    "role": "assistant",
+                                    "content": format!("{}\n\nTool execution summary:\n{}", 
+                                        response_content, 
+                                        tool_results.join("\n"))
+                                },
+                                "tool_calls_executed": tool_results.len(),
+                                "tool_results": tool_results,
+                                "iterations": iteration_count
+                            });
+                            
+                            serde_json::to_string(&enhanced_response)
+                                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                        };
+                        return final_response;
+                    } else {
+                        // Execute tool calls and add results to context
+                        let mut iteration_results = Vec::new();
+                        for tool_call in &tool_calls {
+                            match self.execute_tool_call(tool_call) {
+                                Ok(result) => {
+                                    let result_msg = format!("Tool '{}' executed successfully: {}", tool_call.tool, result);
+                                    iteration_results.push(result_msg.clone());
+                                    tool_results.push(result_msg);
+                                }
+                                Err(e) => {
+                                    let error_msg = format!("Tool '{}' failed: {:?}", tool_call.tool, e);
+                                    iteration_results.push(error_msg.clone());
+                                    tool_results.push(error_msg);
+                                }
                             }
                         }
+                        
+                        // Add tool results to conversation context for next iteration
+                        let tool_results_content = format!("Tool execution results:\n{}", iteration_results.join("\n"));
+                        current_messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: response_content,
+                        });
+                        current_messages.push(ChatMessage {
+                            role: "user".to_string(),
+                            content: tool_results_content,
+                        });
                     }
-                    
-                    // Create enhanced response with tool results
-                    let enhanced_response = serde_json::json!({
-                        "message": {
-                            "role": "assistant",
-                            "content": format!("{}\n\nTool execution results:\n{}", 
-                                response_content, 
-                                tool_results.join("\n"))
-                        },
-                        "tool_calls_executed": tool_calls.len(),
-                        "tool_results": tool_results
-                    });
-                    
-                    serde_json::to_string(&enhanced_response)
-                        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
                 }
-            }
-            Err(e) => {
-                error!("Ollama chat completion failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
+                Err(e) => {
+                    error!("Ollama chat completion failed: {}", e);
+                    return Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))));
+                }
             }
         }
     }
@@ -1591,6 +1628,38 @@ mod tests {
         let response_json: serde_json::Value = serde_json::from_str(&response)
             .expect("Response should be valid JSON");
         assert!(response_json.get("message").is_some(), "Should have a message field");
+    }
+    
+    /// Test enhanced tool calling with multi-step sequences
+    #[test]
+    fn test_enhanced_tool_calling() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that enhanced tool calling can handle multi-step sequences
+        let messages = vec![
+            ChatMessage {
+                role: "user".to_string(),
+                content: "Create a new project and then list all projects".to_string(),
+            }
+        ];
+        
+        let result = server.execute_enhanced_tool_calling("llama3.2:3b", messages);
+        assert!(result.is_ok());
+        
+        // The response should be valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
+        
+        // If tools were used, it should have iterations field
+        // If no tools were used, it will be a standard chat response
+        if response_json.get("iterations").is_some() {
+            // Tools were used, verify iteration info
+            assert!(response_json.get("tool_calls_executed").is_some(), "Should have tool_calls_executed field");
+        }
     }
     
     /// Test tool calling detection and parsing
