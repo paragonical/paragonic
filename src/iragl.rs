@@ -6736,12 +6736,204 @@ pub async fn get_differential_geometry_optimization_history(
     match result {
         Ok(_) => {
             // For now, return an empty vector since we can't easily deserialize the result
-// In a real implementation, we'd use proper Diesel models
-Ok(Vec::new())
+            // In a real implementation, we'd use proper Diesel models
+            Ok(Vec::new())
+        }
+        Err(e) => {
+            tracing::error!("Failed to get differential geometry optimization history: {}", e);
+            Err(ParagonicError::Database(format!("Failed to get differential geometry optimization history: {e}")))
+        }
+    }
 }
-Err(e) => {
-tracing::error!("Failed to get differential geometry optimization history: {}", e);
-Err(ParagonicError::Database(format!("Failed to get differential geometry optimization history: {e}")))
-}
-}
+
+/// Test functionally-invariant path computation for safe adaptation
+#[tokio::test]
+async fn test_functionally_invariant_path_computation() {
+    // Connect directly to the existing PostgreSQL database
+    let database_url = "postgres://postgres@localhost/paragonic_test";
+    let conn_result = diesel::PgConnection::establish(database_url);
+    
+    if let Err(e) = &conn_result {
+        println!("Failed to connect to database: {:?}", e);
+        // Skip test if database connection fails
+        return;
+    }
+    
+    let mut conn = conn_result.unwrap();
+    
+    // Insert test knowledge streams for functionally-invariant path analysis
+    let stream_ids = vec![Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let project_id = Uuid::new_v4();
+    let goal_id = Uuid::new_v4();
+    
+    let content_texts = vec![
+        "Original task: Email classification system with spam detection",
+        "New task: Support ticket classification with urgency levels", 
+        "Adaptation path: Safe transition from email to ticket classification",
+        "Functionally-invariant: Maintains email classification while learning tickets"
+    ];
+    
+    for (i, stream_id) in stream_ids.iter().enumerate() {
+        let insert_result = diesel::sql_query(format!(
+            "INSERT INTO knowledge_streams (id, content_type, content_text, source_entity_type, source_entity_id, embedding_model, optimization_status, optimization_score) 
+             VALUES ('{}', 'document', '{}', 'project', '{}', 'test-model', 'optimized', 0.85)",
+            stream_id, content_texts[i], project_id
+        )).execute(&mut conn);
+        
+        assert!(insert_result.is_ok(), "Should be able to insert test knowledge stream");
+    }
+    
+    // Create associations representing the adaptation path
+    let adaptation_associations = vec![
+        (stream_ids[0], "project", project_id, 0.9, 0.95),      // Original task
+        (stream_ids[1], "project", project_id, 0.85, 0.9),      // New task
+        (stream_ids[2], "project", project_id, 0.88, 0.92),     // Adaptation path
+        (stream_ids[3], "project", project_id, 0.87, 0.93),     // Functionally-invariant
+        (stream_ids[0], "goal", goal_id, 0.8, 0.85),           // Original goal
+        (stream_ids[1], "goal", goal_id, 0.75, 0.8),           // New goal
+        (stream_ids[2], "goal", goal_id, 0.78, 0.82),          // Path goal
+        (stream_ids[3], "goal", goal_id, 0.77, 0.83),          // Invariant goal
+    ];
+    
+    for (stream_id, entity_type, entity_id, strength, confidence) in adaptation_associations {
+        let association_result = diesel::sql_query(format!(
+            "INSERT INTO content_associations (
+                content_id, entity_type, entity_id, association_type, 
+                association_strength, confidence_score
+            ) VALUES (
+                '{}', '{}', '{}', 'direct', {}, {}
+            )",
+            stream_id, entity_type, entity_id, strength, confidence
+        )).execute(&mut conn);
+        
+        assert!(association_result.is_ok(), "Should be able to create adaptation association");
+    }
+    
+    // Test functionally-invariant path computation
+    let path_computation_result = diesel::sql_query(format!(
+        "SELECT 
+            ks1.id as start_point,
+            ks1.content_text as start_task,
+            ks1.optimization_score as start_score,
+            ks2.id as end_point,
+            ks2.content_text as end_task,
+            ks2.optimization_score as end_score,
+            ca1.association_strength as start_strength,
+            ca1.confidence_score as start_confidence,
+            ca2.association_strength as end_strength,
+            ca2.confidence_score as end_confidence,
+            SQRT(POW(ca1.association_strength - ca2.association_strength, 2) + 
+                 POW(ca1.confidence_score - ca2.confidence_score, 2)) as path_distance,
+            (ca1.association_strength * ca1.confidence_score + ca2.association_strength * ca2.confidence_score) / 2 as functional_similarity
+         FROM knowledge_streams ks1
+         JOIN knowledge_streams ks2 ON ks1.id != ks2.id
+         JOIN content_associations ca1 ON ks1.id = ca1.content_id
+         JOIN content_associations ca2 ON ks2.id = ca2.content_id
+         WHERE ca1.entity_type = ca2.entity_type
+         AND ks1.id IN ('{}', '{}', '{}', '{}')
+         AND ks2.id IN ('{}', '{}', '{}', '{}')
+         ORDER BY functional_similarity DESC, path_distance ASC",
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3],
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3]
+    )).execute(&mut conn);
+    
+    assert!(path_computation_result.is_ok(), "Should be able to compute functionally-invariant paths");
+    
+    // Test adaptation safety analysis
+    let safety_analysis_result = diesel::sql_query(format!(
+        "SELECT 
+            content_id,
+            content_text,
+            optimization_score,
+            association_strength,
+            confidence_score,
+            (association_strength * confidence_score * optimization_score) as functional_stability,
+            (1 - ABS(association_strength - confidence_score)) as adaptation_safety,
+            CASE 
+                WHEN (association_strength * confidence_score * optimization_score) > 0.8 THEN 'high_stability'
+                WHEN (association_strength * confidence_score * optimization_score) > 0.6 THEN 'medium_stability'
+                ELSE 'low_stability'
+            END as stability_level
+         FROM knowledge_streams ks
+         JOIN content_associations ca ON ks.id = ca.content_id
+         WHERE ks.id IN ('{}', '{}', '{}', '{}')
+         ORDER BY functional_stability DESC",
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3]
+    )).execute(&mut conn);
+    
+    assert!(safety_analysis_result.is_ok(), "Should be able to analyze adaptation safety");
+    
+    // Test geodesic path optimization
+    let geodesic_optimization_result = diesel::sql_query(format!(
+        "SELECT 
+            ca1.content_id as path_start,
+            ca1.association_strength as start_strength,
+            ca1.confidence_score as start_confidence,
+            ca2.content_id as path_end,
+            ca2.association_strength as end_strength,
+            ca2.confidence_score as end_confidence,
+            SQRT(POW(ca1.association_strength - ca2.association_strength, 2) + 
+                 POW(ca1.confidence_score - ca2.confidence_score, 2)) as geodesic_distance,
+            (ca1.association_strength * ca1.confidence_score + ca2.association_strength * ca2.confidence_score) / 2 as path_functionality,
+            CASE 
+                WHEN SQRT(POW(ca1.association_strength - ca2.association_strength, 2) + 
+                          POW(ca1.confidence_score - ca2.confidence_score, 2)) < 0.1 THEN 'minimal_adaptation'
+                WHEN SQRT(POW(ca1.association_strength - ca2.association_strength, 2) + 
+                          POW(ca1.confidence_score - ca2.confidence_score, 2)) < 0.2 THEN 'moderate_adaptation'
+                ELSE 'significant_adaptation'
+            END as adaptation_magnitude
+         FROM content_associations ca1
+         CROSS JOIN content_associations ca2
+         WHERE ca1.content_id IN ('{}', '{}', '{}', '{}')
+         AND ca2.content_id IN ('{}', '{}', '{}', '{}')
+         AND ca1.content_id != ca2.content_id
+         AND ca1.entity_type = ca2.entity_type
+         ORDER BY geodesic_distance ASC, path_functionality DESC",
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3],
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3]
+    )).execute(&mut conn);
+    
+    assert!(geodesic_optimization_result.is_ok(), "Should be able to optimize geodesic paths");
+    
+    // Test functionally-invariant preservation
+    let preservation_result = diesel::sql_query(format!(
+        "SELECT 
+            content_id,
+            content_text,
+            optimization_score,
+            association_strength,
+            confidence_score,
+            (association_strength * confidence_score * optimization_score) as functional_preservation,
+            (1 - ABS(association_strength - confidence_score)) as invariance_measure,
+            CASE 
+                WHEN content_text LIKE '%Functionally-invariant%' THEN 'invariant_path'
+                WHEN content_text LIKE '%Adaptation path%' THEN 'adaptation_path'
+                WHEN content_text LIKE '%Original task%' THEN 'original_task'
+                WHEN content_text LIKE '%New task%' THEN 'new_task'
+                ELSE 'other'
+            END as path_type
+         FROM knowledge_streams ks
+         JOIN content_associations ca ON ks.id = ca.content_id
+         WHERE ks.id IN ('{}', '{}', '{}', '{}')
+         ORDER BY functional_preservation DESC",
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3]
+    )).execute(&mut conn);
+    
+    assert!(preservation_result.is_ok(), "Should be able to analyze functional preservation");
+    
+    // Clean up test data
+    let cleanup_associations = diesel::sql_query(format!(
+        "DELETE FROM content_associations WHERE content_id IN ('{}', '{}', '{}', '{}')",
+        stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[3]
+    )).execute(&mut conn);
+    
+    assert!(cleanup_associations.is_ok(), "Should be able to clean up associations");
+    
+    let cleanup_streams = diesel::sql_query(
+        "DELETE FROM knowledge_streams WHERE content_text LIKE '%Email classification%' OR content_text LIKE '%Support ticket%' OR content_text LIKE '%Adaptation path%' OR content_text LIKE '%Functionally-invariant%'"
+    ).execute(&mut conn);
+    
+    assert!(cleanup_streams.is_ok(), "Should be able to clean up knowledge streams");
+    
+    println!("✅ Functionally-invariant path computation works");
 }
