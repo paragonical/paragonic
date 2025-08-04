@@ -6,12 +6,6 @@ pub mod sql_types {
     pub struct Vector;
 }
 
-// Implement QueryId for the custom Vector type
-impl diesel::query_builder::QueryId for sql_types::Vector {
-    type QueryId = sql_types::Vector;
-    const HAS_STATIC_QUERY_ID: bool = true;
-}
-
 diesel::table! {
     agents (id) {
         id -> Uuid,

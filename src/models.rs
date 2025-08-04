@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use diesel::prelude::*;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde_json::Value;
+use crate::vector::Vector;
 
 use crate::schema::*;
-use crate::vector::Vector;
 
 /// Project model representing a high-level project
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
@@ -387,6 +388,151 @@ pub struct EmbeddingSearchResult {
     pub embedding: Embedding,
     pub similarity_score: f32,
 }
+
+// Temporarily commented out IRAGL models until Vector type issues are resolved
+/*
+/// Knowledge stream model for storing ingested content
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable)]
+#[diesel(table_name = knowledge_streams)]
+pub struct KnowledgeStream {
+    pub id: Uuid,
+    pub content_type: String,
+    pub content_text: String,
+    pub source_entity_type: String,
+    pub source_entity_id: Uuid,
+    pub metadata: Option<Value>,
+    pub embedding_vector: Option<Vector>,
+    pub embedding_model: String,
+    pub optimization_status: Option<String>,
+    pub optimization_score: Option<f64>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// New knowledge stream for insertion (without id and timestamps)
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = knowledge_streams)]
+pub struct NewKnowledgeStream {
+    pub content_type: String,
+    pub content_text: String,
+    pub source_entity_type: String,
+    pub source_entity_id: Uuid,
+    pub metadata: Option<Value>,
+    pub embedding_vector: Option<Vector>,
+    pub embedding_model: String,
+    pub optimization_status: Option<String>,
+    pub optimization_score: Option<f64>,
+}
+
+/// Content association model for linking content to organizational entities
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable)]
+#[diesel(table_name = content_associations)]
+pub struct ContentAssociation {
+    pub id: Uuid,
+    pub content_id: Uuid,
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub association_strength: Option<f64>,
+    pub association_type: Option<String>,
+    pub confidence_score: Option<f64>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// New content association for insertion (without id and timestamps)
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = content_associations)]
+pub struct NewContentAssociation {
+    pub content_id: Uuid,
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub association_strength: Option<f64>,
+    pub association_type: Option<String>,
+    pub confidence_score: Option<f64>,
+}
+
+/// Optimization history model for tracking optimization runs
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable)]
+#[diesel(table_name = optimization_history)]
+pub struct OptimizationHistory {
+    pub id: Uuid,
+    pub optimization_type: String,
+    pub content_count: i32,
+    pub performance_improvement: Option<f64>,
+    pub duration_ms: i32,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub metadata: Option<Value>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// New optimization history for insertion (without id and timestamp)
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = optimization_history)]
+pub struct NewOptimizationHistory {
+    pub optimization_type: String,
+    pub content_count: i32,
+    pub performance_improvement: Option<f64>,
+    pub duration_ms: i32,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub metadata: Option<Value>,
+}
+
+/// Query analytics model for tracking search queries
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable)]
+#[diesel(table_name = query_analytics)]
+pub struct QueryAnalytics {
+    pub id: Uuid,
+    pub query_text: String,
+    pub query_context: Option<Value>,
+    pub result_count: i32,
+    pub response_time_ms: i32,
+    pub user_satisfaction_score: Option<f64>,
+    pub optimization_impact: Option<f64>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// New query analytics for insertion (without id and timestamp)
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = query_analytics)]
+pub struct NewQueryAnalytics {
+    pub query_text: String,
+    pub query_context: Option<Value>,
+    pub result_count: i32,
+    pub response_time_ms: i32,
+    pub user_satisfaction_score: Option<f64>,
+    pub optimization_impact: Option<f64>,
+}
+
+/// Knowledge metrics model for aggregated metrics
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable)]
+#[diesel(table_name = knowledge_metrics)]
+pub struct KnowledgeMetrics {
+    pub id: Uuid,
+    pub metric_name: String,
+    pub metric_value: f64,
+    pub metric_unit: Option<String>,
+    pub time_period: String,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub metadata: Option<Value>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// New knowledge metrics for insertion (without id and timestamp)
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = knowledge_metrics)]
+pub struct NewKnowledgeMetrics {
+    pub metric_name: String,
+    pub metric_value: f64,
+    pub metric_unit: Option<String>,
+    pub time_period: String,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub metadata: Option<Value>,
+}
+*/
 
 #[cfg(test)]
 mod tests {

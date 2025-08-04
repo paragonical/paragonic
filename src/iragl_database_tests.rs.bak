@@ -1,0 +1,28 @@
+#[cfg(test)]
+mod iragl_database_tests {
+    use crate::database::get_connection;
+    use diesel::prelude::*;
+
+    /// Test that all IRAGL tables exist and can be queried
+    #[tokio::test]
+    async fn test_iragl_tables_exist() {
+        let mut conn = get_connection().expect("Failed to get database connection");
+        
+        // Test each IRAGL table
+        let tables = vec![
+            "knowledge_streams",
+            "content_associations", 
+            "optimization_history",
+            "query_analytics",
+            "knowledge_metrics"
+        ];
+        
+        for table in tables {
+            let result = diesel::sql_query(format!("SELECT COUNT(*) FROM {}", table))
+                .execute(&mut conn);
+            
+            assert!(result.is_ok(), "Failed to query {} table: {:?}", table, result);
+            println!("✅ {} table exists and is queryable", table);
+        }
+    }
+} 

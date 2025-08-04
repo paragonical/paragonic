@@ -19,6 +19,7 @@ diesel-derive-enum = "3.0.0-beta.1"
 diesel_migrations = "2.2.0"
 postgresql_embedded = "0.19.0"
 r2d2 = "0.8"
+# pgvector = { version = "0.4", features = ["diesel", "serde"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

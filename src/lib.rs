@@ -82,6 +82,7 @@ pub async fn shutdown() -> ParagonicResult<()> {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use tokio;
@@ -304,4 +305,9 @@ mod tests {
         
         assert!(true, "shutdown() should log appropriate messages");
     }
-} 
+}
+
+#[cfg(test)]
+mod iragl_database_tests;
+
+ 

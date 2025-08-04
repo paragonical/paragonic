@@ -5,5 +5,6 @@
 file = "src/schema.rs"
 custom_type_derives = ["diesel_derive_enum"]
 
+
 [migrations_directory]
 dir = "migrations" 
