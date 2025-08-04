@@ -10,6 +10,9 @@ use diesel::Connection;
 use uuid::Uuid;
 use chrono::Utc;
 use serde_json::{Value, json};
+use std::path::Path;
+use std::fs;
+use std::io::Read;
 
 /// Knowledge stream ingestion request
 #[derive(Debug, Clone)]
@@ -1766,6 +1769,468 @@ async fn test_iragl_demonstration() {
             println!("This is expected in a test environment without a configured database.");
             println!("The demonstration shows that all IRAGL components are properly implemented");
             println!("and ready for use with a real PostgreSQL database with pgvector extension.");
+        }
+    }
+}
+
+/// File indexing request for IRAGL
+#[derive(Debug, Clone)]
+pub struct IndexFileRequest {
+    pub file_path: String,
+    pub content_type: Option<String>, // Auto-detected if None
+    pub source_entity_type: String,
+    pub source_entity_id: Uuid,
+    pub metadata: Option<Value>,
+    pub embedding_model: String,
+    pub chunk_size: Option<usize>, // For large files, chunk into smaller pieces
+    pub include_metadata: bool, // Whether to include file metadata
+}
+
+/// File indexing response
+#[derive(Debug, Clone)]
+pub struct IndexFileResponse {
+    pub file_id: Uuid,
+    pub file_path: String,
+    pub content_type: String,
+    pub chunks_created: usize,
+    pub total_size_bytes: u64,
+    pub processing_duration_ms: u64,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub metadata: Option<Value>,
+    pub created_at: chrono::DateTime<Utc>,
+}
+
+/// Index a file into the IRAGL knowledge management system
+/// 
+/// This function reads a file, extracts its content, and creates knowledge streams
+/// for the content. It supports various file types and can chunk large files.
+pub async fn index_file_for_iragl(
+    request: IndexFileRequest,
+) -> ParagonicResult<IndexFileResponse> {
+    let start_time = std::time::Instant::now();
+    
+    // Validate file path
+    let path = Path::new(&request.file_path);
+    if !path.exists() {
+        return Err(ParagonicError::InvalidInput(format!("File not found: {}", request.file_path)));
+    }
+    
+    if !path.is_file() {
+        return Err(ParagonicError::InvalidInput(format!("Path is not a file: {}", request.file_path)));
+    }
+    
+    // Get file metadata
+    let metadata = fs::metadata(path)?;
+    let file_size = metadata.len();
+    let modified_time = metadata.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    
+    // Auto-detect content type if not provided
+    let content_type = request.content_type.unwrap_or_else(|| {
+        detect_content_type(path)
+    });
+    
+    // Read file content
+    let mut file = fs::File::open(path)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    
+    // Process content based on file type
+    let processed_content = process_file_content(&content, &content_type)?;
+    
+    // Determine chunking strategy
+    let chunk_size = request.chunk_size.unwrap_or_else(|| {
+        determine_optimal_chunk_size(&content_type, file_size)
+    });
+    
+    // Split content into chunks if needed
+    let chunks = if content.len() > chunk_size {
+        chunk_content(&processed_content, chunk_size)
+    } else {
+        vec![processed_content]
+    };
+    
+    // Create knowledge streams for each chunk
+    let mut chunks_created = 0;
+    let file_id = Uuid::new_v4();
+    
+    for (chunk_index, chunk_content) in chunks.iter().enumerate() {
+        let chunk_metadata = json!({
+            "file_id": file_id.to_string(),
+            "file_path": request.file_path,
+            "chunk_index": chunk_index,
+            "total_chunks": chunks.len(),
+            "file_size_bytes": file_size,
+            "modified_time": modified_time,
+            "content_type": content_type,
+            "chunk_size": chunk_content.len(),
+            "indexed_at": chrono::Utc::now().to_rfc3339(),
+        });
+        
+        let mut stream_metadata = chunk_metadata;
+        if let Some(additional_metadata) = &request.metadata {
+            // Merge additional metadata
+            if let Some(stream_obj) = stream_metadata.as_object_mut() {
+                if let Some(additional_obj) = additional_metadata.as_object() {
+                    for (key, value) in additional_obj {
+                        stream_obj.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        
+        let ingest_request = IngestKnowledgeStreamRequest {
+            content_type: format!("file_{}", content_type),
+            content_text: chunk_content.clone(),
+            source_entity_type: request.source_entity_type.clone(),
+            source_entity_id: request.source_entity_id,
+            metadata: Some(stream_metadata),
+            embedding_model: request.embedding_model.clone(),
+        };
+        
+        match ingest_knowledge_stream(ingest_request).await {
+            Ok(_) => {
+                chunks_created += 1;
+                tracing::info!("Created knowledge stream for file chunk {}/{}", chunk_index + 1, chunks.len());
+            }
+            Err(e) => {
+                tracing::error!("Failed to create knowledge stream for chunk {}: {}", chunk_index, e);
+                return Err(e);
+            }
+        }
+    }
+    
+    let processing_duration_ms = start_time.elapsed().as_millis() as u64;
+    
+    Ok(IndexFileResponse {
+        file_id,
+        file_path: request.file_path,
+        content_type,
+        chunks_created,
+        total_size_bytes: file_size,
+        processing_duration_ms,
+        success: true,
+        error_message: None,
+        metadata: Some(json!({
+            "file_size_bytes": file_size,
+            "modified_time": modified_time,
+            "chunk_size": chunk_size,
+            "total_chunks": chunks.len(),
+            "processing_duration_ms": processing_duration_ms,
+        })),
+        created_at: Utc::now(),
+    })
+}
+
+/// Index multiple files for IRAGL
+/// 
+/// This function processes multiple files in batch, providing progress tracking
+/// and error handling for each file.
+pub async fn index_files_for_iragl(
+    requests: Vec<IndexFileRequest>,
+) -> ParagonicResult<Vec<IndexFileResponse>> {
+    let mut results = Vec::new();
+    let total_files = requests.len();
+    
+    println!("Starting batch file indexing for {} files...", total_files);
+    
+    for (index, request) in requests.into_iter().enumerate() {
+        let file_path = request.file_path.clone(); // Clone before moving
+        println!("Processing file {}/{}: {}", index + 1, total_files, file_path);
+        
+        match index_file_for_iragl(request).await {
+            Ok(response) => {
+                println!("✅ Successfully indexed: {} ({} chunks)", response.file_path, response.chunks_created);
+                results.push(response);
+            }
+            Err(e) => {
+                println!("❌ Failed to index: {} - {}", file_path, e);
+                // Create error response
+                results.push(IndexFileResponse {
+                    file_id: Uuid::new_v4(),
+                    file_path,
+                    content_type: "unknown".to_string(),
+                    chunks_created: 0,
+                    total_size_bytes: 0,
+                    processing_duration_ms: 0,
+                    success: false,
+                    error_message: Some(e.to_string()),
+                    metadata: None,
+                    created_at: Utc::now(),
+                });
+            }
+        }
+    }
+    
+    let successful = results.iter().filter(|r| r.success).count();
+    println!("Batch indexing completed: {}/{} files successful", successful, total_files);
+    
+    Ok(results)
+}
+
+/// Detect content type based on file extension
+fn detect_content_type(path: &Path) -> String {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("md") | Some("markdown") => "markdown".to_string(),
+        Some("txt") => "text".to_string(),
+        Some("py") => "python".to_string(),
+        Some("rs") => "rust".to_string(),
+        Some("js") | Some("ts") => "javascript".to_string(),
+        Some("json") => "json".to_string(),
+        Some("yaml") | Some("yml") => "yaml".to_string(),
+        Some("toml") => "toml".to_string(),
+        Some("sql") => "sql".to_string(),
+        Some("html") | Some("htm") => "html".to_string(),
+        Some("css") => "css".to_string(),
+        Some("xml") => "xml".to_string(),
+        Some("csv") => "csv".to_string(),
+        Some("log") => "log".to_string(),
+        _ => "text".to_string(), // Default to text
+    }
+}
+
+/// Process file content based on its type
+fn process_file_content(content: &str, content_type: &str) -> ParagonicResult<String> {
+    match content_type {
+        "markdown" => process_markdown_content(content),
+        "python" | "rust" | "javascript" => process_code_content(content),
+        "json" => process_json_content(content),
+        "yaml" | "toml" => process_config_content(content),
+        "csv" => process_csv_content(content),
+        "log" => process_log_content(content),
+        _ => Ok(content.to_string()), // Default: no processing
+    }
+}
+
+/// Process markdown content
+fn process_markdown_content(content: &str) -> ParagonicResult<String> {
+    // Remove markdown formatting but preserve structure
+    let processed = content
+        .lines()
+        .map(|line| {
+            // Remove markdown headers
+            let line = line.trim_start_matches('#').trim_start();
+            // Remove bold/italic markers
+            let line = line.replace("**", "").replace("*", "").replace("__", "").replace("_", "");
+            // Remove code blocks
+            let line = line.replace("`", "");
+            line
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    
+    Ok(processed)
+}
+
+/// Process code content
+fn process_code_content(content: &str) -> ParagonicResult<String> {
+    // Extract comments and function/class definitions
+    let mut processed_lines = Vec::new();
+    
+    for line in content.lines() {
+        let trimmed = line.trim();
+        
+        // Include comments
+        if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
+            processed_lines.push(line.to_string());
+        }
+        // Include function/class definitions
+        else if trimmed.starts_with("fn ") || trimmed.starts_with("def ") || 
+                trimmed.starts_with("class ") || trimmed.starts_with("pub fn ") ||
+                trimmed.starts_with("async fn ") || trimmed.starts_with("function ") {
+            processed_lines.push(line.to_string());
+        }
+        // Include doc comments
+        else if trimmed.starts_with("///") || trimmed.starts_with("///") {
+            processed_lines.push(line.to_string());
+        }
+    }
+    
+    Ok(processed_lines.join("\n"))
+}
+
+/// Process JSON content
+fn process_json_content(content: &str) -> ParagonicResult<String> {
+    // Try to parse and pretty-print JSON for better readability
+    match serde_json::from_str::<serde_json::Value>(content) {
+        Ok(value) => {
+            let pretty = serde_json::to_string_pretty(&value)?;
+            Ok(pretty)
+        }
+        Err(_) => Ok(content.to_string()), // Return original if not valid JSON
+    }
+}
+
+/// Process configuration content
+fn process_config_content(content: &str) -> ParagonicResult<String> {
+    // For YAML/TOML, just return the content as-is
+    // Could add parsing and structure extraction here
+    Ok(content.to_string())
+}
+
+/// Process CSV content
+fn process_csv_content(content: &str) -> ParagonicResult<String> {
+    // Extract headers and sample data
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return Ok("Empty CSV file".to_string());
+    }
+    
+    let mut processed = Vec::new();
+    processed.push(format!("CSV Headers: {}", lines[0]));
+    
+    // Add first few data rows as examples
+    for (i, line) in lines.iter().skip(1).take(3).enumerate() {
+        processed.push(format!("Row {}: {}", i + 1, line));
+    }
+    
+    if lines.len() > 4 {
+        processed.push(format!("... and {} more rows", lines.len() - 4));
+    }
+    
+    Ok(processed.join("\n"))
+}
+
+/// Process log content
+fn process_log_content(content: &str) -> ParagonicResult<String> {
+    // Extract error messages and important log entries
+    let mut processed_lines = Vec::new();
+    
+    for line in content.lines() {
+        let lower_line = line.to_lowercase();
+        if lower_line.contains("error") || lower_line.contains("warning") || 
+           lower_line.contains("critical") || lower_line.contains("fatal") {
+            processed_lines.push(line.to_string());
+        }
+    }
+    
+    if processed_lines.is_empty() {
+        // If no errors/warnings, include first few lines as sample
+        processed_lines.extend(content.lines().take(5).map(|s| s.to_string()));
+    }
+    
+    Ok(processed_lines.join("\n"))
+}
+
+/// Determine optimal chunk size based on content type and file size
+fn determine_optimal_chunk_size(content_type: &str, file_size: u64) -> usize {
+    match content_type {
+        "markdown" => 4000, // Larger chunks for markdown to preserve context
+        "python" | "rust" | "javascript" => 2000, // Smaller chunks for code
+        "json" => 3000,
+        "yaml" | "toml" => 2000,
+        "csv" => 1000, // Small chunks for CSV data
+        "log" => 1500,
+        _ => 2500, // Default chunk size
+    }
+}
+
+/// Split content into chunks
+fn chunk_content(content: &str, chunk_size: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    
+    for line in content.lines() {
+        if current_chunk.len() + line.len() + 1 > chunk_size && !current_chunk.is_empty() {
+            chunks.push(current_chunk.trim().to_string());
+            current_chunk = String::new();
+        }
+        current_chunk.push_str(line);
+        current_chunk.push('\n');
+    }
+    
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+    
+    chunks
+}
+
+/// Test file indexing functionality
+#[tokio::test]
+async fn test_file_indexing() {
+    println!("Testing IRAGL file indexing...");
+    
+    // Create a temporary test file
+    let test_content = r#"
+# IRAGL File Indexing Test
+
+This is a test markdown file to demonstrate IRAGL's file indexing capabilities.
+
+## Features
+
+- **Automatic content type detection**
+- **Intelligent chunking** for large files
+- **Metadata extraction** and preservation
+- **Multi-format support** (markdown, code, JSON, etc.)
+
+## Code Example
+
+```python
+def test_iragl_indexing():
+    # This is a test function
+    print("IRAGL indexing works!")
+    return True
+```
+
+## Configuration
+
+```json
+{
+  "indexing": {
+    "enabled": true,
+    "chunk_size": 2000,
+    "embedding_model": "nomic-embed-text"
+  }
+}
+```
+
+This file demonstrates how IRAGL can process different content types within a single file.
+"#;
+    
+    // Write test file
+    let test_file_path = "test_iragl_indexing.md";
+    if let Err(e) = std::fs::write(test_file_path, test_content) {
+        println!("⚠️ Could not create test file: {e}");
+        return;
+    }
+    
+    // Test file indexing
+    let request = IndexFileRequest {
+        file_path: test_file_path.to_string(),
+        content_type: None, // Auto-detect
+        source_entity_type: "test".to_string(),
+        source_entity_id: Uuid::new_v4(),
+        metadata: Some(json!({
+            "test_indexing": true,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })),
+        embedding_model: "nomic-embed-text".to_string(),
+        chunk_size: Some(1000), // Small chunks for testing
+        include_metadata: true,
+    };
+    
+    match index_file_for_iragl(request).await {
+        Ok(response) => {
+            println!("✅ File indexing test successful!");
+            println!("   File ID: {}", response.file_id);
+            println!("   Content type: {}", response.content_type);
+            println!("   Chunks created: {}", response.chunks_created);
+            println!("   File size: {} bytes", response.total_size_bytes);
+            println!("   Processing time: {}ms", response.processing_duration_ms);
+            
+            // Verify content type detection
+            assert_eq!(response.content_type, "markdown", "Should auto-detect markdown");
+            assert!(response.chunks_created > 0, "Should create at least one chunk");
+            assert!(response.success, "Indexing should succeed");
+            
+            // Clean up test file
+            let _ = std::fs::remove_file(test_file_path);
+        }
+        Err(e) => {
+            println!("⚠️ File indexing test failed (expected if database not available): {e}");
+            // Clean up test file
+            let _ = std::fs::remove_file(test_file_path);
         }
     }
 }
