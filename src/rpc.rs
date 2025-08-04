@@ -257,7 +257,104 @@ impl ParagonicServer {
                 }));
                 self.handle_create_task(&params)
             }
+            "read_file" => {
+                let file_path = tool_call.parameters.get("path").and_then(|p| p.as_str()).unwrap_or("");
+                self.handle_read_file(file_path)
+            }
+            "write_file" => {
+                let file_path = tool_call.parameters.get("path").and_then(|p| p.as_str()).unwrap_or("");
+                let content = tool_call.parameters.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                self.handle_write_file(file_path, content)
+            }
+            "list_files" => {
+                let directory = tool_call.parameters.get("directory").and_then(|d| d.as_str()).unwrap_or(".");
+                self.handle_list_files(directory)
+            }
             _ => Err(RpcError::invalid_params(Some(format!("Unknown tool: {}", tool_call.tool))))
+        }
+    }
+    
+    /// Handle read file request
+    pub fn handle_read_file(&self, file_path: &str) -> Result<String, RpcError> {
+        if file_path.is_empty() {
+            return Err(RpcError::invalid_params(Some("File path is required".to_string())));
+        }
+        
+        match std::fs::read_to_string(file_path) {
+            Ok(content) => {
+                serde_json::to_string(&serde_json::json!({
+                    "success": true,
+                    "content": content,
+                    "path": file_path
+                }))
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                Err(RpcError::invalid_params(Some(format!("Failed to read file '{file_path}': {e}"))))
+            }
+        }
+    }
+    
+    /// Handle write file request
+    pub fn handle_write_file(&self, file_path: &str, content: &str) -> Result<String, RpcError> {
+        if file_path.is_empty() {
+            return Err(RpcError::invalid_params(Some("File path is required".to_string())));
+        }
+        
+        // Create parent directories if they don't exist
+        if let Some(parent) = std::path::Path::new(file_path).parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return Err(RpcError::invalid_params(Some(format!("Failed to create directory: {e}"))));
+            }
+        }
+        
+        match std::fs::write(file_path, content) {
+            Ok(_) => {
+                serde_json::to_string(&serde_json::json!({
+                    "success": true,
+                    "path": file_path,
+                    "bytes_written": content.len()
+                }))
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                Err(RpcError::invalid_params(Some(format!("Failed to write file '{file_path}': {e}"))))
+            }
+        }
+    }
+    
+    /// Handle list files request
+    pub fn handle_list_files(&self, directory: &str) -> Result<String, RpcError> {
+        let dir_path = if directory.is_empty() { "." } else { directory };
+        
+        match std::fs::read_dir(dir_path) {
+            Ok(entries) => {
+                let mut files = Vec::new();
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                    let is_dir = path.is_dir();
+                    let metadata = entry.metadata().ok();
+                    let size = metadata.map(|m| m.len()).unwrap_or(0);
+                    
+                    files.push(serde_json::json!({
+                        "name": name,
+                        "path": path.to_string_lossy(),
+                        "is_directory": is_dir,
+                        "size": size
+                    }));
+                }
+                
+                serde_json::to_string(&serde_json::json!({
+                    "success": true,
+                    "directory": dir_path,
+                    "files": files
+                }))
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                Err(RpcError::invalid_params(Some(format!("Failed to read directory '{dir_path}': {e}"))))
+            }
         }
     }
     
@@ -1477,6 +1574,25 @@ mod tests {
         assert!(response_json.get("message").is_some(), "Should have a message field");
     }
     
+    /// Test agent chat completion with file system tools
+    #[test]
+    fn test_agent_chat_completion_with_file_tools() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that agent can handle file system tool calls
+        let params = Some(serde_json::json!(["Read the Cargo.toml file and create a new Rust file", "llama3.2:3b"]));
+        let result = server.handle_agent_chat_completion(&params);
+        assert!(result.is_ok());
+        
+        // The response should be valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
+    }
+    
     /// Test tool calling detection and parsing
     #[test]
     fn test_tool_calling_detection() {
@@ -1530,9 +1646,64 @@ mod tests {
         let result = server.execute_tool_call(&tool_call);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert!(result.contains("Test Project"));
+                assert!(result.contains("Test Project"));
     }
-
+    
+    /// Test file system tools
+    #[test]
+    fn test_file_system_tools() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test read file
+        let read_tool = ToolCall {
+            tool: "read_file".to_string(),
+            parameters: serde_json::json!({
+                "path": "Cargo.toml"
+            }),
+        };
+        let result = server.execute_tool_call(&read_tool);
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(response["success"].as_bool().unwrap());
+        assert!(response["content"].as_str().unwrap().contains("paragonic"));
+        
+        // Test write file
+        let test_content = "// Test file created by agent\nfn main() {\n    println!(\"Hello, world!\");\n}";
+        let write_tool = ToolCall {
+            tool: "write_file".to_string(),
+            parameters: serde_json::json!({
+                "path": "test_agent_file.rs",
+                "content": test_content
+            }),
+        };
+        let result = server.execute_tool_call(&write_tool);
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(response["success"].as_bool().unwrap());
+        assert_eq!(response["bytes_written"].as_u64().unwrap(), test_content.len() as u64);
+        
+        // Test list files
+        let list_tool = ToolCall {
+            tool: "list_files".to_string(),
+            parameters: serde_json::json!({
+                "directory": "."
+            }),
+        };
+        let result = server.execute_tool_call(&list_tool);
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(response["success"].as_bool().unwrap());
+        assert!(response["files"].as_array().unwrap().len() > 0);
+        
+        // Clean up test file
+        let _ = std::fs::remove_file("test_agent_file.rs");
+    }
+    
     /// Test that handle_chat_completion validates required parameters
     #[tokio::test]
     async fn test_handle_chat_completion_parameter_validation() {
