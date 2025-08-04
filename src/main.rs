@@ -1,4 +1,4 @@
-use paragonic::{initialize, start_rpc_server, iragl::{demonstrate_iragl_capabilities, index_file_for_iragl, IndexFileRequest}};
+use paragonic::{initialize, start_rpc_server, iragl::{demonstrate_iragl_capabilities, index_file_for_iragl, IndexFileRequest, search_iragl_index, IraglSearchQuery, SearchType, SearchFilters}};
 use std::process;
 use std::env;
 use uuid::Uuid;
@@ -65,6 +65,109 @@ async fn main() {
                     }
                 }
             }
+            "search" => {
+                if args.len() < 3 {
+                    eprintln!("Usage: paragonic search <query> [options]");
+                    eprintln!("Example: paragonic search 'IRAGL knowledge management'");
+                    eprintln!("Example: paragonic search 'neovim ollama' --type keyword");
+                    eprintln!("Example: paragonic search 'agent collaboration' --type hybrid --limit 5");
+                    process::exit(1);
+                }
+                
+                let query_text = &args[2];
+                let mut search_type = SearchType::Semantic;
+                let mut limit = Some(10);
+                let mut filters = None;
+                
+                // Parse optional arguments
+                let mut i = 3;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--type" | "-t" => {
+                            if i + 1 < args.len() {
+                                search_type = match args[i + 1].as_str() {
+                                    "semantic" => SearchType::Semantic,
+                                    "keyword" => SearchType::Keyword,
+                                    "hybrid" => SearchType::Hybrid,
+                                    "metadata" => SearchType::Metadata,
+                                    _ => {
+                                        eprintln!("Invalid search type. Use: semantic, keyword, hybrid, metadata");
+                                        process::exit(1);
+                                    }
+                                };
+                                i += 2;
+                            } else {
+                                eprintln!("--type requires a value");
+                                process::exit(1);
+                            }
+                        }
+                        "--limit" | "-l" => {
+                            if i + 1 < args.len() {
+                                limit = args[i + 1].parse::<usize>().ok();
+                                i += 2;
+                            } else {
+                                eprintln!("--limit requires a number");
+                                process::exit(1);
+                            }
+                        }
+                        "--file" | "-f" => {
+                            if i + 1 < args.len() {
+                                filters = Some(SearchFilters {
+                                    file_paths: Some(vec![args[i + 1].clone()]),
+                                    content_types: None,
+                                    date_range: None,
+                                    sections: None,
+                                    source_entities: None,
+                                });
+                                i += 2;
+                            } else {
+                                eprintln!("--file requires a file path");
+                                process::exit(1);
+                            }
+                        }
+                        _ => {
+                            eprintln!("Unknown option: {}", args[i]);
+                            process::exit(1);
+                        }
+                    }
+                }
+                
+                println!("🔍 Searching IRAGL index for: '{}'", query_text);
+                println!("   Search type: {:?}", search_type);
+                println!("   Limit: {:?}", limit);
+                
+                let search_query = IraglSearchQuery {
+                    query: query_text.to_string(),
+                    search_type,
+                    limit,
+                    filters,
+                    include_metadata: true,
+                };
+                
+                match search_iragl_index(search_query).await {
+                    Ok(results) => {
+                        println!("✅ Found {} results:", results.len());
+                        println!();
+                        
+                        for (i, result) in results.iter().enumerate() {
+                            println!("Result {} (Score: {:.2}):", i + 1, result.similarity_score);
+                            println!("  File: {}", result.source_info.file_path.as_ref().unwrap_or(&"Unknown".to_string()));
+                            println!("  Section: {}", result.source_info.section.as_ref().unwrap_or(&"Unknown".to_string()));
+                            println!("  Content: {}", result.content_text.chars().take(120).collect::<String>());
+                            
+                            if let Some(ref context) = result.context.related_concepts {
+                                println!("  Related: {}", context.join(", "));
+                            }
+                            println!();
+                        }
+                        process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Search failed: {e}");
+                        process::exit(1);
+                    }
+                }
+            }
             "--help" | "-h" => {
                 println!("Paragonic - Advanced Knowledge Management System");
                 println!();
@@ -73,6 +176,7 @@ async fn main() {
                 println!("  paragonic --no-database      - Start without database initialization");
                 println!("  paragonic demonstrate-iragl  - Demonstrate IRAGL capabilities");
                 println!("  paragonic index-file <path>  - Index a file for IRAGL");
+                println!("  paragonic search <query>     - Search the IRAGL index");
                 println!("  paragonic --help             - Show this help message");
                 println!();
                 println!("Commands:");
@@ -80,6 +184,9 @@ async fn main() {
                 println!("                                (requires PostgreSQL with pgvector)");
                 println!("  index-file <path>            - Index a file into IRAGL knowledge base");
                 println!("                                Supports: .md, .txt, .py, .rs, .js, .json, etc.");
+                println!("  search <query>               - Search indexed content");
+                println!("                                Options: --type (semantic|keyword|hybrid|metadata)");
+                println!("                                         --limit <number> --file <path>");
                 process::exit(0);
             }
             _ => {

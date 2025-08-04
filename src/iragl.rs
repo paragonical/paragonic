@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use std::fs;
 use std::io::Read;
+use serde::{Serialize, Deserialize};
 
 /// Knowledge stream ingestion request
 #[derive(Debug, Clone)]
@@ -2940,4 +2941,387 @@ async fn test_iragl_readme_indexing() {
         println!("    IRAGL Record: {}", serde_json::to_string_pretty(&knowledge_stream).unwrap());
         println!();
     }
+}
+
+/// Search the IRAGL index for content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IraglSearchQuery {
+    pub query: String,
+    pub search_type: SearchType,
+    pub limit: Option<usize>,
+    pub filters: Option<SearchFilters>,
+    pub include_metadata: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SearchType {
+    Semantic,      // Vector similarity search
+    Keyword,       // Text-based search
+    Hybrid,        // Combination of semantic and keyword
+    Metadata,      // Search by metadata fields
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchFilters {
+    pub content_types: Option<Vec<String>>,
+    pub file_paths: Option<Vec<String>>,
+    pub date_range: Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>,
+    pub sections: Option<Vec<String>>,
+    pub source_entities: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IraglIndexSearchResult {
+    pub knowledge_stream_id: Uuid,
+    pub content_text: String,
+    pub similarity_score: f64,
+    pub metadata: Option<serde_json::Value>,
+    pub source_info: SourceInfo,
+    pub context: SearchContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceInfo {
+    pub file_path: Option<String>,
+    pub section: Option<String>,
+    pub chunk_index: Option<usize>,
+    pub content_type: String,
+    pub source_entity_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchContext {
+    pub surrounding_chunks: Option<Vec<String>>,
+    pub section_hierarchy: Option<Vec<String>>,
+    pub related_concepts: Option<Vec<String>>,
+}
+
+/// Search the IRAGL index
+pub async fn search_iragl_index(query: IraglSearchQuery) -> ParagonicResult<Vec<IraglIndexSearchResult>> {
+    println!("🔍 Searching IRAGL index for: '{}'", query.query);
+    println!("   Search type: {:?}", query.search_type);
+    
+    // Simulate searching the indexed knowledge streams
+    let mut results = Vec::new();
+    
+    // Mock search results based on the query
+    match query.search_type {
+        SearchType::Semantic => {
+            results.extend(search_semantic(&query).await?);
+        }
+        SearchType::Keyword => {
+            results.extend(search_keyword(&query).await?);
+        }
+        SearchType::Hybrid => {
+            let semantic_results = search_semantic(&query).await?;
+            let keyword_results = search_keyword(&query).await?;
+            results.extend(combine_search_results(semantic_results, keyword_results));
+        }
+        SearchType::Metadata => {
+            results.extend(search_metadata(&query).await?);
+        }
+    }
+    
+    // Apply filters if specified
+    if let Some(filters) = query.filters {
+        results = apply_search_filters(results, filters);
+    }
+    
+    // Apply limit
+    if let Some(limit) = query.limit {
+        results.truncate(limit);
+    }
+    
+    println!("✅ Found {} results", results.len());
+    Ok(results)
+}
+
+/// Semantic search using vector embeddings
+async fn search_semantic(query: &IraglSearchQuery) -> ParagonicResult<Vec<IraglIndexSearchResult>> {
+    println!("   Performing semantic search...");
+    
+    // Mock semantic search results
+    let mock_results = vec![
+        IraglIndexSearchResult {
+            knowledge_stream_id: Uuid::new_v4(),
+            content_text: "Interleaved Retrieval-Augmented Generation Learning (IRAGL) leverages existing knowledge and expertise of the organization, agent or human throughout the captured work and metadata.".to_string(),
+            similarity_score: 0.95,
+            metadata: Some(json!({
+                "file_path": "README.md",
+                "section": "Interleaved Retrieval-Augmented Generation Learning (IRAGL)",
+                "chunk_index": 11,
+                "semantic_boundary": true
+            })),
+            source_info: SourceInfo {
+                file_path: Some("README.md".to_string()),
+                section: Some("Interleaved Retrieval-Augmented Generation Learning (IRAGL)".to_string()),
+                chunk_index: Some(11),
+                content_type: "file_markdown".to_string(),
+                source_entity_type: "documentation".to_string(),
+            },
+            context: SearchContext {
+                surrounding_chunks: Some(vec![
+                    "ISRL is a learning technique that combines spaced repetition...".to_string(),
+                    "Ledgers & Work section follows...".to_string(),
+                ]),
+                section_hierarchy: Some(vec![
+                    "README.md".to_string(),
+                    "Interleaved Retrieval-Augmented Generation Learning (IRAGL)".to_string(),
+                ]),
+                related_concepts: Some(vec![
+                    "RAG system".to_string(),
+                    "vector knowledge base".to_string(),
+                    "retrieval-augmented generation".to_string(),
+                ]),
+            },
+        },
+        IraglIndexSearchResult {
+            knowledge_stream_id: Uuid::new_v4(),
+            content_text: "Paragonic provides a set of structures to facilitate collaboration between humans and machines, including agents, humans, organizations, and more.".to_string(),
+            similarity_score: 0.87,
+            metadata: Some(json!({
+                "file_path": "README.md",
+                "section": "Structures",
+                "chunk_index": 3,
+                "semantic_boundary": true
+            })),
+            source_info: SourceInfo {
+                file_path: Some("README.md".to_string()),
+                section: Some("Structures".to_string()),
+                chunk_index: Some(3),
+                content_type: "file_markdown".to_string(),
+                source_entity_type: "documentation".to_string(),
+            },
+            context: SearchContext {
+                surrounding_chunks: None,
+                section_hierarchy: Some(vec![
+                    "README.md".to_string(),
+                    "Structures".to_string(),
+                ]),
+                related_concepts: Some(vec![
+                    "agents".to_string(),
+                    "humans".to_string(),
+                    "organizations".to_string(),
+                    "collaboration".to_string(),
+                ]),
+            },
+        },
+    ];
+    
+    Ok(mock_results)
+}
+
+/// Keyword-based text search
+async fn search_keyword(query: &IraglSearchQuery) -> ParagonicResult<Vec<IraglIndexSearchResult>> {
+    println!("   Performing keyword search...");
+    
+    let query_lower = query.query.to_lowercase();
+    let mut results = Vec::new();
+    
+    // Mock keyword search - in real implementation, this would search the actual indexed content
+    if query_lower.contains("iragl") || query_lower.contains("retrieval") {
+        results.push(IraglIndexSearchResult {
+            knowledge_stream_id: Uuid::new_v4(),
+            content_text: "Interleaved Retrieval-Augmented Generation Learning (IRAGL) is the machine-equivalent of ISRL.".to_string(),
+            similarity_score: 0.92,
+            metadata: Some(json!({
+                "file_path": "README.md",
+                "section": "Interleaved Retrieval-Augmented Generation Learning (IRAGL)",
+                "chunk_index": 11,
+                "keyword_matches": ["IRAGL", "retrieval", "generation"]
+            })),
+            source_info: SourceInfo {
+                file_path: Some("README.md".to_string()),
+                section: Some("Interleaved Retrieval-Augmented Generation Learning (IRAGL)".to_string()),
+                chunk_index: Some(11),
+                content_type: "file_markdown".to_string(),
+                source_entity_type: "documentation".to_string(),
+            },
+            context: SearchContext {
+                surrounding_chunks: None,
+                section_hierarchy: None,
+                related_concepts: None,
+            },
+        });
+    }
+    
+    if query_lower.contains("neovim") {
+        results.push(IraglIndexSearchResult {
+            knowledge_stream_id: Uuid::new_v4(),
+            content_text: "Paragonic is a Neovim extension that integrates with Ollama to provide the infrastructure for alliance between AI-powered agents and humans.".to_string(),
+            similarity_score: 0.89,
+            metadata: Some(json!({
+                "file_path": "README.md",
+                "section": "Introduction",
+                "chunk_index": 1,
+                "keyword_matches": ["Neovim", "extension"]
+            })),
+            source_info: SourceInfo {
+                file_path: Some("README.md".to_string()),
+                section: Some("Introduction".to_string()),
+                chunk_index: Some(1),
+                content_type: "file_markdown".to_string(),
+                source_entity_type: "documentation".to_string(),
+            },
+            context: SearchContext {
+                surrounding_chunks: None,
+                section_hierarchy: None,
+                related_concepts: None,
+            },
+        });
+    }
+    
+    Ok(results)
+}
+
+/// Metadata-based search
+async fn search_metadata(query: &IraglSearchQuery) -> ParagonicResult<Vec<IraglIndexSearchResult>> {
+    println!("   Performing metadata search...");
+    
+    // Mock metadata search results
+    let mock_results = vec![
+        IraglIndexSearchResult {
+            knowledge_stream_id: Uuid::new_v4(),
+            content_text: "README.md content found by metadata search".to_string(),
+            similarity_score: 1.0,
+            metadata: Some(json!({
+                "file_path": "README.md",
+                "content_type": "file_markdown",
+                "semantic_boundary": true
+            })),
+            source_info: SourceInfo {
+                file_path: Some("README.md".to_string()),
+                section: None,
+                chunk_index: None,
+                content_type: "file_markdown".to_string(),
+                source_entity_type: "documentation".to_string(),
+            },
+            context: SearchContext {
+                surrounding_chunks: None,
+                section_hierarchy: None,
+                related_concepts: None,
+            },
+        },
+    ];
+    
+    Ok(mock_results)
+}
+
+/// Combine semantic and keyword search results
+fn combine_search_results(semantic: Vec<IraglIndexSearchResult>, keyword: Vec<IraglIndexSearchResult>) -> Vec<IraglIndexSearchResult> {
+    let mut combined = semantic;
+    combined.extend(keyword);
+    
+    // Sort by similarity score
+    combined.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
+    
+    // Remove duplicates based on knowledge_stream_id
+    let mut seen = std::collections::HashSet::new();
+    combined.retain(|result| seen.insert(result.knowledge_stream_id));
+    
+    combined
+}
+
+/// Apply search filters
+fn apply_search_filters(mut results: Vec<IraglIndexSearchResult>, filters: SearchFilters) -> Vec<IraglIndexSearchResult> {
+    results.retain(|result| {
+        // Filter by content types
+        if let Some(ref content_types) = filters.content_types {
+            if !content_types.contains(&result.source_info.content_type) {
+                return false;
+            }
+        }
+        
+        // Filter by file paths
+        if let Some(ref file_paths) = filters.file_paths {
+            if let Some(ref file_path) = result.source_info.file_path {
+                if !file_paths.contains(file_path) {
+                    return false;
+                }
+            }
+        }
+        
+        // Filter by sections
+        if let Some(ref sections) = filters.sections {
+            if let Some(ref section) = result.source_info.section {
+                if !sections.contains(section) {
+                    return false;
+                }
+            }
+        }
+        
+        true
+    });
+    
+    results
+}
+
+/// Test IRAGL search functionality
+#[tokio::test]
+async fn test_iragl_search_functionality() {
+    println!("Testing IRAGL search functionality...");
+    
+    // Test semantic search
+    let semantic_query = IraglSearchQuery {
+        query: "IRAGL knowledge management".to_string(),
+        search_type: SearchType::Semantic,
+        limit: Some(5),
+        filters: None,
+        include_metadata: true,
+    };
+    
+    let semantic_results = search_iragl_index(semantic_query).await.unwrap();
+    println!("✅ Semantic search returned {} results", semantic_results.len());
+    
+    for (i, result) in semantic_results.iter().enumerate() {
+        println!("  Result {}: Score {:.2}", i + 1, result.similarity_score);
+        println!("    File: {}", result.source_info.file_path.as_ref().unwrap_or(&"Unknown".to_string()));
+        println!("    Section: {}", result.source_info.section.as_ref().unwrap_or(&"Unknown".to_string()));
+        println!("    Preview: {}...", result.content_text.chars().take(80).collect::<String>());
+        println!();
+    }
+    
+    // Test keyword search
+    let keyword_query = IraglSearchQuery {
+        query: "neovim ollama".to_string(),
+        search_type: SearchType::Keyword,
+        limit: Some(3),
+        filters: None,
+        include_metadata: true,
+    };
+    
+    let keyword_results = search_iragl_index(keyword_query).await.unwrap();
+    println!("✅ Keyword search returned {} results", keyword_results.len());
+    
+    // Test hybrid search
+    let hybrid_query = IraglSearchQuery {
+        query: "agent collaboration".to_string(),
+        search_type: SearchType::Hybrid,
+        limit: Some(5),
+        filters: Some(SearchFilters {
+            content_types: Some(vec!["file_markdown".to_string()]),
+            file_paths: Some(vec!["README.md".to_string()]),
+            date_range: None,
+            sections: None,
+            source_entities: None,
+        }),
+        include_metadata: true,
+    };
+    
+    let hybrid_results = search_iragl_index(hybrid_query).await.unwrap();
+    println!("✅ Hybrid search returned {} results", hybrid_results.len());
+    
+    // Test metadata search
+    let metadata_query = IraglSearchQuery {
+        query: "README.md".to_string(),
+        search_type: SearchType::Metadata,
+        limit: Some(10),
+        filters: None,
+        include_metadata: true,
+    };
+    
+    let metadata_results = search_iragl_index(metadata_query).await.unwrap();
+    println!("✅ Metadata search returned {} results", metadata_results.len());
+    
+    println!("🎉 All IRAGL search tests completed successfully!");
 }
