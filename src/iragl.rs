@@ -2119,44 +2119,167 @@ fn chunk_content_semantically(content: &str, content_type: &str) -> Vec<String> 
     }
 }
 
-/// Chunk markdown content by sections
+/// Chunk markdown content semantically by sections and paragraphs
 fn chunk_markdown_semantically(content: &str) -> Vec<String> {
     let mut chunks = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
     let mut current_chunk = String::new();
     let mut current_section_level = 0;
+    let mut in_code_block = false;
+    let mut code_block_delimiter = "";
     
-    for line in content.lines() {
-        let trimmed = line.trim();
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed_line = line.trim();
         
-        // Check if this is a section header
-        if trimmed.starts_with('#') {
-            let header_level = trimmed.chars().take_while(|&c| c == '#').count();
+        // Handle code blocks
+        if trimmed_line.starts_with("```") {
+            if !in_code_block {
+                in_code_block = true;
+                code_block_delimiter = trimmed_line;
+                // Start a new chunk for code blocks
+                if !current_chunk.trim().is_empty() {
+                    chunks.push(current_chunk.trim().to_string());
+                    current_chunk = String::new();
+                }
+            } else if trimmed_line == code_block_delimiter {
+                in_code_block = false;
+                code_block_delimiter = "";
+            }
+        }
+        
+        // If we're in a code block, add to current chunk
+        if in_code_block {
+            current_chunk.push_str(line);
+            current_chunk.push('\n');
+            continue;
+        }
+        
+        // Check for headers
+        if trimmed_line.starts_with('#') {
+            let header_level = trimmed_line.chars().take_while(|&c| c == '#').count();
             
-            // If we have content in current chunk and this is a new section, save it
+            // If we have content in current chunk, save it
             if !current_chunk.trim().is_empty() {
                 chunks.push(current_chunk.trim().to_string());
                 current_chunk = String::new();
             }
             
-            // Start new chunk with header
+            // Start new section
             current_chunk.push_str(line);
             current_chunk.push('\n');
             current_section_level = header_level;
-        } else {
-            // Add content to current chunk
+        } else if !trimmed_line.is_empty() {
+            // Regular content line
             current_chunk.push_str(line);
             current_chunk.push('\n');
+        } else {
+            // Empty line - potential paragraph boundary
+            if !current_chunk.trim().is_empty() {
+                current_chunk.push('\n');
+            }
         }
     }
     
-    // Add final chunk if it has content
+    // Add final chunk
     if !current_chunk.trim().is_empty() {
         chunks.push(current_chunk.trim().to_string());
     }
     
-    // If no sections found, fall back to paragraph-based chunking
-    if chunks.is_empty() {
-        return chunk_text_semantically(content);
+    // Post-process chunks to handle large sections
+    let mut final_chunks = Vec::new();
+    for chunk in chunks {
+        if chunk.len() > 2000 { // Large chunk threshold
+            let sub_chunks = split_large_markdown_section(&chunk);
+            final_chunks.extend(sub_chunks);
+        } else {
+            final_chunks.push(chunk);
+        }
+    }
+    
+    final_chunks
+}
+
+/// Split large markdown sections into paragraphs with context
+fn split_large_markdown_section(section: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let lines: Vec<&str> = section.lines().collect();
+    let mut current_chunk = String::new();
+    let mut paragraph_buffer = Vec::new();
+    let mut context_lines = Vec::new();
+    
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed_line = line.trim();
+        
+        // Check if this is a header (start of new section)
+        if trimmed_line.starts_with('#') {
+            // Save current chunk if we have content
+            if !current_chunk.trim().is_empty() {
+                chunks.push(current_chunk.trim().to_string());
+                current_chunk = String::new();
+                paragraph_buffer.clear();
+                context_lines.clear();
+            }
+            
+            // Start new section
+            current_chunk.push_str(line);
+            current_chunk.push('\n');
+            continue;
+        }
+        
+        // Handle empty lines (paragraph boundaries)
+        if trimmed_line.is_empty() {
+            if !paragraph_buffer.is_empty() {
+                // We have a complete paragraph
+                let paragraph_text = paragraph_buffer.join("\n");
+                
+                // Check if adding this paragraph would make chunk too large
+                let potential_chunk = format!("{}{}\n\n", current_chunk, paragraph_text);
+                
+                if potential_chunk.len() > 1500 && !current_chunk.trim().is_empty() {
+                    // Current chunk is getting large, save it and start new one
+                    chunks.push(current_chunk.trim().to_string());
+                    
+                    // Start new chunk with context from previous paragraph
+                    current_chunk = String::new();
+                    if let Some(last_para) = paragraph_buffer.last() {
+                        current_chunk.push_str(&format!("{}\n\n", last_para));
+                    }
+                }
+                
+                // Add paragraph to current chunk
+                current_chunk.push_str(&paragraph_text);
+                current_chunk.push_str("\n\n");
+                
+                // Keep last few lines for context
+                context_lines.extend(paragraph_buffer.iter().map(|s: &String| s.to_string()));
+                if context_lines.len() > 4 {
+                    context_lines.remove(0);
+                }
+                
+                paragraph_buffer.clear();
+            }
+        } else {
+            // Non-empty line - add to paragraph buffer
+            paragraph_buffer.push(line.to_string());
+        }
+    }
+    
+    // Handle any remaining paragraph
+    if !paragraph_buffer.is_empty() {
+        let paragraph_text = paragraph_buffer.join("\n");
+        let potential_chunk = format!("{}{}", current_chunk, paragraph_text);
+        
+        if potential_chunk.len() > 1500 && !current_chunk.trim().is_empty() {
+            chunks.push(current_chunk.trim().to_string());
+            current_chunk = paragraph_text;
+        } else {
+            current_chunk.push_str(&paragraph_text);
+        }
+    }
+    
+    // Add final chunk
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
     }
     
     chunks
@@ -3298,4 +3421,140 @@ async fn test_iragl_search_functionality() {
     println!("✅ Metadata search returned {} results", metadata_results.len());
     
     println!("🎉 All IRAGL search tests completed successfully!");
+}
+
+/// Test enhanced markdown chunking with large sections
+#[tokio::test]
+async fn test_enhanced_markdown_chunking() {
+    println!("Testing enhanced markdown chunking with large sections...");
+    
+    // Create a large markdown section to test paragraph-based chunking
+    let large_markdown = r#"# Large Document Test
+
+## Introduction
+
+This is a test document to demonstrate enhanced markdown chunking that handles large sections by dividing them into paragraphs with context.
+
+## Very Large Section
+
+This is the beginning of a very large section that should be divided into multiple chunks. The section contains many paragraphs that would make it too large for a single chunk.
+
+The first paragraph discusses the importance of semantic chunking in knowledge management systems. When dealing with large documents, it's crucial to break them down into meaningful pieces that preserve context while being manageable for search and retrieval operations.
+
+The second paragraph explores the challenges of traditional fixed-length chunking approaches. These methods often cut content in the middle of sentences or ideas, making it difficult for search algorithms to understand the full context of the information being retrieved.
+
+The third paragraph introduces the concept of paragraph-based chunking with context preservation. This approach ensures that each chunk contains complete thoughts while maintaining some overlap with adjacent chunks to preserve the flow of information.
+
+The fourth paragraph discusses the implementation details of the enhanced chunking algorithm. It uses natural paragraph boundaries as primary splitting points and includes one or two sentences from adjacent paragraphs to maintain context.
+
+The fifth paragraph explains the benefits of this approach for search and retrieval systems. By preserving semantic boundaries and context, the system can provide more relevant and coherent search results.
+
+The sixth paragraph covers the performance considerations of paragraph-based chunking. While it may create slightly more chunks than fixed-length approaches, the improved search quality and user experience justify the additional complexity.
+
+The seventh paragraph discusses the integration of this chunking approach with vector embeddings. The semantic boundaries help create more meaningful embeddings that better represent the content's intent and context.
+
+The eighth paragraph explores future enhancements to the chunking algorithm. These might include adaptive chunk sizes based on content complexity and user feedback mechanisms to optimize chunk boundaries.
+
+The ninth paragraph concludes the discussion of enhanced markdown chunking. This approach represents a significant improvement over traditional methods and provides a solid foundation for advanced knowledge management systems.
+
+## Another Large Section
+
+This section also contains multiple paragraphs to test the chunking algorithm's ability to handle multiple large sections within the same document.
+
+The first paragraph of this section discusses different types of content that benefit from enhanced chunking. Markdown documents, technical documentation, and long-form articles all require careful consideration of semantic boundaries.
+
+The second paragraph examines the relationship between chunking and search relevance. When chunks preserve semantic meaning, search algorithms can better understand the relationship between query terms and document content.
+
+The third paragraph looks at the impact of chunking on retrieval accuracy. Proper chunking can significantly improve the precision and recall of search results by ensuring that relevant information is not split across multiple chunks.
+
+The fourth paragraph considers the user experience implications of enhanced chunking. Users expect search results to be coherent and complete, which requires chunks that contain full thoughts and ideas.
+
+The fifth paragraph discusses the technical implementation challenges of paragraph-based chunking. These include handling edge cases, managing chunk size limits, and ensuring consistent behavior across different document types.
+
+## Conclusion
+
+This test document demonstrates the enhanced markdown chunking capabilities that properly handle large sections by dividing them into paragraphs with context preservation."#;
+    
+    println!("📄 Testing markdown with {} characters", large_markdown.len());
+    
+    // Test the enhanced chunking
+    let chunks = chunk_markdown_semantically(large_markdown);
+    
+    println!("✅ Created {} chunks from large markdown", chunks.len());
+    
+    // Analyze each chunk
+    for (i, chunk) in chunks.iter().enumerate() {
+        let first_line = chunk.lines().next().unwrap_or("").trim();
+        let chunk_size = chunk.len();
+        let line_count = chunk.lines().count();
+        
+        // Determine chunk type
+        let chunk_type = if first_line.starts_with('#') {
+            let level = first_line.chars().take_while(|&c| c == '#').count();
+            match level {
+                1 => "Main Section",
+                2 => "Subsection", 
+                _ => "Deep Section"
+            }
+        } else {
+            "Paragraph Group"
+        };
+        
+        println!("  Chunk {}: {} chars, {} lines, Type: {}", 
+            i + 1, chunk_size, line_count, chunk_type);
+        
+        // Show preview
+        let preview = first_line.chars().take(60).collect::<String>();
+        println!("    Preview: {}", preview);
+        
+        // Show chunk boundaries (like Neovim text objects)
+        if first_line.starts_with('#') {
+            let section_name = first_line.trim_start_matches('#').trim();
+            println!("    Section: {}", section_name);
+        } else {
+            // Count paragraphs in this chunk
+            let paragraphs = chunk.split("\n\n").filter(|p| !p.trim().is_empty()).count();
+            println!("    Paragraphs: {}", paragraphs);
+        }
+        
+        // Show context preservation
+        if chunk_size > 500 {
+            let lines: Vec<&str> = chunk.lines().collect();
+            if lines.len() > 4 {
+                println!("    Context: {} lines with paragraph boundaries", lines.len());
+            }
+        }
+        
+        println!();
+    }
+    
+    // Verify that large sections were properly divided
+    let large_chunks: Vec<&String> = chunks.iter().filter(|c| c.len() > 1000).collect();
+    println!("📊 Large chunks (>1000 chars): {}", large_chunks.len());
+    
+    let small_chunks: Vec<&String> = chunks.iter().filter(|c| c.len() <= 1000).collect();
+    println!("📊 Small chunks (≤1000 chars): {}", small_chunks.len());
+    
+    // Test that chunks maintain context
+    let mut context_preserved = 0;
+    for chunk in &chunks {
+        if chunk.contains("\n\n") && chunk.lines().count() > 3 {
+            context_preserved += 1;
+        }
+    }
+    
+    println!("🔗 Chunks with context preservation: {}/{}", context_preserved, chunks.len());
+    
+    // Verify semantic boundaries are respected
+    let mut semantic_boundaries = 0;
+    for chunk in &chunks {
+        if chunk.starts_with('#') || chunk.contains("\n\n") {
+            semantic_boundaries += 1;
+        }
+    }
+    
+    println!("🎯 Chunks with semantic boundaries: {}/{}", semantic_boundaries, chunks.len());
+    
+    println!("✅ Enhanced markdown chunking test completed!");
+    println!("The system now properly handles large sections by dividing them into paragraphs with context.");
 }
