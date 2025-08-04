@@ -2756,3 +2756,188 @@ Finally, this is the last paragraph. It summarizes the key points. The informati
     println!("  - Structured: Top-level key boundaries");
     println!("  - Logs: Error/event group boundaries");
 }
+
+/// Test IRAGL indexing of the actual README.md file
+#[tokio::test]
+async fn test_iragl_readme_indexing() {
+    println!("Testing IRAGL indexing of README.md...");
+    
+    // Read the actual README.md file
+    let readme_content = match std::fs::read_to_string("README.md") {
+        Ok(content) => content,
+        Err(e) => {
+            println!("⚠️ Could not read README.md: {e}");
+            return;
+        }
+    };
+    
+    println!("📖 README.md loaded: {} characters", readme_content.len());
+    
+    // Test semantic chunking of README.md
+    println!("\n🔍 Semantic chunking analysis:");
+    let chunks = chunk_content_semantically(&readme_content, "markdown");
+    println!("✅ Created {} semantic chunks from README.md", chunks.len());
+    
+    // Analyze each chunk
+    for (i, chunk) in chunks.iter().enumerate() {
+        let first_line = chunk.lines().next().unwrap_or("").trim();
+        let chunk_size = chunk.len();
+        let line_count = chunk.lines().count();
+        
+        // Determine chunk type based on content
+        let chunk_type = if first_line.starts_with('#') {
+            let level = first_line.chars().take_while(|&c| c == '#').count();
+            match level {
+                1 => "Main Section",
+                2 => "Subsection", 
+                3 => "Sub-subsection",
+                _ => "Deep Section"
+            }
+        } else if chunk.contains("|") && chunk.contains("---") {
+            "Table"
+        } else if chunk.contains("```") {
+            "Code Block"
+        } else {
+            "Content"
+        };
+        
+        println!("  Chunk {}: {} chars, {} lines, Type: {}", 
+            i + 1, chunk_size, line_count, chunk_type);
+        
+        // Show first few characters of each chunk
+        let preview = first_line.chars().take(60).collect::<String>();
+        println!("    Preview: {}", preview);
+        
+        // Show chunk boundaries (like Neovim text objects)
+        if first_line.starts_with('#') {
+            let section_name = first_line.trim_start_matches('#').trim();
+            println!("    Section: {}", section_name);
+        }
+    }
+    
+    // Simulate IRAGL indexing process
+    println!("\n🚀 Simulating IRAGL indexing process:");
+    
+    let request = IndexFileRequest {
+        file_path: "README.md".to_string(),
+        content_type: None, // Auto-detect as markdown
+        source_entity_type: "documentation".to_string(),
+        source_entity_id: Uuid::new_v4(),
+        metadata: Some(json!({
+            "project": "paragonic",
+            "document_type": "readme",
+            "version": "0.3.0",
+            "semantic_chunking": true,
+            "indexed_at": chrono::Utc::now().to_rfc3339()
+        })),
+        embedding_model: "nomic-embed-text".to_string(),
+        chunk_size: None, // Use semantic chunking
+        include_metadata: true,
+    };
+    
+    // Process the content as IRAGL would
+    let processed_content = process_file_content(&readme_content, "markdown").unwrap();
+    let semantic_chunks = chunk_content_semantically(&processed_content, "markdown");
+    
+    println!("✅ IRAGL would create {} knowledge streams:", semantic_chunks.len());
+    
+    for (i, chunk) in semantic_chunks.iter().enumerate() {
+        let chunk_id = Uuid::new_v4();
+        let first_line = chunk.lines().next().unwrap_or("").trim();
+        
+        // Determine the section/context
+        let context = if first_line.starts_with('#') {
+            first_line.trim_start_matches('#').trim()
+        } else {
+            "Content"
+        };
+        
+        println!("  Knowledge Stream {}: {}", i + 1, chunk_id);
+        println!("    Context: {}", context);
+        println!("    Size: {} characters", chunk.len());
+        println!("    Type: {}", if first_line.starts_with('#') { "Section" } else { "Content" });
+        
+        // Show what would be stored in metadata
+        let chunk_metadata = json!({
+            "file_id": "readme.md",
+            "chunk_index": i,
+            "total_chunks": semantic_chunks.len(),
+            "context": context,
+            "content_type": "markdown",
+            "chunk_type": if first_line.starts_with('#') { "section" } else { "content" },
+            "semantic_boundary": true,
+            "neovim_compatible": true
+        });
+        
+        println!("    Metadata: {}", serde_json::to_string_pretty(&chunk_metadata).unwrap());
+        
+        // Show a preview of the chunk content
+        let preview = chunk.chars().take(100).collect::<String>();
+        println!("    Preview: {}...", preview);
+        println!();
+    }
+    
+    // Demonstrate search capabilities
+    println!("🔍 Example IRAGL searches that would work:");
+    let search_examples = vec![
+        "semantic chunking",
+        "neovim integration", 
+        "ollama setup",
+        "agent collaboration",
+        "vector knowledge base",
+        "interleaved learning"
+    ];
+    
+    for search_term in search_examples {
+        let matching_chunks: Vec<usize> = semantic_chunks.iter()
+            .enumerate()
+            .filter(|(_, chunk)| chunk.to_lowercase().contains(&search_term.to_lowercase()))
+            .map(|(i, _)| i)
+            .collect();
+        
+        if !matching_chunks.is_empty() {
+            println!("  '{}' → Found in chunks: {:?}", search_term, matching_chunks.iter().map(|i| i + 1).collect::<Vec<_>>());
+        }
+    }
+    
+    println!("\n✅ IRAGL README.md indexing demonstration completed!");
+    println!("The system would create {} semantic knowledge streams", semantic_chunks.len());
+    println!("Each stream preserves natural content boundaries for optimal search and retrieval.");
+    
+    // Show the actual chunks that would be created
+    println!("\n📋 Detailed IRAGL Knowledge Streams:");
+    for (i, chunk) in chunks.iter().enumerate() {
+        let first_line = chunk.lines().next().unwrap_or("").trim();
+        let section_name = if first_line.starts_with('#') {
+            first_line.trim_start_matches('#').trim()
+        } else {
+            "Content Block"
+        };
+        
+        println!("  Stream {}: {}", i + 1, section_name);
+        println!("    Size: {} chars, {} lines", chunk.len(), chunk.lines().count());
+        
+        // Show what this would look like in the IRAGL database
+        let knowledge_stream = json!({
+            "id": Uuid::new_v4(),
+            "content_type": "file_markdown",
+            "content_text": chunk,
+            "source_entity_type": "documentation",
+            "source_entity_id": Uuid::new_v4(),
+            "metadata": {
+                "file_path": "README.md",
+                "section": section_name,
+                "chunk_index": i,
+                "total_chunks": chunks.len(),
+                "semantic_boundary": true,
+                "neovim_text_object": true
+            },
+            "embedding_model": "nomic-embed-text",
+            "optimization_status": "pending",
+            "optimization_score": null
+        });
+        
+        println!("    IRAGL Record: {}", serde_json::to_string_pretty(&knowledge_stream).unwrap());
+        println!();
+    }
+}
