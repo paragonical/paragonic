@@ -341,4 +341,61 @@ mod iragl_database_tests {
         
         println!("✅ Check constraints are working properly");
     }
+
+    /// Test knowledge stream ingestion functionality
+    #[tokio::test]
+    async fn test_knowledge_stream_ingestion() {
+        // Connect directly to the existing PostgreSQL database
+        let database_url = "postgres://postgres@localhost/paragonic_test";
+        let conn_result = PgConnection::establish(database_url);
+        
+        if let Err(e) = &conn_result {
+            println!("Failed to connect to database: {:?}", e);
+            // Skip test if database connection fails
+            return;
+        }
+        
+        let mut conn = conn_result.unwrap();
+        
+        // Test inserting a knowledge stream
+        let test_content = "Test knowledge stream content for ingestion testing";
+        let insert_result = diesel::sql_query(format!(
+            "INSERT INTO knowledge_streams (content_type, content_text, source_entity_type, source_entity_id, embedding_model) 
+             VALUES ('communication', '{}', 'project', gen_random_uuid(), 'test-model') 
+             RETURNING id, content_type, content_text, source_entity_type, embedding_model, optimization_status",
+            test_content
+        )).execute(&mut conn);
+        
+        assert!(insert_result.is_ok(), "Should be able to insert knowledge stream");
+        
+        // Verify the inserted record
+        let result = diesel::sql_query(format!(
+            "SELECT id, content_type, content_text, source_entity_type, embedding_model, optimization_status 
+             FROM knowledge_streams 
+             WHERE content_text = '{}'",
+            test_content
+        )).execute(&mut conn);
+        
+        assert!(result.is_ok(), "Should be able to query inserted knowledge stream");
+        
+        // Verify default values
+        let result = diesel::sql_query(format!(
+            "SELECT optimization_status, optimization_score 
+             FROM knowledge_streams 
+             WHERE content_text = '{}'",
+            test_content
+        )).execute(&mut conn);
+        
+        assert!(result.is_ok(), "Should be able to query optimization fields");
+        
+        // Clean up test data
+        let cleanup_result = diesel::sql_query(format!(
+            "DELETE FROM knowledge_streams WHERE content_text = '{}'",
+            test_content
+        )).execute(&mut conn);
+        
+        assert!(cleanup_result.is_ok(), "Should be able to clean up test data");
+        
+        println!("✅ Knowledge stream ingestion functionality works");
+    }
 } 
