@@ -349,13 +349,13 @@ pub async fn perform_differential_geometry_optimization(
                 tracing::info!("No content found for optimization");
                 return Ok(OptimizationResult {
                     optimization_id: Uuid::new_v4(),
-                    optimization_type: request.optimization_type,
+                    optimization_type: "differential_geometry".to_string(),
                     content_count: 0,
                     performance_improvement: 0.0,
                     duration_ms: start_time.elapsed().as_millis() as u64,
                     success: true,
                     error_message: None,
-                    metadata: request.metadata,
+                    metadata: request.geometric_parameters.clone(),
                     created_at: Utc::now(),
                 });
             }
@@ -395,15 +395,14 @@ pub async fn perform_differential_geometry_optimization(
                     optimization_type, content_count, performance_improvement, 
                     duration_ms, success, error_message, metadata
                 ) VALUES (
-                    '{}', {}, {}, {}, {}, '{}', '{}'
+                    'differential_geometry', {}, {}, {}, {}, '{}', '{}'
                 )",
-                request.optimization_type,
                 content_count,
                 performance_improvement,
                 duration_ms,
                 success,
                 error_message.as_deref().unwrap_or(""),
-                request.metadata.clone().map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string())
+                request.geometric_parameters.clone().map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string())
             )).execute(&mut conn);
             
             if history_result.is_err() {
@@ -414,13 +413,13 @@ pub async fn perform_differential_geometry_optimization(
             
             Ok(OptimizationResult {
                 optimization_id,
-                optimization_type: request.optimization_type,
+                optimization_type: "differential_geometry".to_string(),
                 content_count,
                 performance_improvement,
                 duration_ms,
                 success,
                 error_message,
-                metadata: request.metadata,
+                metadata: request.geometric_parameters.clone(),
                 created_at: Utc::now(),
             })
         }
@@ -944,7 +943,7 @@ mod tests {
             geometric_parameters: Some(serde_json::json!({"method": "differential_geometry", "iterations": 100})),
         };
         
-        let result = perform_differential_geometry_optimization_legacy(request).await;
+        let result = perform_differential_geometry_optimization_advanced(request).await;
         
         match result {
             Ok(optimization_result) => {
