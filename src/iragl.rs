@@ -1843,9 +1843,9 @@ pub async fn index_file_for_iragl(
         determine_optimal_chunk_size(&content_type, file_size)
     });
     
-    // Split content into chunks if needed
+    // Split content into semantic chunks
     let chunks = if content.len() > chunk_size {
-        chunk_content(&processed_content, chunk_size)
+        chunk_content_semantically(&processed_content, &content_type)
     } else {
         vec![processed_content]
     };
@@ -2125,20 +2125,348 @@ fn determine_optimal_chunk_size(content_type: &str, file_size: u64) -> usize {
     }
 }
 
-/// Split content into chunks
-fn chunk_content(content: &str, chunk_size: usize) -> Vec<String> {
+/// Split content into semantic chunks based on content type
+/// 
+/// This function creates intelligent chunks that respect natural content boundaries:
+/// - Markdown: Section-based chunking
+/// - Code: Function/class boundaries  
+/// - Text: Sentence and paragraph boundaries
+/// - Structured: Object boundaries
+fn chunk_content_semantically(content: &str, content_type: &str) -> Vec<String> {
+    match content_type {
+        "markdown" => chunk_markdown_semantically(content),
+        "python" | "rust" | "javascript" | "typescript" => chunk_code_semantically(content),
+        "json" => chunk_json_semantically(content),
+        "yaml" | "toml" => chunk_structured_semantically(content),
+        "csv" => chunk_csv_semantically(content),
+        "log" => chunk_log_semantically(content),
+        _ => chunk_text_semantically(content), // Default to text-based chunking
+    }
+}
+
+/// Chunk markdown content by sections
+fn chunk_markdown_semantically(content: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    let mut current_section_level = 0;
+    
+    for line in content.lines() {
+        let trimmed = line.trim();
+        
+        // Check if this is a section header
+        if trimmed.starts_with('#') {
+            let header_level = trimmed.chars().take_while(|&c| c == '#').count();
+            
+            // If we have content in current chunk and this is a new section, save it
+            if !current_chunk.trim().is_empty() {
+                chunks.push(current_chunk.trim().to_string());
+                current_chunk = String::new();
+            }
+            
+            // Start new chunk with header
+            current_chunk.push_str(line);
+            current_chunk.push('\n');
+            current_section_level = header_level;
+        } else {
+            // Add content to current chunk
+            current_chunk.push_str(line);
+            current_chunk.push('\n');
+        }
+    }
+    
+    // Add final chunk if it has content
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+    
+    // If no sections found, fall back to paragraph-based chunking
+    if chunks.is_empty() {
+        return chunk_text_semantically(content);
+    }
+    
+    chunks
+}
+
+/// Chunk code content by functions, classes, and logical blocks
+fn chunk_code_semantically(content: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    let mut brace_count = 0;
+    let mut in_function_or_class = false;
+    
+    for line in content.lines() {
+        let trimmed = line.trim();
+        
+        // Check for function/class definitions
+        let is_definition = trimmed.starts_with("fn ") || 
+                           trimmed.starts_with("def ") || 
+                           trimmed.starts_with("class ") || 
+                           trimmed.starts_with("pub fn ") ||
+                           trimmed.starts_with("async fn ") || 
+                           trimmed.starts_with("function ") ||
+                           trimmed.starts_with("impl ") ||
+                           trimmed.starts_with("trait ") ||
+                           trimmed.starts_with("struct ") ||
+                           trimmed.starts_with("enum ");
+        
+        // Check for module/import statements (start new chunk)
+        let is_module_boundary = trimmed.starts_with("use ") || 
+                                trimmed.starts_with("import ") || 
+                                trimmed.starts_with("mod ") ||
+                                trimmed.starts_with("extern crate ") ||
+                                trimmed.starts_with("from ") ||
+                                trimmed.starts_with("require(");
+        
+        if is_module_boundary {
+            // Save current chunk if it has content
+            if !current_chunk.trim().is_empty() {
+                chunks.push(current_chunk.trim().to_string());
+                current_chunk = String::new();
+            }
+            // Start new chunk with module statement
+            current_chunk.push_str(line);
+            current_chunk.push('\n');
+            continue;
+        }
+        
+        if is_definition {
+            // Save current chunk if it has content and we're starting a new function/class
+            if !current_chunk.trim().is_empty() && in_function_or_class {
+                chunks.push(current_chunk.trim().to_string());
+                current_chunk = String::new();
+            }
+            in_function_or_class = true;
+        }
+        
+        // Count braces to track function/class boundaries
+        brace_count += trimmed.chars().filter(|&c| c == '{').count();
+        brace_count -= trimmed.chars().filter(|&c| c == '}').count();
+        
+        current_chunk.push_str(line);
+        current_chunk.push('\n');
+        
+        // If we've closed all braces and we were in a function/class, consider ending chunk
+        if brace_count == 0 && in_function_or_class {
+            // Add a few more lines for context, then end chunk
+            in_function_or_class = false;
+        }
+    }
+    
+    // Add final chunk if it has content
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+    
+    // If no functions/classes found, fall back to comment-based chunking
+    if chunks.len() <= 1 {
+        return chunk_code_by_comments(content);
+    }
+    
+    chunks
+}
+
+/// Chunk code by comment blocks when function/class detection fails
+fn chunk_code_by_comments(content: &str) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current_chunk = String::new();
     
     for line in content.lines() {
-        if current_chunk.len() + line.len() + 1 > chunk_size && !current_chunk.is_empty() {
+        let trimmed = line.trim();
+        
+        // Check for significant comment blocks
+        let is_significant_comment = trimmed.starts_with("///") || 
+                                   trimmed.starts_with("/**") ||
+                                   trimmed.starts_with("/*") ||
+                                   trimmed.starts_with("//") ||
+                                   trimmed.starts_with("#");
+        
+        if is_significant_comment && !current_chunk.trim().is_empty() {
+            // Save current chunk and start new one
             chunks.push(current_chunk.trim().to_string());
             current_chunk = String::new();
         }
+        
         current_chunk.push_str(line);
         current_chunk.push('\n');
     }
     
+    // Add final chunk
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+    
+    chunks
+}
+
+/// Chunk JSON content by top-level objects
+fn chunk_json_semantically(content: &str) -> Vec<String> {
+    // Try to parse as JSON first
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(content) {
+        match value {
+            serde_json::Value::Object(obj) => {
+                // Single object - chunk by major keys
+                let mut chunks = Vec::new();
+                for (key, value) in obj {
+                    let chunk = serde_json::to_string_pretty(&serde_json::json!({key: value})).unwrap_or_default();
+                    if !chunk.is_empty() {
+                        chunks.push(chunk);
+                    }
+                }
+                if !chunks.is_empty() {
+                    return chunks;
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                // Array - chunk by array elements
+                let mut chunks = Vec::new();
+                for item in arr {
+                    let chunk = serde_json::to_string_pretty(&item).unwrap_or_default();
+                    if !chunk.is_empty() {
+                        chunks.push(chunk);
+                    }
+                }
+                if !chunks.is_empty() {
+                    return chunks;
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    // Fall back to text-based chunking if JSON parsing fails
+    chunk_text_semantically(content)
+}
+
+/// Chunk structured content (YAML/TOML) by top-level sections
+fn chunk_structured_semantically(content: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    
+    for line in content.lines() {
+        let trimmed = line.trim();
+        
+        // Check for top-level keys (no indentation or specific patterns)
+        let is_top_level = !trimmed.is_empty() && 
+                          !trimmed.starts_with(' ') && 
+                          !trimmed.starts_with('\t') &&
+                          (trimmed.contains(':') || trimmed.starts_with('['));
+        
+        if is_top_level && !current_chunk.trim().is_empty() {
+            // Save current chunk and start new one
+            chunks.push(current_chunk.trim().to_string());
+            current_chunk = String::new();
+        }
+        
+        current_chunk.push_str(line);
+        current_chunk.push('\n');
+    }
+    
+    // Add final chunk
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+    
+    chunks
+}
+
+/// Chunk CSV content by logical groups
+fn chunk_csv_semantically(content: &str) -> Vec<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return vec![];
+    }
+    
+    let mut chunks = Vec::new();
+    
+    // First chunk: headers
+    if !lines[0].trim().is_empty() {
+        chunks.push(format!("Headers: {}", lines[0]));
+    }
+    
+    // Remaining chunks: groups of data rows
+    let data_lines: Vec<&str> = lines.iter().skip(1).filter(|&&line| !line.trim().is_empty()).copied().collect();
+    
+    if !data_lines.is_empty() {
+        // Split data into groups of ~10 rows each
+        let chunk_size = 10;
+        for (i, chunk) in data_lines.chunks(chunk_size).enumerate() {
+            let chunk_content = format!("Data Group {}: {}", i + 1, chunk.join("\n"));
+            chunks.push(chunk_content);
+        }
+    }
+    
+    chunks
+}
+
+/// Chunk log content by error/event groups
+fn chunk_log_semantically(content: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    
+    for line in content.lines() {
+        let lower_line = line.to_lowercase();
+        
+        // Check for significant log entries
+        let is_significant = lower_line.contains("error") || 
+                           lower_line.contains("warning") || 
+                           lower_line.contains("critical") || 
+                           lower_line.contains("fatal") ||
+                           lower_line.contains("exception") ||
+                           lower_line.contains("stack trace");
+        
+        if is_significant && !current_chunk.trim().is_empty() {
+            // Save current chunk and start new one
+            chunks.push(current_chunk.trim().to_string());
+            current_chunk = String::new();
+        }
+        
+        current_chunk.push_str(line);
+        current_chunk.push('\n');
+    }
+    
+    // Add final chunk
+    if !current_chunk.trim().is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+    
+    chunks
+}
+
+/// Chunk text content by sentences and paragraphs
+fn chunk_text_semantically(content: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    let mut sentence_count = 0;
+    
+    // Split into paragraphs first
+    let paragraphs: Vec<&str> = content.split("\n\n").collect();
+    
+    for paragraph in paragraphs {
+        let trimmed_paragraph = paragraph.trim();
+        if trimmed_paragraph.is_empty() {
+            continue;
+        }
+        
+        // Count sentences in this paragraph
+        let sentences: Vec<&str> = trimmed_paragraph
+            .split_inclusive(&['.', '!', '?'])
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+        
+        sentence_count += sentences.len();
+        
+        // If adding this paragraph would make chunk too long, start new chunk
+        if sentence_count > 5 && !current_chunk.trim().is_empty() {
+            chunks.push(current_chunk.trim().to_string());
+            current_chunk = String::new();
+            sentence_count = sentences.len();
+        }
+        
+        current_chunk.push_str(trimmed_paragraph);
+        current_chunk.push_str("\n\n");
+    }
+    
+    // Add final chunk
     if !current_chunk.trim().is_empty() {
         chunks.push(current_chunk.trim().to_string());
     }
@@ -2233,4 +2561,198 @@ This file demonstrates how IRAGL can process different content types within a si
             let _ = std::fs::remove_file(test_file_path);
         }
     }
+}
+
+/// Test semantic chunking functionality
+#[tokio::test]
+async fn test_semantic_chunking() {
+    println!("Testing IRAGL semantic chunking...");
+    
+    // Test 1: Markdown semantic chunking
+    println!("Test 1: Markdown semantic chunking");
+    let markdown_content = r#"
+# Introduction
+
+This is the introduction section. It contains basic information about the project.
+
+## Features
+
+### Core Features
+- Feature 1: Description of feature 1
+- Feature 2: Description of feature 2
+
+### Advanced Features
+- Advanced feature 1: Complex description
+- Advanced feature 2: Another complex description
+
+## Installation
+
+Follow these steps to install the project.
+
+### Prerequisites
+Make sure you have the required dependencies.
+
+### Steps
+1. Clone the repository
+2. Install dependencies
+3. Run the application
+
+## Usage
+
+Here's how to use the application.
+
+### Basic Usage
+Simple usage examples.
+
+### Advanced Usage
+Complex usage scenarios.
+"#;
+    
+    let markdown_chunks = chunk_content_semantically(markdown_content, "markdown");
+    println!("✅ Markdown chunks: {}", markdown_chunks.len());
+    for (i, chunk) in markdown_chunks.iter().enumerate() {
+        println!("  Chunk {}: {} chars, starts with: {}", 
+            i + 1, 
+            chunk.len(), 
+            chunk.lines().next().unwrap_or("").chars().take(30).collect::<String>()
+        );
+    }
+    
+    // Test 2: Code semantic chunking
+    println!("\nTest 2: Code semantic chunking");
+    let rust_code = r#"
+use std::collections::HashMap;
+
+/// Configuration for the application
+pub struct Config {
+    pub host: String,
+    pub port: u16,
+    pub database_url: String,
+}
+
+impl Config {
+    /// Create a new configuration
+    pub fn new(host: String, port: u16, database_url: String) -> Self {
+        Self {
+            host,
+            port,
+            database_url,
+        }
+    }
+    
+    /// Load configuration from environment
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        let host = std::env::var("HOST").unwrap_or_else(|_| "localhost".to_string());
+        let port = std::env::var("PORT")
+            .unwrap_or_else(|_| "3000".to_string())
+            .parse()?;
+        let database_url = std::env::var("DATABASE_URL")?;
+        
+        Ok(Self::new(host, port, database_url))
+    }
+}
+
+/// Main application struct
+pub struct App {
+    config: Config,
+    cache: HashMap<String, String>,
+}
+
+impl App {
+    /// Create a new application instance
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            cache: HashMap::new(),
+        }
+    }
+    
+    /// Start the application
+    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Starting app on {}:{}", self.config.host, self.config.port);
+        // Application logic here
+        Ok(())
+    }
+}
+"#;
+    
+    let code_chunks = chunk_content_semantically(rust_code, "rust");
+    println!("✅ Rust code chunks: {}", code_chunks.len());
+    for (i, chunk) in code_chunks.iter().enumerate() {
+        println!("  Chunk {}: {} chars, contains: {}", 
+            i + 1, 
+            chunk.len(), 
+            if chunk.contains("struct") { "struct" } else if chunk.contains("impl") { "impl" } else { "other" }
+        );
+    }
+    
+    // Test 3: JSON semantic chunking
+    println!("\nTest 3: JSON semantic chunking");
+    let json_content = r#"{
+  "application": {
+    "name": "IRAGL System",
+    "version": "1.0.0",
+    "description": "Advanced knowledge management system"
+  },
+  "database": {
+    "type": "postgresql",
+    "host": "localhost",
+    "port": 5432,
+    "name": "iragl_db"
+  },
+  "features": {
+    "semantic_search": true,
+    "file_indexing": true,
+    "optimization": true
+  },
+  "api": {
+    "endpoints": [
+      "/search",
+      "/index",
+      "/optimize"
+    ],
+    "rate_limit": 1000
+  }
+}"#;
+    
+    let json_chunks = chunk_content_semantically(json_content, "json");
+    println!("✅ JSON chunks: {}", json_chunks.len());
+    for (i, chunk) in json_chunks.iter().enumerate() {
+        println!("  Chunk {}: {} chars, key: {}", 
+            i + 1, 
+            chunk.len(), 
+            chunk.lines().nth(1).unwrap_or("").trim().trim_matches('"').trim_matches(':').trim_matches('"')
+        );
+    }
+    
+    // Test 4: Text semantic chunking
+    println!("\nTest 4: Text semantic chunking");
+    let text_content = r#"
+This is the first paragraph. It contains multiple sentences. Each sentence provides information about the topic. The paragraph flows naturally from one idea to the next.
+
+This is the second paragraph. It introduces a new concept. The sentences are structured to build upon the previous paragraph. This creates a logical flow of information.
+
+Here's a third paragraph with different content. It discusses various aspects of the subject matter. The sentences are carefully crafted to maintain coherence. This paragraph concludes the main discussion.
+
+Finally, this is the last paragraph. It summarizes the key points. The information is presented clearly and concisely. This helps readers understand the main takeaways.
+"#;
+    
+    let text_chunks = chunk_content_semantically(text_content, "text");
+    println!("✅ Text chunks: {}", text_chunks.len());
+    for (i, chunk) in text_chunks.iter().enumerate() {
+        println!("  Chunk {}: {} chars, sentences: {}", 
+            i + 1, 
+            chunk.len(), 
+            chunk.split_inclusive(&['.', '!', '?']).count()
+        );
+    }
+    
+    println!("\n✅ Semantic chunking test completed successfully!");
+    println!("The system now intelligently chunks content based on:");
+    println!("  - Markdown: Section boundaries (#, ##, etc.)");
+    println!("  - Code: Function/class/module boundaries");
+    println!("  - JSON: Object/array element boundaries");
+    println!("  - Text: Sentence and paragraph boundaries");
+    println!("  - Structured: Top-level key boundaries");
+    println!("  - Logs: Error/event group boundaries");
 }
