@@ -134,8 +134,7 @@ impl ParagonicServer {
             content: message,
         };
         
-        // TODO: Implement tool calling logic
-        // For now, just use regular chat completion
+        // Get initial AI response
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             tokio::task::block_in_place(|| {
                 handle.block_on(async {
@@ -152,8 +151,43 @@ impl ParagonicServer {
         
         match response {
             Ok(chat_response) => {
-                serde_json::to_string(&chat_response)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                // Check if the response contains tool calls
+                let response_content = chat_response.message.content.clone();
+                let tool_calls = self.parse_tool_calls(&response_content)?;
+                
+                if tool_calls.is_empty() {
+                    // No tool calls, return the original response
+                    serde_json::to_string(&chat_response)
+                        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                } else {
+                    // Execute tool calls and create enhanced response
+                    let mut tool_results = Vec::new();
+                    for tool_call in &tool_calls {
+                        match self.execute_tool_call(tool_call) {
+                            Ok(result) => {
+                                tool_results.push(format!("Tool '{}' executed successfully: {}", tool_call.tool, result));
+                            }
+                            Err(e) => {
+                                tool_results.push(format!("Tool '{}' failed: {:?}", tool_call.tool, e));
+                            }
+                        }
+                    }
+                    
+                    // Create enhanced response with tool results
+                    let enhanced_response = serde_json::json!({
+                        "message": {
+                            "role": "assistant",
+                            "content": format!("{}\n\nTool execution results:\n{}", 
+                                response_content, 
+                                tool_results.join("\n"))
+                        },
+                        "tool_calls_executed": tool_calls.len(),
+                        "tool_results": tool_results
+                    });
+                    
+                    serde_json::to_string(&enhanced_response)
+                        .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                }
             }
             Err(e) => {
                 error!("Ollama chat completion failed: {}", e);
@@ -1418,6 +1452,25 @@ mod tests {
         let result = server.handle_agent_chat_completion(&params);
         assert!(result.is_ok());
         // Now it returns real AI responses, so we just verify it's valid JSON
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        assert!(response_json.get("message").is_some(), "Should have a message field");
+    }
+    
+    /// Test agent chat completion with tool calling
+    #[test]
+    fn test_agent_chat_completion_with_tool_calling() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test that agent chat completion can handle tool calls
+        let params = Some(serde_json::json!(["Create a new project called 'Test Project'", "llama3.2:3b"]));
+        let result = server.handle_agent_chat_completion(&params);
+        assert!(result.is_ok());
+        
+        // The response should be valid JSON
         let response = result.unwrap();
         let response_json: serde_json::Value = serde_json::from_str(&response)
             .expect("Response should be valid JSON");
