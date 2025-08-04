@@ -40,6 +40,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    content_associations (id) {
+        id -> Uuid,
+        content_id -> Uuid,
+        #[max_length = 50]
+        entity_type -> Varchar,
+        entity_id -> Uuid,
+        association_strength -> Nullable<Float8>,
+        #[max_length = 50]
+        association_type -> Nullable<Varchar>,
+        confidence_score -> Nullable<Float8>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     conversations (id) {
         id -> Uuid,
         agent_id -> Nullable<Uuid>,
@@ -104,12 +120,68 @@ diesel::table! {
 }
 
 diesel::table! {
+    knowledge_metrics (id) {
+        id -> Uuid,
+        #[max_length = 100]
+        metric_name -> Varchar,
+        metric_value -> Float8,
+        #[max_length = 20]
+        metric_unit -> Nullable<Varchar>,
+        #[max_length = 20]
+        time_period -> Varchar,
+        period_start -> Timestamptz,
+        period_end -> Timestamptz,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+    use super::sql_types::Vector;
+
+    knowledge_streams (id) {
+        id -> Uuid,
+        #[max_length = 50]
+        content_type -> Varchar,
+        content_text -> Text,
+        #[max_length = 50]
+        source_entity_type -> Varchar,
+        source_entity_id -> Uuid,
+        metadata -> Nullable<Jsonb>,
+        embedding_vector -> Nullable<Vector>,
+        #[max_length = 100]
+        embedding_model -> Varchar,
+        #[max_length = 20]
+        optimization_status -> Nullable<Varchar>,
+        optimization_score -> Nullable<Float8>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     messages (id) {
         id -> Uuid,
         conversation_id -> Nullable<Uuid>,
         #[max_length = 50]
         role -> Varchar,
         content -> Text,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    optimization_history (id) {
+        id -> Uuid,
+        #[max_length = 50]
+        optimization_type -> Varchar,
+        content_count -> Int4,
+        performance_improvement -> Nullable<Float8>,
+        duration_ms -> Int4,
+        success -> Nullable<Bool>,
+        error_message -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
         created_at -> Nullable<Timestamptz>,
     }
 }
@@ -177,6 +249,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    query_analytics (id) {
+        id -> Uuid,
+        query_text -> Text,
+        query_context -> Nullable<Jsonb>,
+        result_count -> Int4,
+        response_time_ms -> Int4,
+        user_satisfaction_score -> Nullable<Float8>,
+        optimization_impact -> Nullable<Float8>,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     tasks (id) {
         id -> Uuid,
         goal_id -> Nullable<Uuid>,
@@ -194,6 +279,7 @@ diesel::table! {
 diesel::joinable!(associations -> agents (agent_id));
 diesel::joinable!(associations -> organizations (organization_id));
 diesel::joinable!(associations -> people (person_id));
+diesel::joinable!(content_associations -> knowledge_streams (content_id));
 diesel::joinable!(conversations -> agents (agent_id));
 diesel::joinable!(conversations -> organizations (organization_id));
 diesel::joinable!(goals -> projects (project_id));
@@ -205,14 +291,19 @@ diesel::joinable!(tasks -> goals (goal_id));
 diesel::allow_tables_to_appear_in_same_query!(
     agents,
     associations,
+    content_associations,
     conversations,
     embeddings,
     goals,
     isrl_profiles,
+    knowledge_metrics,
+    knowledge_streams,
     messages,
+    optimization_history,
     organization_hierarchies,
     organizations,
     people,
     projects,
+    query_analytics,
     tasks,
 );
