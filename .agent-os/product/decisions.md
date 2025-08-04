@@ -324,4 +324,75 @@ Embeddings provide the foundation for:
 - **Embedding Model**: Use Ollama's embedding models (e.g., `nomic-embed-text`)
 - **Vector Storage**: PostgreSQL with pgvector extension
 - **Context Retrieval**: Top-k similarity search for relevant content
-- **Integration Points**: Conversations, projects, tasks, people profiles, ISRL data 
+- **Integration Points**: Conversations, projects, tasks, people profiles, ISRL data
+
+## 2025-08-03: IRAGL Knowledge Management System
+
+**ID:** DEC-007
+**Status:** Accepted
+**Category:** Technical
+**Stakeholders:** Tech Lead, Development Team
+
+### Decision
+
+Implement an Interleaved Retrieval-Augmented Generation Learning (IRAGL) system using advanced differential geometry optimization techniques inspired by Yurts research, rather than simple RAG or external vector databases.
+
+### Context
+
+Paragonic needs a sophisticated knowledge management system that continuously ingests organizational content and optimizes the knowledge base for enhanced query performance. The system must support the fractional organization network vision by providing superior search capabilities with organizational context awareness.
+
+### Alternatives Considered
+
+1. **Simple RAG with Basic Optimization**
+   - Pros: Quick implementation, minimal complexity
+   - Cons: Limited optimization capabilities, no organizational context
+
+2. **Advanced IRAGL with Differential Geometry (Selected)**
+   - Pros: Superior optimization using Yurts-inspired techniques, organizational context awareness, continuous improvement
+   - Cons: Higher complexity, requires more sophisticated algorithms
+
+3. **Hybrid Approach with External Vector Database**
+   - Pros: Leverages specialized vector databases, potentially better performance
+   - Cons: Additional infrastructure complexity, vendor lock-in concerns
+
+### Rationale
+
+The advanced IRAGL approach provides the best balance of capabilities while maintaining control over the system:
+- **Superior Optimization**: Differential geometry enables functionally-invariant path adaptation
+- **Organizational Context**: Search results weighted by organizational relevance
+- **Continuous Improvement**: Background optimization processes improve performance over time
+- **Local Control**: No external dependencies or vendor lock-in
+- **Scalability**: Supports large knowledge bases with efficient query performance
+
+### Consequences
+
+**Positive:**
+- Enables sophisticated knowledge management for fractional organizations
+- Provides superior search capabilities with organizational context
+- Supports continuous optimization and learning
+- Maintains local-first architecture and privacy
+- Creates foundation for advanced AI agent capabilities
+
+**Risks:**
+- Higher implementation complexity
+- Requires advanced mathematical algorithms
+- More sophisticated testing and validation needed
+- Potential performance overhead during optimization
+
+**Implementation Plan:**
+1. Database schema for knowledge streams and associations
+2. Knowledge stream ingestion and processing
+3. Content association engine with organizational context
+4. Differential geometry optimization engine
+5. IRAGL-enhanced search with context awareness
+6. Analytics and monitoring system
+7. RPC integration with existing system
+
+### Technical Details
+
+- **Knowledge Streams**: Continuous ingestion of organizational content
+- **Content Associations**: Link content to organizations, projects, operations
+- **Differential Geometry**: Functionally-invariant path optimization
+- **Vector Storage**: PostgreSQL with pgvector extension
+- **Optimization**: Background processes with performance tracking
+- **Search**: Context-aware similarity search with organizational weighting 
