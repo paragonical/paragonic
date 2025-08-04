@@ -310,5 +310,7 @@ mod tests {
 
 #[cfg(test)]
 mod iragl_database_tests;
+#[cfg(test)]
+mod iragl_processor_tests;
 
  
