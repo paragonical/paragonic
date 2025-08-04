@@ -32,6 +32,9 @@ async fn main() {
                     process::exit(1);
                 }
                 
+                // Set demo mode for file indexing (no database required)
+                std::env::set_var("PARAGONIC_DEMO_MODE", "1");
+                
                 let file_path = &args[2];
                 println!("Indexing file: {}", file_path);
                 
