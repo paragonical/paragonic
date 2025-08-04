@@ -122,6 +122,46 @@ Paragonic provides a set of structures to facilitate this collaboration, includi
 - **Conversations** &emsp; A chat-like interface for interacting with the agent or
   human, allowing users to ask questions and receive responses in natural language.     
 
+### Enhanced Tool Calling (v0.3.0)
+
+Paragonic now features advanced tool calling capabilities that enable AI agents to execute complex multi-step workflows:
+
+#### **Multi-Step Tool Sequences**
+Agents can execute multiple tools in sequence, building upon previous results:
+- **Context Awareness**: Tool results are fed back to the AI for continued decision-making
+- **Iteration Tracking**: Prevents infinite loops with configurable limits
+- **Enhanced Responses**: Rich JSON responses with detailed execution summaries
+- **Conversation Context**: Maintains conversation history across tool calls
+
+#### **Available Tools**
+- **File System Operations**: `read_file`, `write_file`, `list_files`
+- **Project Management**: `create_project`, `create_goal`, `create_task`
+- **Database Operations**: Full CRUD operations for all entities
+- **AI Integration**: Chat completion, embedding generation, model management
+
+#### **Example Workflows**
+```json
+{
+  "message": {
+    "role": "assistant", 
+    "content": "I've analyzed your codebase and created a new project..."
+  },
+  "tool_calls_executed": 3,
+  "tool_results": [
+    "Tool 'list_files' executed successfully: Found 15 source files",
+    "Tool 'read_file' executed successfully: Analyzed Cargo.toml dependencies", 
+    "Tool 'create_project' executed successfully: Created 'Code Analysis Project'"
+  ],
+  "iterations": 2
+}
+```
+
+#### **Agent Collaboration Features**
+- **Autonomous Execution**: Agents can plan and execute complex workflows
+- **Error Handling**: Graceful handling of tool failures with detailed reporting
+- **Progress Tracking**: Real-time updates on multi-step operations
+- **Context Preservation**: Maintains conversation state across tool executions
+
 ### Model Context Protocol
 
 - https://modelcontextprotocol.io/specification/2025-06-18 (also in `mcp.md`)
