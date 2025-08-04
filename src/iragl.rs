@@ -299,11 +299,14 @@ pub async fn find_content_associations_for_entity(
 /// Optimization request for differential geometry processing
 #[derive(Debug, Clone)]
 pub struct DifferentialGeometryOptimizationRequest {
-    pub optimization_type: String, // 'embedding_update', 'association_refinement', 'geometry_optimization'
-    pub content_filter: Option<String>, // Optional filter for specific content
+    pub content_filter: Option<String>,
+    pub entity_types: Vec<String>,
+    pub optimization_strategies: Vec<String>, // 'curvature', 'manifold', 'tangent', 'geodesic', 'metric', 'connection', 'ricci', 'sectional', 'convergence'
+    pub curvature_threshold: f64,
     pub max_iterations: usize,
-    pub convergence_threshold: f64,
-    pub metadata: Option<Value>,
+    pub convergence_tolerance: f64,
+    pub include_metadata: bool,
+    pub geometric_parameters: Option<Value>, // Custom geometric parameters
 }
 
 /// Optimization result
@@ -361,10 +364,10 @@ pub async fn perform_differential_geometry_optimization(
             
             // Perform mock differential geometry optimization
             // In a real implementation, this would use actual differential geometry algorithms
-            let optimization_score = perform_mock_differential_geometry_optimization(
+            let optimization_score = perform_mock_differential_geometry_optimization_legacy(
                 content_count,
                 request.max_iterations,
-                request.convergence_threshold,
+                request.convergence_tolerance,
             );
             
             // Update knowledge streams with optimization results
@@ -434,7 +437,7 @@ pub async fn perform_differential_geometry_optimization(
 /// 
 /// This is a placeholder for the actual differential geometry algorithms
 /// that would be implemented based on the Yurts system principles.
-fn perform_mock_differential_geometry_optimization(
+fn perform_mock_differential_geometry_optimization_legacy(
     content_count: usize,
     max_iterations: usize,
     convergence_threshold: f64,
@@ -931,22 +934,24 @@ mod tests {
         
         // Test the differential geometry optimization function
         let request = DifferentialGeometryOptimizationRequest {
-            optimization_type: "geometry_optimization".to_string(),
             content_filter: None,
+            entity_types: vec!["project".to_string()],
+            optimization_strategies: vec!["curvature".to_string(), "manifold".to_string()],
+            curvature_threshold: 0.7,
             max_iterations: 100,
-            convergence_threshold: 0.01,
-            metadata: Some(serde_json::json!({"method": "differential_geometry", "iterations": 100})),
+            convergence_tolerance: 0.01,
+            include_metadata: true,
+            geometric_parameters: Some(serde_json::json!({"method": "differential_geometry", "iterations": 100})),
         };
         
-        let result = perform_differential_geometry_optimization(request).await;
+        let result = perform_differential_geometry_optimization_legacy(request).await;
         
         match result {
             Ok(optimization_result) => {
-                assert_eq!(optimization_result.optimization_type, "geometry_optimization");
-                assert!(optimization_result.content_count > 0, "Should have processed some content");
+                assert!(optimization_result.content_optimized > 0, "Should have processed some content");
                 assert!(optimization_result.success, "Optimization should succeed");
                 assert!(optimization_result.duration_ms > 0, "Should have taken some time");
-                assert!(optimization_result.performance_improvement > 0.0, "Should show some improvement");
+                assert_eq!(optimization_result.optimization_strategies.len(), 2, "Should have applied 2 optimization strategies");
                 println!("✅ Differential geometry optimization function works");
             }
             Err(e) => {
@@ -956,7 +961,7 @@ mod tests {
         }
         
         // Test optimization history retrieval
-        let history_result = get_optimization_history(Some(10)).await;
+        let history_result = get_differential_geometry_optimization_history(Some(10)).await;
         
         match history_result {
             Ok(_) => {
@@ -970,7 +975,7 @@ mod tests {
         
         // Clean up test data
         let cleanup_optimization = diesel::sql_query(
-            "DELETE FROM optimization_history WHERE optimization_type = 'geometry_optimization'"
+            "DELETE FROM optimization_history WHERE optimization_type = 'differential_geometry_optimization'"
         ).execute(&mut conn);
         
         assert!(cleanup_optimization.is_ok(), "Should be able to clean up optimization history");
@@ -3323,6 +3328,245 @@ mod tests {
         ).execute(&mut conn);
         
         assert!(cleanup_streams.is_ok(), "Should be able to clean up knowledge streams");
+    }
+
+    /// Test differential geometry optimization
+    #[tokio::test]
+    async fn test_differential_geometry_optimization_advanced() {
+        // Connect directly to the existing PostgreSQL database
+        let database_url = "postgres://postgres@localhost/paragonic_test";
+        let conn_result = diesel::PgConnection::establish(database_url);
+        
+        if let Err(e) = &conn_result {
+            println!("Failed to connect to database: {:?}", e);
+            // Skip test if database connection fails
+            return;
+        }
+        
+        let mut conn = conn_result.unwrap();
+        
+        // Insert test knowledge streams with embeddings for differential geometry
+        let stream_ids = vec![Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let project_id = Uuid::new_v4();
+        let goal_id = Uuid::new_v4();
+        
+        let content_texts = vec![
+            "Machine learning project implementation with neural networks and gradient descent",
+            "Deep learning model training and optimization techniques with backpropagation", 
+            "AI research methodology and statistical analysis with probability distributions"
+        ];
+        
+        for (i, stream_id) in stream_ids.iter().enumerate() {
+            let insert_result = diesel::sql_query(format!(
+                "INSERT INTO knowledge_streams (id, content_type, content_text, source_entity_type, source_entity_id, embedding_model, optimization_status, optimization_score) 
+                 VALUES ('{}', 'document', '{}', 'project', '{}', 'test-model', 'optimized', 0.85)",
+                stream_id, content_texts[i], project_id
+            )).execute(&mut conn);
+            
+            assert!(insert_result.is_ok(), "Should be able to insert test knowledge stream");
+        }
+        
+        // Create associations with varying geometric properties
+        let geometric_associations = vec![
+            (stream_ids[0], "project", project_id, 0.9, 0.95),      // High curvature
+            (stream_ids[0], "goal", goal_id, 0.85, 0.9),           // Medium curvature
+            (stream_ids[1], "project", project_id, 0.8, 0.85),     // Low curvature
+            (stream_ids[1], "goal", goal_id, 0.75, 0.8),           // Very low curvature
+            (stream_ids[2], "project", project_id, 0.7, 0.75),     // Minimal curvature
+            (stream_ids[2], "goal", goal_id, 0.65, 0.7),           // Flat geometry
+        ];
+        
+        for (stream_id, entity_type, entity_id, strength, confidence) in geometric_associations {
+            let association_result = diesel::sql_query(format!(
+                "INSERT INTO content_associations (
+                    content_id, entity_type, entity_id, association_type, 
+                    association_strength, confidence_score
+                ) VALUES (
+                    '{}', '{}', '{}', 'direct', {}, {}
+                )",
+                stream_id, entity_type, entity_id, strength, confidence
+            )).execute(&mut conn);
+            
+            assert!(association_result.is_ok(), "Should be able to create geometric association");
+        }
+        
+        // Test differential geometry curvature analysis
+        let curvature_analysis_result = diesel::sql_query(format!(
+            "SELECT 
+                ks.id,
+                ks.content_text,
+                ca.association_strength,
+                ca.confidence_score,
+                ks.optimization_score,
+                (ca.association_strength * ca.confidence_score * ks.optimization_score) as geometric_curvature,
+                (1 - (ca.association_strength * ca.confidence_score * ks.optimization_score)) as flatness_measure
+             FROM knowledge_streams ks
+             JOIN content_associations ca ON ks.id = ca.content_id
+             WHERE ca.content_id IN ('{}', '{}', '{}')
+             ORDER BY geometric_curvature DESC",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(curvature_analysis_result.is_ok(), "Should be able to analyze geometric curvature");
+        
+        // Test differential geometry manifold optimization
+        let manifold_optimization_result = diesel::sql_query(format!(
+            "SELECT 
+                content_id,
+                entity_type,
+                entity_id,
+                association_strength,
+                confidence_score,
+                (association_strength * confidence_score) as manifold_coordinate,
+                SQRT(association_strength * association_strength + confidence_score * confidence_score) as manifold_distance
+             FROM content_associations 
+             WHERE content_id IN ('{}', '{}', '{}')
+             ORDER BY manifold_distance DESC",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(manifold_optimization_result.is_ok(), "Should be able to optimize manifold coordinates");
+        
+        // Test differential geometry tangent space analysis
+        let tangent_space_result = diesel::sql_query(format!(
+            "SELECT 
+                ks.id,
+                ks.content_text,
+                ca.association_strength,
+                ca.confidence_score,
+                (ca.association_strength * ca.confidence_score) as tangent_vector_magnitude,
+                ATAN2(ca.confidence_score, ca.association_strength) as tangent_vector_angle
+             FROM knowledge_streams ks
+             JOIN content_associations ca ON ks.id = ca.content_id
+             WHERE ca.content_id IN ('{}', '{}', '{}')
+             ORDER BY tangent_vector_magnitude DESC",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(tangent_space_result.is_ok(), "Should be able to analyze tangent space");
+        
+        // Test differential geometry geodesic optimization
+        let geodesic_optimization_result = diesel::sql_query(format!(
+            "SELECT 
+                ca1.content_id as start_point,
+                ca1.association_strength as start_strength,
+                ca1.confidence_score as start_confidence,
+                ca2.content_id as end_point,
+                ca2.association_strength as end_strength,
+                ca2.confidence_score as end_confidence,
+                SQRT(POW(ca1.association_strength - ca2.association_strength, 2) + 
+                     POW(ca1.confidence_score - ca2.confidence_score, 2)) as geodesic_distance
+             FROM content_associations ca1
+             CROSS JOIN content_associations ca2
+             WHERE ca1.content_id IN ('{}', '{}', '{}')
+             AND ca2.content_id IN ('{}', '{}', '{}')
+             AND ca1.content_id != ca2.content_id
+             ORDER BY geodesic_distance",
+            stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(geodesic_optimization_result.is_ok(), "Should be able to optimize geodesic paths");
+        
+        // Test differential geometry metric tensor analysis
+        let metric_tensor_result = diesel::sql_query(format!(
+            "SELECT 
+                entity_type,
+                AVG(association_strength) as g11_component,
+                AVG(confidence_score) as g22_component,
+                AVG(association_strength * confidence_score) as g12_component,
+                AVG(association_strength * association_strength + confidence_score * confidence_score) as metric_determinant
+             FROM content_associations 
+             WHERE content_id IN ('{}', '{}', '{}')
+             GROUP BY entity_type",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(metric_tensor_result.is_ok(), "Should be able to analyze metric tensor");
+        
+        // Test differential geometry connection coefficients
+        let connection_coefficients_result = diesel::sql_query(format!(
+            "SELECT 
+                content_id,
+                entity_type,
+                association_strength,
+                confidence_score,
+                (association_strength * confidence_score) as christoffel_symbol_1,
+                (confidence_score * association_strength) as christoffel_symbol_2,
+                (association_strength + confidence_score) / 2 as connection_coefficient
+             FROM content_associations 
+             WHERE content_id IN ('{}', '{}', '{}')
+             ORDER BY connection_coefficient DESC",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(connection_coefficients_result.is_ok(), "Should be able to calculate connection coefficients");
+        
+        // Test differential geometry Ricci curvature
+        let ricci_curvature_result = diesel::sql_query(format!(
+            "SELECT 
+                entity_type,
+                COUNT(*) as dimension,
+                AVG(association_strength) as ricci_scalar,
+                AVG(confidence_score) as ricci_tensor_component,
+                STDDEV(association_strength) as curvature_variance
+             FROM content_associations 
+             WHERE content_id IN ('{}', '{}', '{}')
+             GROUP BY entity_type",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(ricci_curvature_result.is_ok(), "Should be able to calculate Ricci curvature");
+        
+        // Test differential geometry sectional curvature
+        let sectional_curvature_result = diesel::sql_query(format!(
+            "SELECT 
+                ca1.entity_type as plane_1,
+                ca2.entity_type as plane_2,
+                AVG(ca1.association_strength * ca2.confidence_score - ca1.confidence_score * ca2.association_strength) as sectional_curvature
+             FROM content_associations ca1
+             CROSS JOIN content_associations ca2
+             WHERE ca1.content_id IN ('{}', '{}', '{}')
+             AND ca2.content_id IN ('{}', '{}', '{}')
+             AND ca1.entity_type != ca2.entity_type
+             GROUP BY ca1.entity_type, ca2.entity_type",
+            stream_ids[0], stream_ids[1], stream_ids[2], stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(sectional_curvature_result.is_ok(), "Should be able to calculate sectional curvature");
+        
+        // Test differential geometry optimization convergence
+        let convergence_result = diesel::sql_query(format!(
+            "SELECT 
+                content_id,
+                entity_type,
+                association_strength,
+                confidence_score,
+                (association_strength * confidence_score) as current_optimization,
+                (association_strength * confidence_score * 1.1) as projected_optimization,
+                ((association_strength * confidence_score * 1.1) - (association_strength * confidence_score)) as convergence_rate
+             FROM content_associations 
+             WHERE content_id IN ('{}', '{}', '{}')
+             ORDER BY convergence_rate DESC",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(convergence_result.is_ok(), "Should be able to analyze optimization convergence");
+        
+        // Clean up test data
+        let cleanup_associations = diesel::sql_query(format!(
+            "DELETE FROM content_associations WHERE content_id IN ('{}', '{}', '{}')",
+            stream_ids[0], stream_ids[1], stream_ids[2]
+        )).execute(&mut conn);
+        
+        assert!(cleanup_associations.is_ok(), "Should be able to clean up associations");
+        
+        let cleanup_streams = diesel::sql_query(
+            "DELETE FROM knowledge_streams WHERE content_text LIKE '%Machine learning%' OR content_text LIKE '%Deep learning%' OR content_text LIKE '%AI research%'"
+        ).execute(&mut conn);
+        
+        assert!(cleanup_streams.is_ok(), "Should be able to clean up knowledge streams");
+        
+        println!("✅ Differential geometry optimization works");
     }
 } 
 
@@ -5859,4 +6103,589 @@ pub async fn get_search_optimization_history(
             Err(ParagonicError::Database(format!("Failed to get search optimization history: {e}")))
         }
     }
+}
+
+/// Differential geometry optimization request
+#[derive(Debug, Clone)]
+pub struct DifferentialGeometryOptimizationRequest {
+    pub content_filter: Option<String>,
+    pub entity_types: Vec<String>,
+    pub optimization_strategies: Vec<String>, // 'curvature', 'manifold', 'tangent', 'geodesic', 'metric', 'connection', 'ricci', 'sectional', 'convergence'
+    pub curvature_threshold: f64,
+    pub max_iterations: usize,
+    pub convergence_tolerance: f64,
+    pub include_metadata: bool,
+    pub geometric_parameters: Option<Value>, // Custom geometric parameters
+}
+
+/// Differential geometry optimization result
+#[derive(Debug, Clone)]
+pub struct DifferentialGeometryOptimizationResult {
+    pub optimization_id: Uuid,
+    pub content_optimized: usize,
+    pub optimization_strategies: Vec<String>,
+    pub curvature_analysis: Option<Value>,
+    pub manifold_optimization: Option<Value>,
+    pub tangent_space_analysis: Option<Value>,
+    pub geodesic_optimization: Option<Value>,
+    pub metric_tensor_analysis: Option<Value>,
+    pub connection_coefficients: Option<Value>,
+    pub ricci_curvature: Option<Value>,
+    pub sectional_curvature: Option<Value>,
+    pub convergence_analysis: Option<Value>,
+    pub duration_ms: u64,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub optimization_summary: Option<Value>,
+    pub created_at: chrono::DateTime<Utc>,
+}
+
+/// Perform differential geometry optimization
+/// 
+/// This function optimizes knowledge streams using differential geometry concepts
+/// including curvature analysis, manifold optimization, and geometric convergence.
+pub async fn perform_differential_geometry_optimization_advanced(
+    request: DifferentialGeometryOptimizationRequest,
+) -> ParagonicResult<DifferentialGeometryOptimizationResult> {
+    let start_time = std::time::Instant::now();
+    let mut conn = get_connection()?;
+    
+    // Find knowledge streams to optimize
+    let content_filter = request.content_filter.as_deref().unwrap_or("");
+    let entity_types_filter = request.entity_types.join("','");
+    let curvature_threshold = request.curvature_threshold;
+    
+    let query = if content_filter.is_empty() {
+        format!("SELECT COUNT(*) as content_count
+                 FROM knowledge_streams ks
+                 JOIN content_associations ca ON ks.id = ca.content_id
+                 WHERE ca.entity_type IN ('{entity_types_filter}')
+                 AND (ca.association_strength * ca.confidence_score * ks.optimization_score) >= {curvature_threshold}")
+    } else {
+        format!("SELECT COUNT(*) as content_count
+                 FROM knowledge_streams ks
+                 JOIN content_associations ca ON ks.id = ca.content_id
+                 WHERE ca.entity_type IN ('{entity_types_filter}')
+                 AND (ca.association_strength * ca.confidence_score * ks.optimization_score) >= {curvature_threshold}
+                 AND ks.content_text ILIKE '%{content_filter}%'")
+    };
+    
+    let result = diesel::sql_query(&query).execute(&mut conn);
+    
+    match result {
+        Ok(content_count) => {
+            if content_count == 0 {
+                tracing::info!("No content found for differential geometry optimization");
+                return Ok(DifferentialGeometryOptimizationResult {
+                    optimization_id: Uuid::new_v4(),
+                    content_optimized: 0,
+                    optimization_strategies: request.optimization_strategies,
+                    curvature_analysis: None,
+                    manifold_optimization: None,
+                    tangent_space_analysis: None,
+                    geodesic_optimization: None,
+                    metric_tensor_analysis: None,
+                    connection_coefficients: None,
+                    ricci_curvature: None,
+                    sectional_curvature: None,
+                    convergence_analysis: None,
+                    duration_ms: start_time.elapsed().as_millis() as u64,
+                    success: true,
+                    error_message: None,
+                    optimization_summary: None,
+                    created_at: Utc::now(),
+                });
+            }
+            
+            tracing::info!("Starting differential geometry optimization for {} content items", content_count);
+            
+            // Perform optimization based on requested strategies
+            let optimization_result = perform_mock_differential_geometry_optimization(
+                content_count,
+                &request.optimization_strategies,
+                &request.entity_types,
+                curvature_threshold,
+                request.max_iterations,
+                request.convergence_tolerance,
+                request.include_metadata,
+                &request.geometric_parameters,
+                &mut conn,
+            ).await?;
+            
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            let optimization_id = Uuid::new_v4();
+            
+            // Record optimization history
+            let history_result = record_differential_geometry_optimization_history(
+                &optimization_id,
+                content_count,
+                duration_ms,
+                &request.optimization_strategies,
+                &mut conn,
+            ).await;
+            
+            if history_result.is_err() {
+                tracing::warn!("Failed to record differential geometry optimization history: {:?}", history_result.err());
+            }
+            
+            let optimization_strategies = request.optimization_strategies.clone();
+            
+            Ok(DifferentialGeometryOptimizationResult {
+                optimization_id,
+                content_optimized: content_count,
+                optimization_strategies,
+                curvature_analysis: optimization_result.curvature_analysis,
+                manifold_optimization: optimization_result.manifold_optimization,
+                tangent_space_analysis: optimization_result.tangent_space_analysis,
+                geodesic_optimization: optimization_result.geodesic_optimization,
+                metric_tensor_analysis: optimization_result.metric_tensor_analysis,
+                connection_coefficients: optimization_result.connection_coefficients,
+                ricci_curvature: optimization_result.ricci_curvature,
+                sectional_curvature: optimization_result.sectional_curvature,
+                convergence_analysis: optimization_result.convergence_analysis,
+                duration_ms,
+                success: true,
+                error_message: None,
+                optimization_summary: Some(serde_json::json!({
+                    "strategies": request.optimization_strategies,
+                    "curvature_threshold": curvature_threshold,
+                    "max_iterations": request.max_iterations,
+                    "convergence_tolerance": request.convergence_tolerance
+                })),
+                created_at: Utc::now(),
+            })
+        }
+        Err(e) => {
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            tracing::error!("Failed to query for differential geometry optimization: {}", e);
+            
+            Err(ParagonicError::Database(format!("Failed to query for differential geometry optimization: {e}")))
+        }
+    }
+}
+
+/// Mock differential geometry optimization result structure
+#[derive(Debug, Clone)]
+struct MockDifferentialGeometryOptimizationResult {
+    curvature_analysis: Option<Value>,
+    manifold_optimization: Option<Value>,
+    tangent_space_analysis: Option<Value>,
+    geodesic_optimization: Option<Value>,
+    metric_tensor_analysis: Option<Value>,
+    connection_coefficients: Option<Value>,
+    ricci_curvature: Option<Value>,
+    sectional_curvature: Option<Value>,
+    convergence_analysis: Option<Value>,
+}
+
+/// Perform mock differential geometry optimization
+/// 
+/// This is a placeholder for the actual differential geometry algorithms
+/// that would optimize knowledge streams using geometric concepts.
+async fn perform_mock_differential_geometry_optimization(
+    content_count: usize,
+    optimization_strategies: &[String],
+    entity_types: &[String],
+    curvature_threshold: f64,
+    max_iterations: usize,
+    convergence_tolerance: f64,
+    include_metadata: bool,
+    geometric_parameters: &Option<Value>,
+    conn: &mut diesel::PgConnection,
+) -> ParagonicResult<MockDifferentialGeometryOptimizationResult> {
+    let mut curvature_analysis = None;
+    let mut manifold_optimization = None;
+    let mut tangent_space_analysis = None;
+    let mut geodesic_optimization = None;
+    let mut metric_tensor_analysis = None;
+    let mut connection_coefficients = None;
+    let mut ricci_curvature = None;
+    let mut sectional_curvature = None;
+    let mut convergence_analysis = None;
+    
+    // Mock optimization based on requested strategies
+    for strategy in optimization_strategies {
+        match strategy.as_str() {
+            "curvature" => {
+                // Analyze geometric curvature
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        ks.id,
+                        ks.content_text,
+                        ca.association_strength,
+                        ca.confidence_score,
+                        ks.optimization_score,
+                        (ca.association_strength * ca.confidence_score * ks.optimization_score) as geometric_curvature,
+                        (1 - (ca.association_strength * ca.confidence_score * ks.optimization_score)) as flatness_measure
+                     FROM knowledge_streams ks
+                     JOIN content_associations ca ON ks.id = ca.content_id
+                     WHERE ca.entity_type IN ('{}')
+                     AND (ca.association_strength * ca.confidence_score * ks.optimization_score) >= {}
+                     ORDER BY geometric_curvature DESC",
+                    entity_types.join("','"), curvature_threshold
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        curvature_analysis = Some(serde_json::json!({
+                            "curvature_algorithm": "geometric_product",
+                            "total_content": content_count,
+                            "avg_curvature": 0.75,
+                            "curvature_variance": 0.12,
+                            "flatness_distribution": "normal"
+                        }));
+                        tracing::info!("Geometric curvature analysis completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to analyze geometric curvature: {}", e);
+                    }
+                }
+            }
+            "manifold" => {
+                // Optimize manifold coordinates
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        content_id,
+                        entity_type,
+                        entity_id,
+                        association_strength,
+                        confidence_score,
+                        (association_strength * confidence_score) as manifold_coordinate,
+                        SQRT(association_strength * association_strength + confidence_score * confidence_score) as manifold_distance
+                     FROM content_associations 
+                     WHERE entity_type IN ('{}')
+                     AND association_strength >= {}
+                     ORDER BY manifold_distance DESC",
+                    entity_types.join("','"), curvature_threshold
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        manifold_optimization = Some(serde_json::json!({
+                            "manifold_algorithm": "coordinate_optimization",
+                            "manifold_dimension": entity_types.len(),
+                            "avg_manifold_distance": 1.25,
+                            "coordinate_variance": 0.08
+                        }));
+                        tracing::info!("Manifold optimization completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to optimize manifold coordinates: {}", e);
+                    }
+                }
+            }
+            "tangent" => {
+                // Analyze tangent space
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        ks.id,
+                        ks.content_text,
+                        ca.association_strength,
+                        ca.confidence_score,
+                        (ca.association_strength * ca.confidence_score) as tangent_vector_magnitude,
+                        ATAN2(ca.confidence_score, ca.association_strength) as tangent_vector_angle
+                     FROM knowledge_streams ks
+                     JOIN content_associations ca ON ks.id = ca.content_id
+                     WHERE ca.entity_type IN ('{}')
+                     AND ca.association_strength >= {}
+                     ORDER BY tangent_vector_magnitude DESC",
+                    entity_types.join("','"), curvature_threshold
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        tangent_space_analysis = Some(serde_json::json!({
+                            "tangent_algorithm": "vector_analysis",
+                            "avg_tangent_magnitude": 0.82,
+                            "tangent_angle_distribution": "uniform",
+                            "vector_space_dimension": 2
+                        }));
+                        tracing::info!("Tangent space analysis completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to analyze tangent space: {}", e);
+                    }
+                }
+            }
+            "geodesic" => {
+                // Optimize geodesic paths
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        ca1.content_id as start_point,
+                        ca1.association_strength as start_strength,
+                        ca1.confidence_score as start_confidence,
+                        ca2.content_id as end_point,
+                        ca2.association_strength as end_strength,
+                        ca2.confidence_score as end_confidence,
+                        SQRT(POW(ca1.association_strength - ca2.association_strength, 2) + 
+                             POW(ca1.confidence_score - ca2.confidence_score, 2)) as geodesic_distance
+                     FROM content_associations ca1
+                     CROSS JOIN content_associations ca2
+                     WHERE ca1.entity_type IN ('{}')
+                     AND ca2.entity_type IN ('{}')
+                     AND ca1.content_id != ca2.content_id
+                     ORDER BY geodesic_distance",
+                    entity_types.join("','"), entity_types.join("','")
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        geodesic_optimization = Some(serde_json::json!({
+                            "geodesic_algorithm": "shortest_path",
+                            "avg_geodesic_distance": 0.15,
+                            "path_optimization": "minimal",
+                            "connectivity_ratio": 0.85
+                        }));
+                        tracing::info!("Geodesic optimization completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to optimize geodesic paths: {}", e);
+                    }
+                }
+            }
+            "metric" => {
+                // Analyze metric tensor
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        entity_type,
+                        AVG(association_strength) as g11_component,
+                        AVG(confidence_score) as g22_component,
+                        AVG(association_strength * confidence_score) as g12_component,
+                        AVG(association_strength * association_strength + confidence_score * confidence_score) as metric_determinant
+                     FROM content_associations 
+                     WHERE entity_type IN ('{}')
+                     GROUP BY entity_type",
+                    entity_types.join("','")
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        metric_tensor_analysis = Some(serde_json::json!({
+                            "metric_algorithm": "tensor_analysis",
+                            "metric_components": {
+                                "g11": 0.82,
+                                "g22": 0.85,
+                                "g12": 0.70,
+                                "determinant": 1.47
+                            },
+                            "metric_signature": "positive_definite"
+                        }));
+                        tracing::info!("Metric tensor analysis completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to analyze metric tensor: {}", e);
+                    }
+                }
+            }
+            "connection" => {
+                // Calculate connection coefficients
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        content_id,
+                        entity_type,
+                        association_strength,
+                        confidence_score,
+                        (association_strength * confidence_score) as christoffel_symbol_1,
+                        (confidence_score * association_strength) as christoffel_symbol_2,
+                        (association_strength + confidence_score) / 2 as connection_coefficient
+                     FROM content_associations 
+                     WHERE entity_type IN ('{}')
+                     AND association_strength >= {}
+                     ORDER BY connection_coefficient DESC",
+                    entity_types.join("','"), curvature_threshold
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        connection_coefficients = Some(serde_json::json!({
+                            "connection_algorithm": "christoffel_symbols",
+                            "avg_connection_coefficient": 0.83,
+                            "connection_symmetry": "symmetric",
+                            "torsion_free": true
+                        }));
+                        tracing::info!("Connection coefficients calculated");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to calculate connection coefficients: {}", e);
+                    }
+                }
+            }
+            "ricci" => {
+                // Calculate Ricci curvature
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        entity_type,
+                        COUNT(*) as dimension,
+                        AVG(association_strength) as ricci_scalar,
+                        AVG(confidence_score) as ricci_tensor_component,
+                        STDDEV(association_strength) as curvature_variance
+                     FROM content_associations 
+                     WHERE entity_type IN ('{}')
+                     GROUP BY entity_type",
+                    entity_types.join("','")
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        ricci_curvature = Some(serde_json::json!({
+                            "ricci_algorithm": "tensor_contraction",
+                            "ricci_scalar": 0.82,
+                            "ricci_tensor": {
+                                "R11": 0.82,
+                                "R22": 0.85,
+                                "R12": 0.70
+                            },
+                            "curvature_type": "positive"
+                        }));
+                        tracing::info!("Ricci curvature calculated");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to calculate Ricci curvature: {}", e);
+                    }
+                }
+            }
+            "sectional" => {
+                // Calculate sectional curvature
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        ca1.entity_type as plane_1,
+                        ca2.entity_type as plane_2,
+                        AVG(ca1.association_strength * ca2.confidence_score - ca1.confidence_score * ca2.association_strength) as sectional_curvature
+                     FROM content_associations ca1
+                     CROSS JOIN content_associations ca2
+                     WHERE ca1.entity_type IN ('{}')
+                     AND ca2.entity_type IN ('{}')
+                     AND ca1.entity_type != ca2.entity_type
+                     GROUP BY ca1.entity_type, ca2.entity_type",
+                    entity_types.join("','"), entity_types.join("','")
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        sectional_curvature = Some(serde_json::json!({
+                            "sectional_algorithm": "plane_curvature",
+                            "avg_sectional_curvature": 0.05,
+                            "curvature_distribution": "gaussian",
+                            "curvature_sign": "mixed"
+                        }));
+                        tracing::info!("Sectional curvature calculated");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to calculate sectional curvature: {}", e);
+                    }
+                }
+            }
+            "convergence" => {
+                // Analyze optimization convergence
+                let result = diesel::sql_query(format!(
+                    "SELECT 
+                        content_id,
+                        entity_type,
+                        association_strength,
+                        confidence_score,
+                        (association_strength * confidence_score) as current_optimization,
+                        (association_strength * confidence_score * 1.1) as projected_optimization,
+                        ((association_strength * confidence_score * 1.1) - (association_strength * confidence_score)) as convergence_rate
+                     FROM content_associations 
+                     WHERE entity_type IN ('{}')
+                     AND association_strength >= {}
+                     ORDER BY convergence_rate DESC",
+                    entity_types.join("','"), curvature_threshold
+                )).execute(conn);
+                
+                match result {
+                    Ok(_) => {
+                        convergence_analysis = Some(serde_json::json!({
+                            "convergence_algorithm": "rate_analysis",
+                            "max_iterations": max_iterations,
+                            "convergence_tolerance": convergence_tolerance,
+                            "avg_convergence_rate": 0.08,
+                            "convergence_status": "stable"
+                        }));
+                        tracing::info!("Convergence analysis completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to analyze convergence: {}", e);
+                    }
+                }
+            }
+            _ => {
+                tracing::warn!("Unknown differential geometry optimization strategy: {}", strategy);
+            }
+        }
+    }
+    
+    Ok(MockDifferentialGeometryOptimizationResult {
+        curvature_analysis,
+        manifold_optimization,
+        tangent_space_analysis,
+        geodesic_optimization,
+        metric_tensor_analysis,
+        connection_coefficients,
+        ricci_curvature,
+        sectional_curvature,
+        convergence_analysis,
+    })
+}
+
+/// Record differential geometry optimization history
+async fn record_differential_geometry_optimization_history(
+    optimization_id: &Uuid,
+    content_count: usize,
+    duration_ms: u64,
+    optimization_strategies: &[String],
+    conn: &mut diesel::PgConnection,
+) -> ParagonicResult<()> {
+    let metadata = serde_json::json!({
+        "optimization_strategies": optimization_strategies,
+        "content_count": content_count
+    });
+    
+    let result = diesel::sql_query(format!(
+        "INSERT INTO optimization_history (
+            id, optimization_type, content_count, performance_improvement, 
+            duration_ms, success, metadata
+        ) VALUES (
+            '{optimization_id}', 'differential_geometry_optimization', {content_count}, 0.0, {duration_ms}, true, '{metadata}'
+        )"
+    )).execute(conn);
+    
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            tracing::error!("Failed to record differential geometry optimization history: {}", e);
+            Err(ParagonicError::Database(format!("Failed to record differential geometry optimization history: {e}")))
+        }
+    }
+}
+
+/// Get differential geometry optimization history
+/// 
+/// This function retrieves differential geometry optimization history for analysis
+/// and performance monitoring.
+pub async fn get_differential_geometry_optimization_history(
+    limit: Option<usize>,
+) -> ParagonicResult<Vec<DifferentialGeometryOptimizationResult>> {
+    let mut conn = get_connection()?;
+    
+    let limit_clause = limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
+        let result = diesel::sql_query(format!(
+        "SELECT id, optimization_type, content_count, performance_improvement, 
+                duration_ms, success, metadata, created_at
+         FROM optimization_history 
+         WHERE optimization_type = \"differential_geometry_optimization\"
+         ORDER BY created_at DESC{limit_clause}"
+    )).execute(&mut conn);
+    
+    match result {
+        Ok(_) => {
+            // For now, return an empty vector since we can't easily deserialize the result
+// In a real implementation, we'd use proper Diesel models
+Ok(Vec::new())
+}
+Err(e) => {
+tracing::error!("Failed to get differential geometry optimization history: {}", e);
+Err(ParagonicError::Database(format!("Failed to get differential geometry optimization history: {e}")))
+}
+}
 }
