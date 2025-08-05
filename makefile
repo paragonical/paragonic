@@ -180,6 +180,9 @@ test-lua-agent:
 	@echo "Testing AI agent message receiving..."
 	@lua $(LUA_TEST_DIR)/test_ai_agent_receive.lua
 	@echo ""
+	@echo "Testing AI agent command execution..."
+	@lua $(LUA_TEST_DIR)/test_ai_agent_command.lua
+	@echo ""
 	@echo "Testing configuration integration..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_config_integration.lua
 	@echo ""

@@ -143,6 +143,19 @@ function M.setup(opts)
             vim.notify("Failed to receive Neovim message: " .. message_id, vim.log.levels.ERROR)
         end
     end, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicAIAgentCommand", function(args)
+        if #args == 0 then
+            vim.notify("Command is required", vim.log.levels.WARN)
+            return
+        end
+        local command = table.concat(args, " ")
+        local success, action_id, result = M.execute_ai_agent_command(command)
+        if success then
+            vim.notify("AI agent command executed (ID: " .. action_id .. ")", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to execute AI agent command: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
     
     -- Initialize backend
     M._initialize_backend()
@@ -296,6 +309,62 @@ function M.receive_ai_agent_message(message, message_type)
     vim.notify("📥 Neovim: " .. message, vim.log.levels.INFO)
     
     return true, message_obj.id
+end
+
+-- Execute Neovim command from AI agent
+function M.execute_ai_agent_command(command, description)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    if not command or command == "" then
+        return false, "Command is required"
+    end
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "command",
+        content = command,
+        description = description or "AI agent command execution",
+        from_agent = true,
+        status = "executing"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Execute the command
+    local success, result = pcall(vim.cmd, command)
+    
+    -- Update action status
+    if success then
+        action_obj.status = "completed"
+        action_obj.result = "Command executed successfully"
+    else
+        action_obj.status = "failed"
+        action_obj.result = "Command failed: " .. tostring(result)
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI command execution
+    local status_icon = success and "✅" or "❌"
+    vim.notify(status_icon .. " AI Agent Command: " .. command, vim.log.levels.INFO)
+    
+    return success, action_obj.id, action_obj.result
 end
 function M.get_ai_agent_session_status()
     if not agent_collaboration_mode or not active_agent_id then
