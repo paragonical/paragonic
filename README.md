@@ -1,5 +1,9 @@
 # _Paragonic_: Agency-Alliance for Neovim with Ollama
 
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/paragonic/paragonic/releases/tag/v0.4.0)
+[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 > _“Once, men turned their thinking over to machines in the hope that this
 > would set them free. But that only permitted other men with machines to
 > enslave them.”_ 
@@ -178,24 +182,61 @@ provides metrics for identifying expertise and knowledge gaps.  This may be
 potentially useful for way to routing review requests for PRs to humans from
 humans or agents for units of work.
 
-### Interleaved Retrieval-Augmented Generation Learning (IRAGL)
+### Interleaved Retrieval-Augmented Generation Learning (IRAGL) 🎉
 
-Because we're essentially self-hosting the assistive system, we want to
-leverage the existing knowledge and expertise of the organization, agent or
-human throughout the captured work and metadata.  This is done by using a
-retrieval-augmented generation (RAG) system that allows the agent or human to
-access relevant information and data from various sources, such as
-repositories, channels, and programs. The RAG system enables the agent or human
-to retrieve relevant information and data from various sources, such as
-repositories, channels, and programs, and use it to generate responses and
-complete tasks effectively. 
+**NEW IN v0.4.0**: Complete IRAGL Knowledge Management System with PostgreSQL Integration
 
-We have all of the information: the repositories, structures and communications
-between agents and humans, so we can use this information to train the vector
-knowledge base.  This is the machine-equivalent of ISRL, where the system
-continually refreshes and optimizes the vector knowledge base to ensure that
-the agent has access to the most relevant and up-to-date information and for
-the human, the best possible search support for "ad-hoc" questions.
+IRAGL is the machine-equivalent of ISRL, where the system continually refreshes and optimizes the vector knowledge base to ensure that the agent has access to the most relevant and up-to-date information and for the human, the best possible search support for "ad-hoc" questions.
+
+#### 🚀 Key Features
+- **🗄️ PostgreSQL Integration**: Full database integration with pgvector extension for vector embeddings
+- **🔧 KnowledgeStreamProcessor**: Configurable processor with batch processing, validation, and statistics
+- **📊 Content Validation**: Robust validation for content types, entity types, and text content
+- **⚡ Batch Processing**: Efficient handling of multiple knowledge streams with error recovery
+- **📈 Statistics Tracking**: Real-time monitoring of processing metrics and success rates
+- **🛡️ Error Handling**: Comprehensive error recovery and reporting with retry mechanisms
+- **🧠 Enhanced Embedding System**: FastEmbed integration with multiple model support
+- **✅ Comprehensive Test Suite**: 10/10 IRAGL tests passing with TDD implementation
+
+#### 🔧 Usage Example
+```rust
+use paragonic::iragl_processor_tests::{KnowledgeStreamProcessor, KnowledgeStreamProcessorConfig};
+use paragonic::iragl::{IngestKnowledgeStreamRequest, KnowledgeStreamResponse};
+use uuid::Uuid;
+
+// Create processor with custom configuration
+let config = KnowledgeStreamProcessorConfig {
+    batch_size: 20,
+    max_retries: 5,
+    retry_delay_ms: 2000,
+    enable_validation: true,
+    enable_auto_association: true,
+    embedding_model: "nomic-embed-text".to_string(),
+};
+
+let processor = KnowledgeStreamProcessor::with_config(config)?;
+
+// Process knowledge streams
+let request = IngestKnowledgeStreamRequest {
+    content_type: "document".to_string(),
+    content_text: "This is a test document for IRAGL processing.".to_string(),
+    source_entity_type: "project".to_string(),
+    source_entity_id: Uuid::new_v4(),
+    metadata: Some(serde_json::json!({"author": "test_user"})),
+    embedding_model: "nomic-embed-text".to_string(),
+};
+
+let response = processor.process_content(request).await?;
+println!("Processed content with ID: {}", response.id);
+```
+
+#### 📋 System Requirements
+- **Rust**: 1.70+ (stable)
+- **PostgreSQL**: 13+ with pgvector extension
+- **Memory**: 2GB+ RAM (4GB+ recommended for production)
+- **Storage**: 10GB+ available space
+
+For detailed installation and usage instructions, see [RELEASE_GUIDE_0.4.0.md](RELEASE_GUIDE_0.4.0.md).
 
 ### Ledgers & Work
 

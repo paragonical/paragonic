@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-01-XX
+
+### Added
+- **🎉 IRAGL Knowledge Management System**: Complete Interleaved Retrieval-Augmented Generation Learning system
+- **🗄️ PostgreSQL Integration**: Full database integration with pgvector extension for vector embeddings
+- **🔧 KnowledgeStreamProcessor**: Configurable processor with batch processing, validation, and statistics
+- **📊 Content Validation**: Robust validation for content types, entity types, and text content
+- **⚡ Batch Processing**: Efficient handling of multiple knowledge streams with error recovery
+- **📈 Statistics Tracking**: Real-time monitoring of processing metrics and success rates
+- **🛡️ Error Handling**: Comprehensive error recovery and reporting with retry mechanisms
+- **🔄 Shutdown Management**: Proper resource cleanup and lifecycle management
+- **🧠 Enhanced Embedding System**: FastEmbed integration with multiple model support
+- **✅ Comprehensive Test Suite**: 10/10 IRAGL tests passing with TDD implementation
+- **🔄 Fallback Mode**: Graceful operation without database for testing and development
+
+### Changed
+- **Database Architecture**: Migrated to PostgreSQL with pgvector for vector operations
+- **Embedding Models**: Updated to latest FastEmbed models (BGESmallENV15, BGELargeENV15, etc.)
+- **Testing Strategy**: Implemented test-driven development with red-green-refactor cycles
+- **Error Handling**: Enhanced error handling with database fallback capabilities
+
+### Technical Details
+- Added `KnowledgeStreamProcessor` with configurable batch sizes and retry logic
+- Implemented `ingest_knowledge_stream()` with PostgreSQL and fallback support
+- Enhanced database initialization with test configuration support
+- Added comprehensive validation for content types and entity types
+- Implemented atomic counters for thread-safe statistics tracking
+- Added shutdown state management to prevent post-shutdown operations
+
 ## [0.3.0] - 2025-01-XX
 
 ### Added
@@ -54,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.4.0**: IRAGL Knowledge Management & PostgreSQL Integration
 - **0.3.0**: Enhanced Tool Calling & Agent Collaboration
 - **0.2.0**: JSON-RPC Backend & File System Tools  
 - **0.1.0**: Initial Release & Basic Chat 
