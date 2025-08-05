@@ -19,12 +19,11 @@ use std::io::Read;
 use serde::{Serialize, Deserialize};
 use tracing::{info, error, warn};
 
-#[cfg(test)]
 /// Test helper to check if database operations should be skipped
 /// 
 /// This function checks if we're in a test environment and if the database
 /// is not available, allowing tests to skip database operations gracefully.
-fn should_skip_db_operation() -> bool {
+pub fn should_skip_db_operation() -> bool {
     cfg!(test) && (crate::database::is_database_available() == false || std::env::var("USE_MOCK_DATABASE").is_ok())
 }
 
@@ -59,7 +58,7 @@ pub struct IngestKnowledgeStreamRequest {
 }
 
 /// Knowledge stream response
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeStreamResponse {
     pub id: Uuid,
     pub content_type: String,

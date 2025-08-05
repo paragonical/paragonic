@@ -1364,9 +1364,15 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
         
         let max_results = if let Some(mr) = params.get("max_results") {
-            mr.as_u64()
-                .ok_or_else(|| RpcError::invalid_params(Some("max_results must be a number".to_string())))?
-                as usize
+            let value = mr.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_results must be a number".to_string())))?;
+            
+            // Validate that max_results is not too large
+            if value > 1000 {
+                return Err(RpcError::invalid_params(Some("max_results cannot exceed 1000".to_string())));
+            }
+            
+            value as usize
         } else {
             10
         };
@@ -1785,6 +1791,85 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     }
     
+    /// Handle knowledge stream ingestion requests
+    /// 
+    /// This function ingests new knowledge content into the system for processing and indexing.
+    /// Returns detailed information about the ingested content including ID and processing status.
+    pub fn handle_ingest_knowledge_stream(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let content_type = params.get("content_type")
+            .and_then(|ct| ct.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Content type is required".to_string())))?;
+        
+        if content_type.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Content type cannot be empty".to_string())));
+        }
+        
+        let content_text = params.get("content_text")
+            .and_then(|ct| ct.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Content text is required".to_string())))?;
+        
+        if content_text.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Content text cannot be empty".to_string())));
+        }
+        
+        let source_entity_type = params.get("source_entity_type")
+            .and_then(|set| set.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Source entity type is required".to_string())))?;
+        
+        if source_entity_type.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Source entity type cannot be empty".to_string())));
+        }
+        
+        let source_entity_id = params.get("source_entity_id")
+            .and_then(|sei| sei.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Source entity ID is required".to_string())))?;
+        
+        let source_entity_uuid = source_entity_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid source entity ID format".to_string())))?;
+        
+        let metadata = params.get("metadata").cloned();
+        let embedding_model = params.get("embedding_model")
+            .and_then(|em| em.as_str())
+            .unwrap_or("nomic-embed-text")
+            .to_string();
+        
+        // Create the knowledge stream request
+        let ingest_request = crate::iragl::IngestKnowledgeStreamRequest {
+            content_type: content_type.to_string(),
+            content_text: content_text.to_string(),
+            source_entity_type: source_entity_type.to_string(),
+            source_entity_id: source_entity_uuid,
+            metadata,
+            embedding_model,
+        };
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::ingest_knowledge_stream(ingest_request).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::ingest_knowledge_stream(ingest_request).await
+                })
+        };
+        
+        match response {
+            Ok(knowledge_response) => {
+                serde_json::to_string(&knowledge_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Knowledge stream ingestion failed: {e}")))),
+        }
+    }
+    
     /// Handle hybrid search requests
     /// 
     /// This function performs combined semantic and keyword search for comprehensive results.
@@ -2007,6 +2092,8 @@ impl Server for ParagonicServer {
             "content_association" => Some(self.handle_content_association(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
+            // Handle knowledge stream ingestion requests
+            "ingest_knowledge_stream" => Some(self.handle_ingest_knowledge_stream(params)),
             _ => None
         }
     }

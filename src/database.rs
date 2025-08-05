@@ -335,7 +335,6 @@ pub fn reset_for_testing() {
     // For now, we'll rely on test isolation
 }
 
-#[cfg(test)]
 /// Check if the database is available for testing
 /// 
 /// This function checks if the database has been properly initialized

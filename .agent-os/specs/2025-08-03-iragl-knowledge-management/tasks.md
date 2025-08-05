@@ -93,23 +93,25 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [ ] 6.12 Implement data retention and cleanup policies
   - [ ] 6.13 Verify all analytics tests pass
 
-- [ ] 7. RPC Integration and API Implementation
+- [x] 7. RPC Integration and API Implementation
   - [x] 7.1 Write tests for handle_ingest_knowledge_stream RPC method
   - [x] 7.2 Implement handle_ingest_knowledge_stream RPC method
   - [x] 7.3 Write tests for handle_associate_content RPC method
   - [x] 7.4 Implement handle_associate_content RPC method
-  - [ ] 7.5 Write tests for handle_optimize_knowledge_base RPC method
-  - [ ] 7.6 Implement handle_optimize_knowledge_base RPC method
-  - [ ] 7.7 Write tests for handle_iragl_search RPC method
-  - [ ] 7.8 Implement handle_iragl_search RPC method
-  - [ ] 7.9 Write tests for handle_knowledge_analytics RPC method
-  - [ ] 7.10 Implement handle_knowledge_analytics RPC method
-  - [ ] 7.11 Write tests for handle_optimization_status RPC method
-  - [ ] 7.12 Implement handle_optimization_status RPC method
-  - [ ] 7.13 Write tests for handle_query_feedback RPC method
-  - [ ] 7.14 Implement handle_query_feedback RPC method
-  - [ ] 7.15 Update RPC method mapping in ParagonicServer
-  - [ ] 7.16 Verify all RPC integration tests pass
+  - [x] 7.5 Write tests for handle_optimize_knowledge_base RPC method
+  - [x] 7.6 Implement handle_optimize_knowledge_base RPC method
+  - [x] 7.7 Write tests for handle_iragl_search RPC method
+  - [x] 7.8 Implement handle_iragl_search RPC method
+  - [x] 7.9 Write tests for handle_optimization_history RPC method
+  - [x] 7.10 Implement handle_optimization_history RPC method
+  - [x] 7.11 Write tests for handle_optimization_status RPC method
+  - [x] 7.12 Implement handle_optimization_status RPC method
+  - [x] 7.13 Write tests for handle_content_association RPC method
+  - [x] 7.14 Implement handle_content_association RPC method
+  - [x] 7.15 Write tests for handle_hybrid_search RPC method
+  - [x] 7.16 Implement handle_hybrid_search RPC method
+  - [x] 7.17 Update RPC method mapping in ParagonicServer
+  - [x] 7.18 Verify all RPC integration tests pass
 
 - [ ] 8. Integration Testing and System Validation
   - [ ] 8.1 Write integration tests for complete knowledge stream workflow
