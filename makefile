@@ -120,7 +120,7 @@ test-lua-search:
 	@echo ""
 	@echo "✓ Search tests completed"
 
-# Agentic collaboration tests
+# Agentic collaboration tests (mocked unit tests)
 test-lua-agent:
 	@echo "=== Running Lua Agent Tests ==="
 	@echo "Testing agent session info..."
@@ -215,6 +215,14 @@ test-lua-agent:
 	@echo ""
 	@echo "✓ Agent tests completed"
 
+# Real Neovim integration tests (actual Neovim environment)
+test-lua-integration-real:
+	@echo "=== Running Real Neovim Integration Tests ==="
+	@echo "Testing AI agent functions in actual Neovim environment..."
+	@./run_integration_test.sh
+	@echo ""
+	@echo "✓ Real Neovim integration tests completed"
+
 # RPC-specific tests (standalone RPC client only)
 test-lua-rpc:
 	@echo "=== Running Lua RPC Tests ==="
@@ -276,10 +284,10 @@ test-lua-standalone:
 	@echo ""
 	@echo "✓ Standalone tests completed"
 
-# Comprehensive test runner
-test-lua-comprehensive:
-	@echo "=== Running Comprehensive Lua Test Suite ==="
-	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/run_lua_tests.lua
+# Legacy comprehensive test runner (deprecated)
+# test-lua-comprehensive:
+# 	@echo "=== Running Comprehensive Lua Test Suite ==="
+# 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/run_lua_tests.lua
 
 # All Lua tests (comprehensive, with backend)
 test-lua-all:
@@ -300,6 +308,17 @@ test-lua-all:
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_rpc_standalone_generate_embedding.lua || echo "⚠ Generate embedding test failed (may need backend)"
 	@echo ""
 	@echo "✓ Complete Lua test suite finished"
+
+# Comprehensive test suite (unit + integration)
+test-lua-comprehensive:
+	@echo "=== Running Comprehensive Test Suite ==="
+	@echo "Phase 1: Unit Tests (Mocked API)..."
+	@$(MAKE) test-lua-agent
+	@echo ""
+	@echo "Phase 2: Integration Tests (Real Neovim)..."
+	@$(MAKE) test-lua-integration-real
+	@echo ""
+	@echo "✓ Comprehensive test suite completed"
 
 # Quick test (most important tests)
 test-lua: test-lua-unit test-lua-search
@@ -327,7 +346,9 @@ help:
 	@echo "  test-lua-search       - Search functionality tests"
 	@echo "  test-lua-rpc          - RPC functionality tests"
 	@echo "  test-lua-standalone   - Standalone tests (no external deps)"
-	@echo "  test-lua-comprehensive- Comprehensive test runner"
+	@echo "  test-lua-agent        - AI agent unit tests (mocked API)"
+	@echo "  test-lua-integration-real - AI agent integration tests (real Neovim)"
+	@echo "  test-lua-comprehensive- Comprehensive test suite (unit + integration)"
 	@echo "  test-lua-all          - All Lua tests"
 	@echo "  test-lua-with-backend - All tests (requires backend running)"
 	@echo "  test-lua-dev          - Development tests (frequently used)"
@@ -339,7 +360,9 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test-lua-dev              # Development workflow"
-	@echo "  make test-lua-comprehensive    # Comprehensive test runner"
+	@echo "  make test-lua-agent            # AI agent unit tests (fast)"
+	@echo "  make test-lua-integration-real # AI agent integration tests (real Neovim)"
+	@echo "  make test-lua-comprehensive    # Complete test suite (unit + integration)"
 	@echo "  make test-lua-with-backend     # Full test with backend"
 	@echo "  cargo run -- --no-database &   # Start backend"
 	@echo "  make test-lua-with-backend     # Run tests"
