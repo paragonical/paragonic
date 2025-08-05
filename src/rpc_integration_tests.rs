@@ -397,4 +397,201 @@ mod rpc_integration_tests {
         let result = server.handle_optimize_knowledge_base(&params);
         assert!(result.is_ok(), "Should handle unknown fields gracefully");
     }
+
+    /// Test handle_optimization_status with valid optimization ID
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_valid_id() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // First, start an optimization to get a valid ID
+        let optimize_params = Some(json!({
+            "strategy": "incremental",
+            "max_iterations": 5,
+            "convergence_threshold": 0.01
+        }));
+        
+        let optimize_result = server.handle_optimize_knowledge_base(&optimize_params);
+        assert!(optimize_result.is_ok(), "Should be able to start optimization");
+        
+        let optimize_response = optimize_result.unwrap();
+        let optimize_data: serde_json::Value = serde_json::from_str(&optimize_response).unwrap();
+        let optimization_id = optimize_data.get("optimization_id").unwrap().as_str().unwrap();
+        
+        // Now check the status
+        let status_params = Some(json!({
+            "optimization_id": optimization_id
+        }));
+        
+        let result = server.handle_optimization_status(&status_params);
+        if let Err(e) = &result {
+            println!("Optimization status check failed with error: {:?}", e);
+        }
+        assert!(result.is_ok(), "handle_optimization_status should return Ok");
+        
+        let response = result.unwrap();
+        let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify response structure
+        assert!(response_data.get("optimization_id").is_some());
+        assert!(response_data.get("status").is_some());
+        assert!(response_data.get("progress_percentage").is_some());
+    }
+
+    /// Test handle_optimization_status with missing optimization ID
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_missing_id() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with missing optimization ID
+        let params = Some(json!({}));
+        
+        let result = server.handle_optimization_status(&params);
+        assert!(result.is_err(), "Should return error for missing optimization ID");
+    }
+
+    /// Test handle_optimization_status with invalid optimization ID
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_invalid_id() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid optimization ID
+        let params = Some(json!({
+            "optimization_id": "invalid-uuid-format"
+        }));
+        
+        let result = server.handle_optimization_status(&params);
+        assert!(result.is_err(), "Should return error for invalid optimization ID");
+    }
+
+    /// Test handle_optimization_status with non-existent optimization ID
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_nonexistent_id() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with non-existent optimization ID
+        let params = Some(json!({
+            "optimization_id": "123e4567-e89b-12d3-a456-426614174000"
+        }));
+        
+        let result = server.handle_optimization_status(&params);
+        assert!(result.is_ok(), "Should handle non-existent ID gracefully");
+        
+        let response = result.unwrap();
+        let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Should return "not_found" status
+        let status = response_data.get("status").unwrap().as_str().unwrap();
+        assert_eq!(status, "not_found");
+    }
+
+    /// Test handle_optimization_status performance validation
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_performance() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        let start_time = std::time::Instant::now();
+        
+        // First, start an optimization
+        let optimize_params = Some(json!({
+            "strategy": "incremental",
+            "max_iterations": 1,
+            "convergence_threshold": 0.1
+        }));
+        
+        let optimize_result = server.handle_optimize_knowledge_base(&optimize_params);
+        assert!(optimize_result.is_ok(), "Should be able to start optimization");
+        
+        let optimize_response = optimize_result.unwrap();
+        let optimize_data: serde_json::Value = serde_json::from_str(&optimize_response).unwrap();
+        let optimization_id = optimize_data.get("optimization_id").unwrap().as_str().unwrap();
+        
+        // Check status
+        let status_params = Some(json!({
+            "optimization_id": optimization_id
+        }));
+        
+        let result = server.handle_optimization_status(&status_params);
+        assert!(result.is_ok(), "Status check should complete successfully");
+        
+        let duration = start_time.elapsed();
+        assert!(duration.as_millis() < 2000, "Status check should complete within 2 seconds");
+    }
+
+    /// Test handle_optimization_status with multiple status checks
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_multiple_checks() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Start an optimization
+        let optimize_params = Some(json!({
+            "strategy": "incremental",
+            "max_iterations": 3,
+            "convergence_threshold": 0.01
+        }));
+        
+        let optimize_result = server.handle_optimize_knowledge_base(&optimize_params);
+        assert!(optimize_result.is_ok(), "Should be able to start optimization");
+        
+        let optimize_response = optimize_result.unwrap();
+        let optimize_data: serde_json::Value = serde_json::from_str(&optimize_response).unwrap();
+        let optimization_id = optimize_data.get("optimization_id").unwrap().as_str().unwrap();
+        
+        // Check status multiple times
+        let status_params = Some(json!({
+            "optimization_id": optimization_id
+        }));
+        
+        for i in 0..3 {
+            let result = server.handle_optimization_status(&status_params);
+            assert!(result.is_ok(), "Status check {} should succeed", i);
+            
+            let response = result.unwrap();
+            let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+            
+            // Verify the optimization ID matches
+            let returned_id = response_data.get("optimization_id").unwrap().as_str().unwrap();
+            assert_eq!(returned_id, optimization_id);
+        }
+    }
+
+    /// Test handle_optimization_status error handling
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_status_error_handling() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid field (should be ignored)
+        let params = Some(json!({
+            "optimization_id": "123e4567-e89b-12d3-a456-426614174000",
+            "invalid_field": "should_be_ignored"
+        }));
+        
+        let result = server.handle_optimization_status(&params);
+        assert!(result.is_ok(), "Should handle unknown fields gracefully");
+    }
 } 

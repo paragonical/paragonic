@@ -1514,6 +1514,78 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     }
     
+    /// Handle optimization status requests
+    /// 
+    /// This function retrieves the current status of a knowledge base optimization job.
+    /// Returns detailed status information including progress and completion details.
+    pub fn handle_optimization_status(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let optimization_id = params.get("optimization_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Optimization ID is required".to_string())))?;
+        
+        // Validate UUID format
+        let optimization_uuid = optimization_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid optimization ID format".to_string())))?;
+        
+        // Get optimization status
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::get_optimization_status(optimization_uuid).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::get_optimization_status(optimization_uuid).await
+                })
+        };
+        
+        match response {
+            Ok(optimization_result) => {
+                // Create a response with optimization status details
+                let status_response = serde_json::json!({
+                    "optimization_id": optimization_id,
+                    "status": if optimization_result.success { "completed" } else { "failed" },
+                    "progress_percentage": 100, // Since we're returning completed results
+                    "content_count": optimization_result.content_count,
+                    "performance_improvement": optimization_result.performance_improvement,
+                    "duration_ms": optimization_result.duration_ms,
+                    "optimization_type": optimization_result.optimization_type,
+                    "error_message": optimization_result.error_message,
+                    "created_at": optimization_result.created_at
+                });
+                
+                serde_json::to_string(&status_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(_) => {
+                // Return not found status for non-existent optimizations
+                let not_found_response = serde_json::json!({
+                    "optimization_id": optimization_id,
+                    "status": "not_found",
+                    "progress_percentage": 0,
+                    "content_count": 0,
+                    "performance_improvement": 0.0,
+                    "duration_ms": 0,
+                    "optimization_type": "unknown",
+                    "error_message": "Optimization not found",
+                    "created_at": chrono::Utc::now()
+                });
+                
+                serde_json::to_string(&not_found_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+        }
+    }
+    
     /// Handle hybrid search requests
     /// 
     /// This function performs hybrid search combining vector similarity with text-based filtering.
@@ -1662,6 +1734,8 @@ impl Server for ParagonicServer {
             "iragl_search" => Some(self.handle_iragl_search(params)),
             // Handle knowledge base optimization requests
             "optimize_knowledge_base" => Some(self.handle_optimize_knowledge_base(params)),
+            // Handle optimization status requests
+            "optimization_status" => Some(self.handle_optimization_status(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
             _ => None
