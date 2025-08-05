@@ -186,6 +186,9 @@ test-lua-agent:
 	@echo "Testing AI agent buffer content..."
 	@lua $(LUA_TEST_DIR)/test_ai_agent_buffer.lua
 	@echo ""
+	@echo "Testing AI agent buffer write..."
+	@lua $(LUA_TEST_DIR)/test_ai_agent_buffer_write.lua
+	@echo ""
 	@echo "Testing configuration integration..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_config_integration.lua
 	@echo ""

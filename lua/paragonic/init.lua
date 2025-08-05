@@ -168,6 +168,25 @@ function M.setup(opts)
             vim.notify("Failed to read buffer: " .. action_id, vim.log.levels.ERROR)
         end
     end, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicAIAgentBufferWrite", function(args)
+        if #args < 2 then
+            vim.notify("Usage: :ParagonicAIAgentBufferWrite <buffer_id> <line1> <line2> ...", vim.log.levels.WARN)
+            return
+        end
+        
+        local buffer_id = tonumber(args[1])
+        local lines = {}
+        for i = 2, #args do
+            table.insert(lines, args[i])
+        end
+        
+        local success, action_id, result = M.set_ai_agent_buffer_content(buffer_id, lines)
+        if success then
+            vim.notify("AI agent buffer write (ID: " .. action_id .. ", " .. result.lines_written .. " lines)", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to write buffer: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
     
     -- Initialize backend
     M._initialize_backend()
@@ -445,6 +464,95 @@ function M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
     vim.notify("📖 AI Agent: Read buffer " .. buffer_id .. " (" .. #lines .. " lines)", vim.log.levels.INFO)
     
     return true, action_obj.id, action_obj.result
+end
+
+-- Set buffer content from AI agent
+function M.set_ai_agent_buffer_content(buffer_id, lines, start_line, end_line)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Use current buffer if not specified
+    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
+    
+    -- Validate buffer exists
+    if not vim.api.nvim_buf_is_valid(buffer_id) then
+        return false, "Invalid buffer ID: " .. tostring(buffer_id)
+    end
+    
+    -- Validate lines input
+    if not lines or type(lines) ~= "table" then
+        return false, "Lines must be a table of strings"
+    end
+    
+    -- Get buffer name
+    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
+    
+    -- Determine line range
+    local start_idx = 0
+    local end_idx = -1
+    
+    if start_line and end_line then
+        start_idx = math.max(0, start_line - 1) -- Convert to 0-based
+        end_idx = start_idx + #lines - 1 -- Set end to accommodate new content
+    end
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "buffer_write",
+        content = "Set buffer content",
+        description = string.format("Write to buffer %d (%s)", buffer_id, buffer_name),
+        from_agent = true,
+        status = "executing"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Set buffer content
+    local success, result = pcall(vim.api.nvim_buf_set_lines, buffer_id, start_idx, end_idx, false, lines)
+    
+    -- Update action status
+    if success then
+        action_obj.status = "completed"
+        action_obj.result = {
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            lines_written = #lines,
+            start_line = start_idx + 1,
+            end_line = end_idx + 1,
+            message = "Buffer content updated successfully"
+        }
+    else
+        action_obj.status = "failed"
+        action_obj.result = {
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            error = tostring(result),
+            message = "Failed to update buffer content"
+        }
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI buffer write
+    local status_icon = success and "✏️" or "❌"
+    vim.notify(status_icon .. " AI Agent: Write to buffer " .. buffer_id .. " (" .. #lines .. " lines)", vim.log.levels.INFO)
+    
+    return success, action_obj.id, action_obj.result
 end
 function M.get_ai_agent_session_status()
     if not agent_collaboration_mode or not active_agent_id then
