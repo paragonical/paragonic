@@ -51,17 +51,17 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
 - [ ] 4. Optimization Engine Implementation
   - [x] 4.1 Write tests for OptimizationEngine struct and methods
   - [x] 4.2 Implement OptimizationEngine with basic optimization framework
-  - [ ] 4.3 Write tests for differential geometry optimization algorithms
+  - [x] 4.3 Write tests for differential geometry optimization algorithms
   - [x] 4.4 Implement differential geometry optimization using Yurts-inspired techniques
   - [x] 4.5 Write tests for functionally-invariant path computation
   - [x] 4.6 Implement functionally-invariant path computation for safe adaptation
   - [x] 4.7 Write tests for embedding update procedures
-  - [ ] 4.8 Implement embedding update procedures with performance tracking
-  - [ ] 4.9 Write tests for optimization scheduling and coordination
-  - [ ] 4.10 Implement optimization scheduling and conflict resolution
-  - [ ] 4.11 Write tests for error recovery and fallback mechanisms
-  - [ ] 4.12 Implement error recovery and fallback mechanisms
-  - [ ] 4.13 Verify all optimization engine tests pass
+  - [x] 4.8 Implement embedding update procedures with performance tracking
+  - [x] 4.9 Write tests for optimization scheduling and coordination
+  - [x] 4.10 Implement optimization scheduling and conflict resolution
+  - [x] 4.11 Write tests for error recovery and fallback mechanisms
+  - [x] 4.12 Implement error recovery and fallback mechanisms
+  - [x] 4.13 Verify all optimization engine tests pass
 
 - [ ] 5. IRAGL Search Engine
   - [ ] 5.1 Write tests for IRAGLSearchEngine struct and methods

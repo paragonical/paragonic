@@ -314,5 +314,6 @@ mod iragl_database_tests;
 #[cfg(test)]
 mod iragl_processor_tests;
 mod content_association_tests;
+mod optimization_engine_tests;
 
  
