@@ -23,6 +23,11 @@ local search_insights = {}
 local context_cache = {}
 local suggestion_cache = {}
 
+-- AI agent collaboration state
+local ai_agent_sessions = {}
+local active_agent_id = nil
+local agent_collaboration_mode = false
+
 -- Persistent storage paths
 local data_dir = vim.fn.stdpath("data") .. "/paragonic"
 local history_file = data_dir .. "/search_history.json"
@@ -94,6 +99,25 @@ function M.setup(opts)
         M.display_resource_roots(uri, roots)
     end, {nargs = "?"})
     
+    -- AI Agent collaboration commands
+    vim.api.nvim_create_user_command("ParagonicAIAgentStart", function(args)
+        local agent_name = args[1] or "AI Agent"
+        local session_id = M.start_ai_agent_session(agent_name)
+        if session_id then
+            vim.notify("AI agent session started: " .. session_id, vim.log.levels.INFO)
+        end
+    end, {nargs = "?"})
+    vim.api.nvim_create_user_command("ParagonicAIAgentStop", function()
+        local success = M.stop_ai_agent_session()
+        if success then
+            vim.notify("AI agent session stopped successfully", vim.log.levels.INFO)
+        end
+    end, {})
+    vim.api.nvim_create_user_command("ParagonicAIAgentStatus", function()
+        local status = M.get_ai_agent_session_status()
+        M.display_ai_agent_status(status)
+    end, {})
+    
     -- Initialize backend
     M._initialize_backend()
     
@@ -112,6 +136,104 @@ function M._get_rpc_client()
         M._initialize_backend()
     end
     return M._rpc_client
+end
+
+-- Start AI agent collaboration session
+function M.start_ai_agent_session(agent_name, capabilities)
+    if agent_collaboration_mode then
+        vim.notify("AI agent collaboration already active. Stop current session first.", vim.log.levels.WARN)
+        return false
+    end
+    
+    local session_id = vim.fn.strftime("%Y%m%d_%H%M%S") .. "_" .. (agent_name or "ai_agent")
+    
+    local session = {
+        id = session_id,
+        name = agent_name or "AI Agent",
+        capabilities = capabilities or {},
+        start_time = os.time(),
+        context = {
+            current_file = vim.fn.expand("%"),
+            current_directory = vim.fn.getcwd(),
+            buffers = vim.api.nvim_list_bufs(),
+            mode = vim.fn.mode()
+        },
+        interactions = {}
+    }
+    
+    ai_agent_sessions[session_id] = session
+    active_agent_id = session_id
+    agent_collaboration_mode = true
+    
+    vim.notify("Started AI agent collaboration session: " .. session_id, vim.log.levels.INFO)
+    return session_id
+end
+
+-- Stop AI agent collaboration session
+function M.stop_ai_agent_session()
+    if not agent_collaboration_mode or not active_agent_id then
+        vim.notify("No active AI agent collaboration session to stop.", vim.log.levels.WARN)
+        return false
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if session then
+        session.end_time = os.time()
+        session.duration = session.end_time - session.start_time
+        session.final_context = {
+            current_file = vim.fn.expand("%"),
+            current_directory = vim.fn.getcwd(),
+            buffers = vim.api.nvim_list_bufs(),
+            mode = vim.fn.mode()
+        }
+        
+        vim.notify("Stopped AI agent collaboration session: " .. active_agent_id .. " (Duration: " .. session.duration .. "s)", vim.log.levels.INFO)
+    end
+    
+    agent_collaboration_mode = false
+    active_agent_id = nil
+    
+    return true
+end
+
+-- Get current AI agent session status
+function M.get_ai_agent_session_status()
+    if not agent_collaboration_mode or not active_agent_id then
+        return {
+            active = false,
+            session_id = nil,
+            message = "No active AI agent collaboration session"
+        }
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return {
+            active = false,
+            session_id = nil,
+            message = "Session data not found"
+        }
+    end
+    
+    local current_time = os.time()
+    local duration = current_time - session.start_time
+    
+    return {
+        active = true,
+        session_id = active_agent_id,
+        agent_name = session.name,
+        start_time = session.start_time,
+        duration = duration,
+        capabilities = session.capabilities,
+        context = {
+            current_file = vim.fn.expand("%"),
+            current_directory = vim.fn.getcwd(),
+            buffer_count = #vim.api.nvim_list_bufs(),
+            mode = vim.fn.mode()
+        },
+        interaction_count = #session.interactions,
+        message = "AI agent collaboration session active"
+    }
 end
 
 -- Send a message to the AI and get response
@@ -3061,6 +3183,60 @@ function M.display_resource_roots(uri, roots)
     vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
     
     vim.notify("Displayed resource roots for: " .. uri, vim.log.levels.INFO)
+end
+
+-- Display AI agent session status in a floating window
+function M.display_ai_agent_status(status)
+    local lines = {
+        "🤖 AI Agent Session Status",
+        string.rep("─", 50),
+        ""
+    }
+    
+    if status.active then
+        table.insert(lines, "✅ " .. status.message)
+        table.insert(lines, "")
+        table.insert(lines, "📋 Session Details:")
+        table.insert(lines, "  ID: " .. status.session_id)
+        table.insert(lines, "  Agent: " .. status.agent_name)
+        table.insert(lines, "  Duration: " .. status.duration .. " seconds")
+        table.insert(lines, "  Interactions: " .. status.interaction_count)
+        table.insert(lines, "")
+        table.insert(lines, "📍 Current Context:")
+        table.insert(lines, "  File: " .. (status.context.current_file or "none"))
+        table.insert(lines, "  Directory: " .. status.context.current_directory)
+        table.insert(lines, "  Buffers: " .. status.context.buffer_count)
+        table.insert(lines, "  Mode: " .. status.context.mode)
+    else
+        table.insert(lines, "❌ " .. status.message)
+    end
+    
+    -- Create floating window
+    local width = 80
+    local height = math.min(#lines + 2, 20)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
+    
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "single"
+    })
+    
+    -- Set up keymaps
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    
+    vim.notify("Displayed AI agent session status", vim.log.levels.INFO)
 end
 
 -- Helper to get all Neovim marks with context
