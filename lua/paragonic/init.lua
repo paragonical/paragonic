@@ -117,6 +117,32 @@ function M.setup(opts)
         local status = M.get_ai_agent_session_status()
         M.display_ai_agent_status(status)
     end, {})
+    vim.api.nvim_create_user_command("ParagonicAIAgentMessage", function(args)
+        if #args == 0 then
+            vim.notify("Message content is required", vim.log.levels.WARN)
+            return
+        end
+        local message = table.concat(args, " ")
+        local success, message_id = M.send_ai_agent_message(message)
+        if success then
+            vim.notify("AI agent message sent (ID: " .. message_id .. ")", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to send AI agent message: " .. message_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicAIAgentReceive", function(args)
+        if #args == 0 then
+            vim.notify("Message content is required", vim.log.levels.WARN)
+            return
+        end
+        local message = table.concat(args, " ")
+        local success, message_id = M.receive_ai_agent_message(message)
+        if success then
+            vim.notify("Neovim message received (ID: " .. message_id .. ")", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to receive Neovim message: " .. message_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
     
     -- Initialize backend
     M._initialize_backend()
@@ -196,7 +222,81 @@ function M.stop_ai_agent_session()
     return true
 end
 
--- Get current AI agent session status
+-- Send message from AI agent to Neovim
+function M.send_ai_agent_message(message, message_type)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Create message object
+    local message_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = message_type or "message",
+        content = message,
+        from_agent = true,
+        status = "sent"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, message_obj)
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI message
+    vim.notify("🤖 AI Agent: " .. message, vim.log.levels.INFO)
+    
+    return true, message_obj.id
+end
+
+-- Receive message from Neovim to AI agent
+function M.receive_ai_agent_message(message, message_type)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Create message object
+    local message_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = message_type or "message",
+        content = message,
+        from_agent = false,
+        status = "received"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, message_obj)
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Log the received message
+    vim.notify("📥 Neovim: " .. message, vim.log.levels.INFO)
+    
+    return true, message_obj.id
+end
 function M.get_ai_agent_session_status()
     if not agent_collaboration_mode or not active_agent_id then
         return {

@@ -174,6 +174,12 @@ test-lua-agent:
 	@echo "Testing AI agent session management..."
 	@lua $(LUA_TEST_DIR)/test_ai_agent_session.lua
 	@echo ""
+	@echo "Testing AI agent message sending..."
+	@lua $(LUA_TEST_DIR)/test_ai_agent_message.lua
+	@echo ""
+	@echo "Testing AI agent message receiving..."
+	@lua $(LUA_TEST_DIR)/test_ai_agent_receive.lua
+	@echo ""
 	@echo "Testing configuration integration..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_config_integration.lua
 	@echo ""
