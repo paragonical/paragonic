@@ -8,7 +8,7 @@ use tokio_core::reactor::Core;
 use tokio_core::net::TcpListener;
 use tokio_codec::Decoder;
 use futures::stream::Stream;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tracing::error;
 use regex;
@@ -1688,6 +1688,103 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     }
     
+    /// Handle content association requests
+    /// 
+    /// This function creates associations between content items in the knowledge base.
+    /// Returns detailed information about the created association.
+    pub fn handle_content_association(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let content_id = params.get("content_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Content ID is required".to_string())))?;
+        
+        let associated_content_id = params.get("associated_content_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Associated content ID is required".to_string())))?;
+        
+        let association_type = params.get("association_type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Association type is required".to_string())))?;
+        
+        // Validate UUID formats
+        let content_uuid = content_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid content ID format".to_string())))?;
+        
+        let associated_content_uuid = associated_content_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid associated content ID format".to_string())))?;
+        
+        // Validate that content IDs are different
+        if content_uuid == associated_content_uuid {
+            return Err(RpcError::invalid_params(Some("Cannot associate content with itself".to_string())));
+        }
+        
+        // Validate association type is not empty
+        if association_type.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Association type cannot be empty".to_string())));
+        }
+        
+        let association_strength = if let Some(strength) = params.get("association_strength") {
+            let strength_value = strength.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("association_strength must be a number".to_string())))?;
+            
+            if strength_value < 0.0 || strength_value > 1.0 {
+                return Err(RpcError::invalid_params(Some("Association strength must be between 0.0 and 1.0".to_string())));
+            }
+            strength_value
+        } else {
+            0.5 // Default strength
+        };
+        
+        let metadata = params.get("metadata").cloned();
+        
+        // Create the association request
+        let association_request = crate::iragl::CreateContentAssociationRequest {
+            content_id: content_uuid,
+            entity_type: "content".to_string(), // Treat associated content as an entity
+            entity_id: associated_content_uuid,
+            association_type: association_type.to_string(),
+            association_strength,
+            confidence_score: 0.8, // Default confidence score
+        };
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::create_content_association(association_request).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::create_content_association(association_request).await
+                })
+        };
+        
+        match response {
+            Ok(association_response) => {
+                // Create a custom response for the RPC method
+                let rpc_response = json!({
+                    "success": true,
+                    "association_id": association_response.id,
+                    "content_id": association_response.content_id,
+                    "associated_content_id": association_response.entity_id,
+                    "association_type": association_response.association_type,
+                    "association_strength": association_response.association_strength,
+                    "metadata": metadata,
+                    "created_at": association_response.created_at
+                });
+                
+                serde_json::to_string(&rpc_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Content association failed: {e}")))),
+        }
+    }
+    
     /// Handle hybrid search requests
     /// 
     /// This function performs hybrid search combining vector similarity with text-based filtering.
@@ -1840,6 +1937,8 @@ impl Server for ParagonicServer {
             "optimization_status" => Some(self.handle_optimization_status(params)),
             // Handle optimization history requests
             "optimization_history" => Some(self.handle_optimization_history(params)),
+            // Handle content association requests
+            "content_association" => Some(self.handle_content_association(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
             _ => None

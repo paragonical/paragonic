@@ -814,4 +814,178 @@ mod rpc_integration_tests {
         let result = server.handle_optimization_history(&params);
         assert!(result.is_ok(), "Should handle unknown fields gracefully");
     }
+
+    /// Test handle_content_association with valid parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_valid_params() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid association parameters
+        let params = Some(json!({
+            "content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440001",
+            "association_type": "related",
+            "association_strength": 0.85,
+            "metadata": {
+                "reason": "technical_dependency",
+                "context": "machine_learning_pipeline"
+            }
+        }));
+        
+        let result = server.handle_content_association(&params);
+        if let Err(e) = &result {
+            println!("Content association failed with error: {:?}", e);
+        }
+        assert!(result.is_ok(), "handle_content_association should return Ok");
+        
+        let response_str = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&response_str).unwrap();
+        
+        assert!(response["success"].as_bool().unwrap(), "Association should be successful");
+        assert!(response["association_id"].is_string(), "Should return an association ID");
+        assert!(response["association_strength"].as_f64().unwrap() > 0.0, "Association strength should be positive");
+    }
+
+    /// Test handle_content_association with missing required parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_missing_params() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with missing content_id
+        let params = Some(json!({
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440001",
+            "association_type": "related"
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_err(), "Should return error for missing content_id");
+        
+        // Test with missing associated_content_id
+        let params = Some(json!({
+            "content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "association_type": "related"
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_err(), "Should return error for missing associated_content_id");
+    }
+
+    /// Test handle_content_association with invalid UUID format
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_invalid_uuid() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid UUID format
+        let params = Some(json!({
+            "content_id": "invalid-uuid",
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440001",
+            "association_type": "related"
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_err(), "Should return error for invalid UUID format");
+    }
+
+    /// Test handle_content_association with invalid association strength
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_invalid_strength() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with association strength out of range
+        let params = Some(json!({
+            "content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440001",
+            "association_type": "related",
+            "association_strength": 1.5 // Should be between 0.0 and 1.0
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_err(), "Should return error for invalid association strength");
+    }
+
+    /// Test handle_content_association with empty association type
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_empty_type() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with empty association type
+        let params = Some(json!({
+            "content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440001",
+            "association_type": ""
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_err(), "Should return error for empty association type");
+    }
+
+    /// Test handle_content_association with self-association
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_self_association() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with same content ID for both content and associated content
+        let params = Some(json!({
+            "content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "association_type": "related"
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_err(), "Should return error for self-association");
+    }
+
+    /// Test handle_content_association with complex metadata
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_content_association_complex_metadata() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with complex metadata structure
+        let params = Some(json!({
+            "content_id": "550e8400-e29b-41d4-a716-446655440000",
+            "associated_content_id": "550e8400-e29b-41d4-a716-446655440001",
+            "association_type": "dependency",
+            "association_strength": 0.92,
+            "metadata": {
+                "reason": "technical_dependency",
+                "context": "machine_learning_pipeline",
+                "priority": "high",
+                "tags": ["ml", "optimization", "pipeline"],
+                "nested": {
+                    "level1": {
+                        "level2": "deep_value"
+                    }
+                }
+            }
+        }));
+        
+        let result = server.handle_content_association(&params);
+        assert!(result.is_ok(), "handle_content_association should return Ok");
+        
+        let response_str = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&response_str).unwrap();
+        
+        assert!(response["success"].as_bool().unwrap(), "Association should be successful");
+        assert!(response["metadata"].is_object(), "Should preserve complex metadata");
+    }
 } 
