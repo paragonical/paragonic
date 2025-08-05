@@ -1428,6 +1428,92 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     }
     
+    /// Handle knowledge base optimization requests
+    /// 
+    /// This function initiates background optimization of the knowledge base using
+    /// differential geometry techniques. Returns optimization job details for tracking.
+    pub fn handle_optimize_knowledge_base(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let strategy = params.get("strategy")
+            .and_then(|s| s.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Strategy is required".to_string())))?;
+        
+        // Validate strategy
+        let valid_strategies = ["incremental", "batch", "selective", "full"];
+        if !valid_strategies.contains(&strategy) {
+            return Err(RpcError::invalid_params(Some(format!("Invalid strategy: {}. Valid strategies are: {}", strategy, valid_strategies.join(", ")))));
+        }
+        
+        let max_iterations = if let Some(mi) = params.get("max_iterations") {
+            mi.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_iterations must be a number".to_string())))?
+                as usize
+        } else {
+            10
+        };
+        
+        let convergence_threshold = if let Some(ct) = params.get("convergence_threshold") {
+            ct.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("convergence_threshold must be a number".to_string())))?
+        } else {
+            0.001
+        };
+        
+        let enable_parallel_processing = params.get("enable_parallel_processing")
+            .and_then(|pp| pp.as_bool())
+            .unwrap_or(false);
+        
+        // Create optimization request
+        let optimization_request = crate::iragl::DifferentialGeometryOptimizationRequest {
+            content_filter: None,
+            entity_types: vec![],
+            optimization_strategies: vec![strategy.to_string()],
+            curvature_threshold: 0.1,
+            max_iterations,
+            convergence_tolerance: convergence_threshold,
+            include_metadata: true,
+            geometric_parameters: None,
+        };
+        
+        // Execute optimization
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::perform_differential_geometry_optimization(optimization_request).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::perform_differential_geometry_optimization(optimization_request).await
+                })
+        };
+        
+        match response {
+            Ok(optimization_result) => {
+                // Create a response with optimization job details
+                let job_response = serde_json::json!({
+                    "optimization_id": optimization_result.optimization_id,
+                    "status": "started",
+                    "estimated_duration_ms": optimization_result.duration_ms,
+                    "strategy": strategy,
+                    "max_iterations": max_iterations,
+                    "convergence_threshold": convergence_threshold
+                });
+                
+                serde_json::to_string(&job_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Knowledge base optimization failed: {e}"))))
+        }
+    }
+    
     /// Handle hybrid search requests
     /// 
     /// This function performs hybrid search combining vector similarity with text-based filtering.
@@ -1574,6 +1660,8 @@ impl Server for ParagonicServer {
             "get_conversation" => Some(self.handle_get_conversation(params)),
             // Handle IRAGL search requests
             "iragl_search" => Some(self.handle_iragl_search(params)),
+            // Handle knowledge base optimization requests
+            "optimize_knowledge_base" => Some(self.handle_optimize_knowledge_base(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
             _ => None

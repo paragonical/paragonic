@@ -241,4 +241,160 @@ mod rpc_integration_tests {
         let result = server.handle_iragl_search(&params);
         assert!(result.is_ok(), "Should handle long queries");
     }
+
+    /// Test handle_optimize_knowledge_base with valid parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_valid_params() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid optimization parameters
+        let params = Some(json!({
+            "strategy": "incremental",
+            "max_iterations": 10,
+            "convergence_threshold": 0.001,
+            "enable_parallel_processing": true
+        }));
+        
+        let result = server.handle_optimize_knowledge_base(&params);
+        if let Err(e) = &result {
+            println!("Knowledge base optimization failed with error: {:?}", e);
+        }
+        assert!(result.is_ok(), "handle_optimize_knowledge_base should return Ok");
+        
+        let response = result.unwrap();
+        let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify response structure
+        assert!(response_data.get("optimization_id").is_some());
+        assert!(response_data.get("status").is_some());
+        assert!(response_data.get("estimated_duration_ms").is_some());
+    }
+
+    /// Test handle_optimize_knowledge_base with different strategies
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_strategies() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        let strategies = ["incremental", "batch", "selective", "full"];
+        
+        for strategy in strategies {
+            let params = Some(json!({
+                "strategy": strategy,
+                "max_iterations": 5,
+                "convergence_threshold": 0.01
+            }));
+            
+            let result = server.handle_optimize_knowledge_base(&params);
+            assert!(result.is_ok(), "Optimization should work with strategy: {}", strategy);
+        }
+    }
+
+    /// Test handle_optimize_knowledge_base with missing required parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_missing_params() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with missing parameters
+        let params = Some(json!({}));
+        
+        let result = server.handle_optimize_knowledge_base(&params);
+        assert!(result.is_err(), "Should return error for missing parameters");
+    }
+
+    /// Test handle_optimize_knowledge_base with invalid parameter types
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_invalid_param_types() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid parameter types
+        let params = Some(json!({
+            "strategy": "invalid_strategy",
+            "max_iterations": "invalid_number",
+            "convergence_threshold": "invalid_threshold"
+        }));
+        
+        let result = server.handle_optimize_knowledge_base(&params);
+        assert!(result.is_err(), "Should return error for invalid parameter types");
+    }
+
+    /// Test handle_optimize_knowledge_base performance validation
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_performance() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        let start_time = std::time::Instant::now();
+        
+        let params = Some(json!({
+            "strategy": "incremental",
+            "max_iterations": 1,
+            "convergence_threshold": 0.1
+        }));
+        
+        let result = server.handle_optimize_knowledge_base(&params);
+        assert!(result.is_ok(), "Optimization should complete successfully");
+        
+        let duration = start_time.elapsed();
+        assert!(duration.as_millis() < 5000, "Optimization should complete within 5 seconds");
+    }
+
+    /// Test handle_optimize_knowledge_base with different iteration limits
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_iteration_limits() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        let iteration_limits = [1, 5, 10, 50];
+        
+        for limit in iteration_limits {
+            let params = Some(json!({
+                "strategy": "incremental",
+                "max_iterations": limit,
+                "convergence_threshold": 0.01
+            }));
+            
+            let result = server.handle_optimize_knowledge_base(&params);
+            assert!(result.is_ok(), "Optimization should work with iteration limit: {}", limit);
+        }
+    }
+
+    /// Test handle_optimize_knowledge_base error handling
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimize_knowledge_base_error_handling() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid field (should be ignored)
+        let params = Some(json!({
+            "strategy": "incremental",
+            "max_iterations": 10,
+            "invalid_field": "should_be_ignored"
+        }));
+        
+        let result = server.handle_optimize_knowledge_base(&params);
+        assert!(result.is_ok(), "Should handle unknown fields gracefully");
+    }
 } 
