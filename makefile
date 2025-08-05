@@ -168,6 +168,9 @@ test-lua-agent:
 	@echo "Testing MCP commands and autocommands..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_mcp_commands_autocommands.lua
 	@echo ""
+	@echo "Testing MCP client features..."
+	@lua $(LUA_TEST_DIR)/test_mcp_client_features.lua
+	@echo ""
 	@echo "Testing configuration integration..."
 	@$(NEOVIM_LUA) $(LUA_TEST_DIR)/test_config_integration.lua
 	@echo ""

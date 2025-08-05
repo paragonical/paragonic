@@ -80,6 +80,20 @@ function M.setup(opts)
         M.display_resource_content(uri, result)
     end, {nargs = "?"})
     
+    -- MCP Client commands (sampling and roots)
+    vim.api.nvim_create_user_command("ParagonicMCPSample", function(args)
+        local uri = args[1] or "neovim://buffers"
+        local limit = tonumber(args[2]) or 5
+        local criteria = {limit = limit}
+        local result = M.sample_resource(uri, criteria)
+        M.display_sampled_content(uri, result, criteria)
+    end, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicMCPRoots", function(args)
+        local uri = args[1] or "neovim://buffers"
+        local roots = M.define_resource_roots(uri, {})
+        M.display_resource_roots(uri, roots)
+    end, {nargs = "?"})
+    
     -- Initialize backend
     M._initialize_backend()
     
@@ -2945,6 +2959,110 @@ function M.display_resource_content(uri, result)
     vim.notify("Displayed resource content for: " .. uri, vim.log.levels.INFO)
 end
 
+-- Display sampled content in a floating window
+function M.display_sampled_content(uri, result, criteria)
+    local lines = {
+        "🔍 MCP Sampled Content: " .. uri,
+        string.rep("─", 50),
+        ""
+    }
+    
+    if criteria then
+        table.insert(lines, "📋 Sampling Criteria:")
+        for key, value in pairs(criteria) do
+            table.insert(lines, "  " .. key .. ": " .. tostring(value))
+        end
+        table.insert(lines, "")
+    end
+    
+    if result then
+        table.insert(lines, "📊 Sampled Data:")
+        local formatted = vim.json.encode(result, {indent = 2})
+        for line in formatted:gmatch("[^\r\n]+") do
+            table.insert(lines, "  " .. line)
+        end
+    else
+        table.insert(lines, "❌ No sampled content available")
+    end
+    
+    -- Create floating window
+    local width = 100
+    local height = math.min(#lines + 2, 25)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "json")
+    
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "single"
+    })
+    
+    -- Set up keymaps
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    
+    vim.notify("Displayed sampled content for: " .. uri, vim.log.levels.INFO)
+end
+
+-- Display resource roots in a floating window
+function M.display_resource_roots(uri, roots)
+    local lines = {
+        "🌳 MCP Resource Roots: " .. uri,
+        string.rep("─", 50),
+        ""
+    }
+    
+    if roots and #roots > 0 then
+        table.insert(lines, "📁 Available Roots (" .. #roots .. "):")
+        for i, root in ipairs(roots) do
+            table.insert(lines, "")
+            table.insert(lines, "  " .. i .. ". " .. root.name)
+            table.insert(lines, "     URI: " .. root.uri)
+            if root.description then
+                table.insert(lines, "     Description: " .. root.description)
+            end
+        end
+    else
+        table.insert(lines, "❌ No roots available")
+    end
+    
+    -- Create floating window
+    local width = 100
+    local height = math.min(#lines + 2, 25)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(buf, "filetype", "json")
+    
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "single"
+    })
+    
+    -- Set up keymaps
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", {buffer = buf, noremap = true})
+    
+    vim.notify("Displayed resource roots for: " .. uri, vim.log.levels.INFO)
+end
+
 -- Helper to get all Neovim marks with context
 function M.get_marks_info()
     local marks = {}
@@ -3374,16 +3492,22 @@ function M.sample_resource(uri, criteria)
             return sampled
         end
         
-        -- Apply filtering criteria
+        -- Apply filters
         if criteria and criteria.filter then
             local filtered = {}
-            for _, buf in ipairs(buffers) do
-                if criteria.filter.file_type and buf.name:match("%." .. criteria.filter.file_type .. "$") then
-                    table.insert(filtered, buf)
-                elseif criteria.filter.name_pattern and buf.name:match(criteria.filter.name_pattern) then
-                    table.insert(filtered, buf)
-                elseif criteria.filter.modifiable ~= nil and buf.modifiable == criteria.filter.modifiable then
-                    table.insert(filtered, buf)
+            for _, buffer in ipairs(buffers) do
+                local matches = true
+                
+                if criteria.filter.file_type and buffer.file_type ~= criteria.filter.file_type then
+                    matches = false
+                end
+                
+                if criteria.filter.name_pattern and not buffer.name:match(criteria.filter.name_pattern) then
+                    matches = false
+                end
+                
+                if matches then
+                    table.insert(filtered, buffer)
                 end
             end
             return filtered
@@ -3391,9 +3515,9 @@ function M.sample_resource(uri, criteria)
         
         return buffers
     elseif uri == "neovim://session" then
-        local session = M.get_agent_session_info()
+        local session = M.get_session_info()
         
-        -- Apply sampling criteria
+        -- Apply field selection
         if criteria and criteria.fields then
             local sampled = {}
             for _, field in ipairs(criteria.fields) do
@@ -3405,154 +3529,133 @@ function M.sample_resource(uri, criteria)
         end
         
         return session
-    elseif uri == "neovim://marks" then
-        local marks = M.get_marks_info()
-        
-        -- Apply sampling criteria
-        if criteria and criteria.limit then
-            local sampled = {}
-            for i = 1, math.min(criteria.limit, #marks) do
-                table.insert(sampled, marks[i])
-            end
-            return sampled
-        end
-        
-        -- Apply filtering criteria
-        if criteria and criteria.filter then
-            local filtered = {}
-            for _, mark in ipairs(marks) do
-                if criteria.filter.file_pattern and mark.file_path:match(criteria.filter.file_pattern) then
-                    table.insert(filtered, mark)
-                elseif criteria.filter.mark_pattern and mark.mark:match(criteria.filter.mark_pattern) then
-                    table.insert(filtered, mark)
-                end
-            end
-            return filtered
-        end
-        
-        return marks
     else
-        return nil, "Unsupported resource for sampling: " .. uri
+        return nil
     end
 end
 
--- Define resource roots (context boundaries)
-function M.define_resource_roots(uri, roots)
+-- Define resource roots for context boundaries
+function M.define_resource_roots(uri, options)
     if uri == "neovim://buffers" then
-        -- Define which buffers are in scope
-        local all_buffers = M.get_buffers_info()
-        local scoped_buffers = {}
+        local roots = {}
         
-        if roots and roots.buffer_ids then
-            for _, buf in ipairs(all_buffers) do
-                for _, root_id in ipairs(roots.buffer_ids) do
-                    if buf.id == root_id then
-                        table.insert(scoped_buffers, buf)
-                        break
-                    end
+        if options and options.buffer_ids then
+            for _, buf_id in ipairs(options.buffer_ids) do
+                local buf_name = vim.api.nvim_buf_get_name(buf_id)
+                if buf_name and buf_name ~= "" then
+                    table.insert(roots, {
+                        uri = "file://" .. buf_name,
+                        name = vim.fn.fnamemodify(buf_name, ":t"),
+                        description = "Buffer " .. buf_id .. ": " .. buf_name
+                    })
                 end
             end
-            return scoped_buffers
-        elseif roots and roots.file_patterns then
-            for _, buf in ipairs(all_buffers) do
-                for _, pattern in ipairs(roots.file_patterns) do
-                    if buf.name:match(pattern) then
-                        table.insert(scoped_buffers, buf)
-                        break
-                    end
-                end
-            end
-            return scoped_buffers
         end
         
-        return all_buffers
+        if options and options.file_patterns then
+            local buffers = vim.api.nvim_list_bufs()
+            for _, buf_id in ipairs(buffers) do
+                local buf_name = vim.api.nvim_buf_get_name(buf_id)
+                if buf_name and buf_name ~= "" then
+                    for _, pattern in ipairs(options.file_patterns) do
+                        if buf_name:match(pattern) then
+                            table.insert(roots, {
+                                uri = "file://" .. buf_name,
+                                name = vim.fn.fnamemodify(buf_name, ":t"),
+                                description = "Pattern match: " .. buf_name
+                            })
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        return roots
     elseif uri == "neovim://session" then
-        local session = M.get_agent_session_info()
+        local roots = {}
         
-        if roots and roots.current_only then
-            return {
-                current_file = session.current_file,
-                current_directory = session.current_directory,
-                mode = session.mode
-            }
+        if options and options.current_only then
+            local cwd = vim.fn.getcwd()
+            table.insert(roots, {
+                uri = "file://" .. cwd,
+                name = "Current Directory",
+                description = "Current working directory: " .. cwd
+            })
         end
         
-        return session
-    elseif uri == "neovim://marks" then
-        local all_marks = M.get_marks_info()
-        local scoped_marks = {}
-        
-        if roots and roots.file_patterns then
-            for _, mark in ipairs(all_marks) do
-                for _, pattern in ipairs(roots.file_patterns) do
-                    if mark.file_path:match(pattern) then
-                        table.insert(scoped_marks, mark)
-                        break
-                    end
-                end
-            end
-            return scoped_marks
-        end
-        
-        return all_marks
+        return roots
     else
-        return nil, "Unsupported resource for roots: " .. uri
+        return {}
     end
+end
+
+-- Handle MCP sampling requests from external agents
+function M.handle_sampling_request(request)
+    local uri = request.uri
+    local criteria = request.criteria or {}
+    
+    local sampled_data = M.sample_resource(uri, criteria)
+    
+    if sampled_data then
+        return {
+            id = request.id,
+            result = {
+                content = {
+                    {
+                        type = "text",
+                        text = vim.json.encode(sampled_data)
+                    }
+                },
+                metadata = {
+                    uri = uri,
+                    criteria = criteria,
+                    sample_size = type(sampled_data) == "table" and #sampled_data or 1,
+                    timestamp = os.time()
+                }
+            }
+        }
+    else
+        return {
+            id = request.id,
+            error = {
+                code = -32602,
+                message = "Failed to sample resource: " .. uri
+            }
+        }
+    end
+end
+
+-- Handle MCP roots requests from external agents
+function M.handle_roots_request(request)
+    local uri = request.uri
+    local options = request.options or {}
+    
+    local roots = M.define_resource_roots(uri, options)
+    
+    return {
+        id = request.id,
+        result = {
+            roots = roots,
+            metadata = {
+                uri = uri,
+                options = options,
+                root_count = #roots,
+                timestamp = os.time()
+            }
+        }
+    }
 end
 
 -- Extend MCP message handler for sampling and roots
 local old_handle_mcp_message = M.handle_mcp_message
 function M.handle_mcp_message(message)
-    if message.method == "resources/sample" then
-        local uri = message.params.uri
-        local criteria = message.params.criteria
-        local result = M.sample_resource(uri, criteria)
-        if result then
-            return {
-                id = message.id,
-                result = {
-                    content = {
-                        {
-                            type = "text",
-                            text = vim.json.encode(result)
-                        }
-                    }
-                }
-            }
-        else
-            return {
-                id = message.id,
-                error = {
-                    code = -32602,
-                    message = "Failed to sample resource: " .. uri
-                }
-            }
-        end
-    elseif message.method == "resources/roots" then
-        local uri = message.params.uri
-        local roots = message.params.roots
-        local result = M.define_resource_roots(uri, roots)
-        if result then
-            return {
-                id = message.id,
-                result = {
-                    content = {
-                        {
-                            type = "text",
-                            text = vim.json.encode(result)
-                        }
-                    }
-                }
-            }
-        else
-            return {
-                id = message.id,
-                error = {
-                    code = -32602,
-                    message = "Failed to define roots for resource: " .. uri
-                }
-            }
-        end
+    if message.method == "sampling/request" then
+        return M.handle_sampling_request(message)
+    elseif message.method == "roots/list" then
+        return M.handle_roots_request(message)
+    elseif message.method == "cancel" or message.method == "cancel/list" then
+        return M.handle_cancellation_message(message)
     end
     
     if old_handle_mcp_message then
