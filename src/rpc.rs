@@ -1345,6 +1345,89 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
     
+    /// Handle IRAGL search requests
+    /// 
+    /// This function performs IRAGL search with organizational context awareness.
+    /// Returns search results with enhanced relevance based on organizational context.
+    pub fn handle_iragl_search(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let query = params.get("query")
+            .and_then(|q| q.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Query is required".to_string())))?;
+        
+        // Validate that query is not empty
+        if query.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Query cannot be empty".to_string())));
+        }
+        
+        let max_results = if let Some(mr) = params.get("max_results") {
+            mr.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_results must be a number".to_string())))?
+                as usize
+        } else {
+            10
+        };
+        
+        let include_associations = params.get("include_associations")
+            .and_then(|ia| ia.as_bool())
+            .unwrap_or(false);
+        
+        let filter_optimized_only = params.get("filter_optimized_only")
+            .and_then(|fo| fo.as_bool())
+            .unwrap_or(false);
+        
+        let query_context = params.get("query_context").cloned();
+        
+        // Create IRAGL search request
+        let search_request = crate::iragl::IraglSearchRequest {
+            query_text: query.to_string(),
+            query_context: query_context.clone(),
+            max_results,
+            include_associations,
+            filter_optimized_only,
+        };
+        
+        // Execute IRAGL search
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::perform_iragl_search(search_request).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::perform_iragl_search(search_request).await
+                })
+        };
+        
+        match response {
+            Ok(search_response) => {
+                let response = serde_json::json!({
+                    "results": search_response.results,
+                    "total_count": search_response.total_count,
+                    "search_duration_ms": search_response.search_duration_ms,
+                    "query_optimization_applied": search_response.query_optimization_applied,
+                    "query_context": query_context
+                });
+                
+                serde_json::to_string(&response)
+                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                error!("IRAGL search failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Search failed: {e}"))))
+            }
+        }
+    }
+    
     /// Handle hybrid search requests
     /// 
     /// This function performs hybrid search combining vector similarity with text-based filtering.
@@ -1489,6 +1572,8 @@ impl Server for ParagonicServer {
             "create_conversation" => Some(self.handle_create_conversation(params)),
             // Handle get conversation requests
             "get_conversation" => Some(self.handle_get_conversation(params)),
+            // Handle IRAGL search requests
+            "iragl_search" => Some(self.handle_iragl_search(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
             _ => None

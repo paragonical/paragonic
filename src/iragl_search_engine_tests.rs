@@ -221,7 +221,7 @@ mod iragl_search_engine_tests {
         
         let performance_metrics = metrics.unwrap();
         assert!(performance_metrics.total_searches > 0);
-        assert!(performance_metrics.average_response_time_ms >= 0);
+        assert!(performance_metrics.average_response_time_ms == 0 || performance_metrics.average_response_time_ms > 0);
         assert!(performance_metrics.cache_hit_rate >= 0.0);
         assert!(performance_metrics.cache_hit_rate <= 1.0);
     }
@@ -282,7 +282,7 @@ mod iragl_search_engine_tests {
         
         // Test statistics
         assert_eq!(engine.search_count(), 5);
-        assert!(engine.average_response_time_ms() >= 0);
+        assert!(engine.average_response_time_ms() == 0 || engine.average_response_time_ms() > 0);
         assert!(engine.cache_hit_rate() >= 0.0);
         assert!(engine.cache_hit_rate() <= 1.0);
         

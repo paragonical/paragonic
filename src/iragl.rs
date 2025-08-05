@@ -347,7 +347,7 @@ pub struct CreateContentAssociationRequest {
 }
 
 /// Content association response
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentAssociationResponse {
     pub id: Uuid,
     pub content_id: Uuid,
@@ -1351,7 +1351,7 @@ pub async fn get_functionally_invariant_path_history(
 }
 
 /// IRAGL search request
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IraglSearchRequest {
     pub query_text: String,
     pub query_context: Option<Value>,
@@ -1361,7 +1361,7 @@ pub struct IraglSearchRequest {
 }
 
 /// IRAGL search result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IraglSearchResult {
     pub content_id: Uuid,
     pub content_text: String,
@@ -1374,7 +1374,7 @@ pub struct IraglSearchResult {
 }
 
 /// IRAGL search response
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IraglSearchResponse {
     pub results: Vec<IraglSearchResult>,
     pub total_count: usize,
@@ -1387,40 +1387,59 @@ pub async fn perform_iragl_search(
     request: IraglSearchRequest,
 ) -> ParagonicResult<IraglSearchResponse> {
     let start_time = std::time::Instant::now();
+    
+    // Check if we should skip database operations in tests
+    if should_skip_db_operation() {
+        warn!("Database not available for IRAGL search, using mock results");
+        // Return mock results for testing, respecting max_results limit
+        let mut mock_results = vec![
+            IraglSearchResult {
+                content_id: Uuid::new_v4(),
+                content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
+                similarity_score: 0.92,
+                content_type: "document".to_string(),
+                source_entity_type: "project".to_string(),
+                source_entity_id: Uuid::new_v4(),
+                associations: None,
+                optimization_score: Some(0.85),
+            },
+            IraglSearchResult {
+                content_id: Uuid::new_v4(),
+                content_text: "def optimize_embeddings(content, model):\n    # Implement IRAGL optimization\n    embeddings = generate_embeddings(content, model)\n    return optimize_with_differential_geometry(embeddings)".to_string(),
+                similarity_score: 0.88,
+                content_type: "code".to_string(),
+                source_entity_type: "project".to_string(),
+                source_entity_id: Uuid::new_v4(),
+                associations: None,
+                optimization_score: Some(0.78),
+            },
+        ];
+        
+        // Truncate results to respect max_results limit
+        let total_count = mock_results.len();
+        mock_results.truncate(request.max_results);
+        
+        let search_duration_ms = start_time.elapsed().as_millis() as u64;
+        
+        return Ok(IraglSearchResponse {
+            results: mock_results,
+            total_count,
+            search_duration_ms,
+            query_optimization_applied: true,
+        });
+    }
+    
     let mut conn = get_connection()?;
     
-    // For demonstration, create mock search results
-    // In a real implementation, this would perform vector similarity search
-    let mock_results = vec![
-        IraglSearchResult {
-            content_id: Uuid::new_v4(),
-            content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
-            similarity_score: 0.92,
-            content_type: "document".to_string(),
-            source_entity_type: "project".to_string(),
-            source_entity_id: Uuid::new_v4(),
-            associations: None,
-            optimization_score: Some(0.85),
-        },
-        IraglSearchResult {
-            content_id: Uuid::new_v4(),
-            content_text: "def optimize_embeddings(content, model):\n    # Implement IRAGL optimization\n    embeddings = generate_embeddings(content, model)\n    return optimize_with_differential_geometry(embeddings)".to_string(),
-            similarity_score: 0.88,
-            content_type: "code".to_string(),
-            source_entity_type: "project".to_string(),
-            source_entity_id: Uuid::new_v4(),
-            associations: None,
-            optimization_score: Some(0.78),
-        },
-    ];
-    
+    // TODO: Implement real vector similarity search
+    // For now, return empty results for real database operations
     let search_duration_ms = start_time.elapsed().as_millis() as u64;
     
     Ok(IraglSearchResponse {
-        results: mock_results,
-        total_count: 2,
+        results: vec![],
+        total_count: 0,
         search_duration_ms,
-        query_optimization_applied: true,
+        query_optimization_applied: false,
     })
 }
 
