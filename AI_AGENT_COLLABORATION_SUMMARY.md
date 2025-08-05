@@ -27,10 +27,29 @@ local status = M.get_ai_agent_session_status()
 local success = M.stop_ai_agent_session()
 ```
 
-### 2. **User Interface Commands**
+### 2. **Message Exchange System**
+- **AI to Neovim**: Send messages from AI agents to Neovim with tracking
+- **Neovim to AI**: Send messages from Neovim to AI agents with tracking
+- **Message Types**: Support different message types (message, analysis, feedback, etc.)
+- **Interaction Tracking**: Track all message exchanges with timestamps and metadata
+- **Context Updates**: Update session context with each message exchange
+- **User Notifications**: Visual indicators for message exchanges
+
+**Example Usage:**
+```lua
+-- Send message from AI agent to Neovim
+local success, message_id = M.send_ai_agent_message("Code analysis complete", "analysis")
+
+-- Send message from Neovim to AI agent
+local success, message_id = M.receive_ai_agent_message("User feedback received", "feedback")
+```
+
+### 3. **User Interface Commands**
 - **`:ParagonicAIAgentStart`**: Start a new AI agent collaboration session
 - **`:ParagonicAIAgentStop`**: Stop the current AI agent session
 - **`:ParagonicAIAgentStatus`**: Display current session status in floating window
+- **`:ParagonicAIAgentMessage`**: Send message from AI agent to Neovim
+- **`:ParagonicAIAgentReceive`**: Send message from Neovim to AI agent
 
 **Example Commands:**
 ```vim
@@ -81,6 +100,20 @@ local success = M.stop_ai_agent_session()
    - Includes session details and context
    - Provides interactive close functionality
 
+5. **`M.send_ai_agent_message(message, message_type)`**
+   - Send messages from AI agents to Neovim
+   - Track message with timestamp and metadata
+   - Update session context with message
+   - Notify user with visual indicator (🤖)
+   - Return message ID or error
+
+6. **`M.receive_ai_agent_message(message, message_type)`**
+   - Send messages from Neovim to AI agents
+   - Track message with timestamp and metadata
+   - Update session context with message
+   - Notify user with visual indicator (📥)
+   - Return message ID or error
+
 ### Session Data Structure
 
 ```lua
@@ -98,7 +131,7 @@ local session = {
         mode = "normal"
     },
     final_context = nil, -- Set when session stops
-    interactions = {} -- Future: track AI interactions
+    interactions = {} -- Array of message exchanges with metadata
 }
 ```
 
@@ -181,6 +214,7 @@ M.stop_ai_agent_session()
 ## 📊 Current Status
 
 - **AI Agent Session Management**: ✅ 100% Complete
+- **Message Exchange System**: ✅ 100% Complete
 - **Test Coverage**: ✅ 100% (All tests passing)
 - **User Interface**: ✅ Complete (Commands and displays)
 - **Integration**: ✅ Complete (Works with existing features)
@@ -199,18 +233,18 @@ The implementation is **production-ready** and provides the foundation for advan
 
 ## 🔄 Next Steps
 
-With AI agent session management complete, the next priorities are:
+With the message exchange system complete, the next priorities are:
 
-1. **AI Interaction Functions**: Add functions for AI agents to interact with Neovim
-2. **Message Exchange**: Implement two-way communication between Neovim and AI
+1. **AI Action Functions**: Add functions for AI agents to execute actions in Neovim
+2. **Real-time Updates**: Implement real-time updates from Neovim to AI agents
 3. **Collaboration Tools**: Add specific collaboration tools and capabilities
 4. **Advanced Features**: Add sophisticated AI collaboration features
 
 ### Immediate Next Function
-The next logical step is to implement **AI interaction functions** that allow AI agents to:
-- Send messages to Neovim
-- Receive responses from Neovim
-- Execute actions in Neovim
-- Get real-time updates from Neovim
+The next logical step is to implement **AI action functions** that allow AI agents to:
+- Execute Neovim commands
+- Manipulate buffers and windows
+- Perform file operations
+- Get real-time Neovim state updates
 
-This will complete the two-way communication system needed for true AI-Neovim collaboration. 
+This will complete the action system needed for true AI-Neovim collaboration. 
