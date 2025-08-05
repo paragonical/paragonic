@@ -12,9 +12,19 @@ AI Agent Collaboration plugin for AstroNvim users.
 
 ### Option 2: Manual Installation
 
-1. **Create the plugin configuration file**:
+1. **Create the AstroNvim user directory structure** (if it doesn't exist):
    ```bash
    mkdir -p ~/.config/nvim/lua/user/plugins
+   ```
+
+2. **Create a basic user configuration** (optional):
+   ```lua
+   -- ~/.config/nvim/lua/user/init.lua
+   return {
+     plugins = {
+       -- Your plugins will go here
+     },
+   }
    ```
 
 2. **Create `~/.config/nvim/lua/user/plugins/paragonic.lua`**:
@@ -151,6 +161,7 @@ return {
 2. Verify the project path is correct in the configuration
 3. Run `:AstroSync` to sync plugins
 4. Check `:messages` for any error messages
+5. Ensure AstroNvim is properly installed (the script will create user directories but not AstroNvim itself)
 
 ### Commands Not Available
 1. Restart Neovim after installation
