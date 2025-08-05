@@ -36,17 +36,17 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 2.11 Verify all knowledge stream tests pass
 
 - [ ] 3. Content Association Engine
-  - [ ] 3.1 Write tests for ContentAssociationEngine struct and methods
-  - [ ] 3.2 Implement ContentAssociationEngine with association strength calculation
-  - [ ] 3.3 Write tests for entity relationship validation
-  - [ ] 3.4 Implement entity relationship validation logic
+  - [x] 3.1 Write tests for ContentAssociationEngine struct and methods
+  - [x] 3.2 Implement ContentAssociationEngine with association strength calculation
+  - [x] 3.3 Write tests for entity relationship validation
+  - [x] 3.4 Implement entity relationship validation logic
   - [x] 3.5 Write tests for association type classification
-  - [ ] 3.6 Implement association type classification (direct/derived/inferred)
-  - [ ] 3.7 Write tests for confidence score computation
-  - [ ] 3.8 Implement confidence score computation algorithms
-  - [ ] 3.9 Write tests for duplicate association prevention
-  - [ ] 3.10 Implement duplicate association prevention and cleanup
-  - [ ] 3.11 Verify all content association tests pass
+  - [x] 3.6 Implement association type classification (direct/derived/inferred)
+  - [x] 3.7 Write tests for confidence score computation
+  - [x] 3.8 Implement confidence score computation algorithms
+  - [x] 3.9 Write tests for duplicate association prevention
+  - [x] 3.10 Implement duplicate association prevention and cleanup
+  - [x] 3.11 Verify all content association tests pass
 
 - [ ] 4. Optimization Engine Implementation
   - [x] 4.1 Write tests for OptimizationEngine struct and methods
