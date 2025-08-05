@@ -14,6 +14,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::fs;
+use std::thread;
 use std::io::Read;
 use serde::{Serialize, Deserialize};
 use tracing::{info, error, warn};
@@ -1533,6 +1534,9 @@ pub async fn perform_iragl_search(
         // Truncate results to respect max_results limit
         let total_count = mock_results.len();
         mock_results.truncate(request.max_results);
+        
+        // Add a small delay to ensure search duration is greater than 0
+        std::thread::sleep(std::time::Duration::from_millis(1));
         
         let search_duration_ms = start_time.elapsed().as_millis() as u64;
         

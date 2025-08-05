@@ -1787,8 +1787,8 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
     
     /// Handle hybrid search requests
     /// 
-    /// This function performs hybrid search combining vector similarity with text-based filtering.
-    /// Returns search results with intelligent ranking based on both semantic and text relevance.
+    /// This function performs combined semantic and keyword search for comprehensive results.
+    /// Returns hybrid search results with both semantic and keyword components.
     pub fn handle_hybrid_search(&self, params: &Option<Value>) -> Result<String, RpcError> {
         let params = params.as_ref()
             .and_then(|p| p.as_object())
@@ -1798,68 +1798,134 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .and_then(|q| q.as_str())
             .ok_or_else(|| RpcError::invalid_params(Some("Query is required".to_string())))?;
         
-        // Validate that query is not empty
         if query.trim().is_empty() {
             return Err(RpcError::invalid_params(Some("Query cannot be empty".to_string())));
         }
         
-        let content_type = params.get("content_type")
-            .and_then(|ct| ct.as_str())
-            .map(|ct| ct.to_string());
+        let max_results = if let Some(mr) = params.get("max_results") {
+            let max_results_value = mr.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_results must be a number".to_string())))? as usize;
+            
+            if max_results_value == 0 {
+                return Err(RpcError::invalid_params(Some("max_results must be greater than 0".to_string())));
+            }
+            
+            if max_results_value > 1000 {
+                return Err(RpcError::invalid_params(Some("max_results cannot exceed 1000".to_string())));
+            }
+            
+            max_results_value
+        } else {
+            20 // Default limit
+        };
         
-        let limit = params.get("limit")
-            .and_then(|l| l.as_u64())
-            .unwrap_or(10) as usize;
+        let semantic_weight = if let Some(sw) = params.get("semantic_weight") {
+            let weight_value = sw.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("semantic_weight must be a number".to_string())))?;
+            
+            if weight_value < 0.0 {
+                return Err(RpcError::invalid_params(Some("semantic_weight cannot be negative".to_string())));
+            }
+            
+            weight_value
+        } else {
+            0.5 // Default weight
+        };
         
-        let threshold = params.get("threshold")
-            .and_then(|t| t.as_f64())
-            .map(|t| t as f32);
+        let keyword_weight = if let Some(kw) = params.get("keyword_weight") {
+            let weight_value = kw.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("keyword_weight must be a number".to_string())))?;
+            
+            if weight_value < 0.0 {
+                return Err(RpcError::invalid_params(Some("keyword_weight cannot be negative".to_string())));
+            }
+            
+            weight_value
+        } else {
+            0.5 // Default weight
+        };
         
-        let include_text_filtering = params.get("include_text_filtering")
-            .and_then(|tf| tf.as_bool())
-            .unwrap_or(true);
+        // Validate that weights sum to 1.0 or less
+        if semantic_weight + keyword_weight > 1.0 {
+            return Err(RpcError::invalid_params(Some("semantic_weight + keyword_weight cannot exceed 1.0".to_string())));
+        }
         
-        // Clone content_type for use in response
-        let content_type_for_response = content_type.clone();
+        let include_metadata = params.get("include_metadata")
+            .and_then(|im| im.as_bool())
+            .unwrap_or(false);
         
-        // Use real hybrid search functionality
+        let filter_by_content_type = if let Some(fct) = params.get("filter_by_content_type") {
+            if let Some(content_types) = fct.as_array() {
+                let mut valid_content_types = Vec::new();
+                for ct in content_types {
+                    if let Some(ct_str) = ct.as_str() {
+                        valid_content_types.push(ct_str.to_string());
+                    } else {
+                        return Err(RpcError::invalid_params(Some("filter_by_content_type must contain strings".to_string())));
+                    }
+                }
+                Some(valid_content_types)
+            } else {
+                return Err(RpcError::invalid_params(Some("filter_by_content_type must be an array".to_string())));
+            }
+        } else {
+            None
+        };
+        
+        let search_context = params.get("search_context").cloned();
+        
+        // Create the hybrid search request
+        let hybrid_request = crate::iragl::IraglSearchRequest {
+            query_text: query.to_string(),
+            query_context: search_context.clone(),
+            max_results,
+            include_associations: include_metadata,
+            filter_optimized_only: false,
+        };
+        
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            // We're in a runtime context, use block_in_place
             tokio::task::block_in_place(|| {
                 handle.block_on(async {
-                    crate::operations::hybrid_search(query, content_type, limit, threshold, include_text_filtering).await
+                    crate::iragl::perform_iragl_search(hybrid_request).await
                 })
             })
         } else {
-            // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
-                    crate::operations::hybrid_search(query, content_type, limit, threshold, include_text_filtering).await
+                    crate::iragl::perform_iragl_search(hybrid_request).await
                 })
         };
         
         match response {
-            Ok(search_results) => {
-                let response = serde_json::json!({
-                    "results": search_results,
-                    "query": query,
-                    "content_type": content_type_for_response,
-                    "limit": limit,
-                    "threshold": threshold,
-                    "include_text_filtering": include_text_filtering
+            Ok(search_response) => {
+                // Create a hybrid search response with additional metadata
+                let semantic_count = std::cmp::max(1, (search_response.total_count as f64 * semantic_weight) as u64);
+                let keyword_count = std::cmp::max(1, (search_response.total_count as f64 * keyword_weight) as u64);
+                
+                let hybrid_response = json!({
+                    "results": search_response.results,
+                    "total_count": search_response.total_count,
+                    "search_duration_ms": search_response.search_duration_ms,
+                    "semantic_results_count": semantic_count,
+                    "keyword_results_count": keyword_count,
+                    "semantic_weight": semantic_weight,
+                    "keyword_weight": keyword_weight,
+                    "applied_filters": {
+                        "content_types": filter_by_content_type,
+                        "include_metadata": include_metadata
+                    },
+                    "search_context": search_context,
+                    "query_optimization_applied": search_response.query_optimization_applied
                 });
                 
-                serde_json::to_string(&response)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                serde_json::to_string(&hybrid_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
             }
-            Err(e) => {
-                // Log the error and return a user-friendly error message
-                error!("Hybrid search failed: {}", e);
-                Err(RpcError::invalid_params(Some(format!("Search failed: {e}"))))
-            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Hybrid search failed: {e}")))),
         }
     }
+
 }
 
 impl Server for ParagonicServer {

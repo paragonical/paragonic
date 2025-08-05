@@ -988,4 +988,234 @@ mod rpc_integration_tests {
         assert!(response["success"].as_bool().unwrap(), "Association should be successful");
         assert!(response["metadata"].is_object(), "Should preserve complex metadata");
     }
+
+    /// Test handle_hybrid_search with valid parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_valid_params() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid hybrid search parameters
+        let params = Some(json!({
+            "query": "machine learning optimization pipeline",
+            "max_results": 15,
+            "semantic_weight": 0.7,
+            "keyword_weight": 0.3,
+            "include_metadata": true,
+            "filter_by_content_type": ["document", "code_snippet"],
+            "search_context": {
+                "user_id": "user123",
+                "project_id": "project456"
+            }
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        if let Err(e) = &result {
+            println!("Hybrid search failed with error: {:?}", e);
+        }
+        assert!(result.is_ok(), "handle_hybrid_search should return Ok");
+        
+        let response_str = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&response_str).unwrap();
+        
+        assert!(response["results"].is_array(), "Should return results array");
+        assert!(response["total_count"].as_u64().unwrap() > 0, "Total count should be greater than 0");
+        assert!(response["search_duration_ms"].as_u64().unwrap() > 0, "Search duration should be greater than 0");
+        assert!(response["semantic_results_count"].as_u64().unwrap() > 0, "Should have semantic results");
+        assert!(response["keyword_results_count"].as_u64().unwrap() > 0, "Should have keyword results");
+    }
+
+    /// Test handle_hybrid_search with missing required parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_missing_params() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with missing query
+        let params = Some(json!({
+            "max_results": 10,
+            "semantic_weight": 0.5
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for missing query");
+        
+        // Test with empty query
+        let params = Some(json!({
+            "query": "",
+            "max_results": 10
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for empty query");
+    }
+
+    /// Test handle_hybrid_search with invalid weight parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_invalid_weights() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with negative semantic weight
+        let params = Some(json!({
+            "query": "test query",
+            "semantic_weight": -0.1,
+            "keyword_weight": 0.5
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for negative semantic weight");
+        
+        // Test with weight sum greater than 1.0
+        let params = Some(json!({
+            "query": "test query",
+            "semantic_weight": 0.8,
+            "keyword_weight": 0.5
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for weight sum greater than 1.0");
+    }
+
+    /// Test handle_hybrid_search with invalid max_results
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_invalid_max_results() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with zero max_results
+        let params = Some(json!({
+            "query": "test query",
+            "max_results": 0
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for zero max_results");
+        
+        // Test with very large max_results
+        let params = Some(json!({
+            "query": "test query",
+            "max_results": 10000
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for very large max_results");
+    }
+
+    /// Test handle_hybrid_search with default parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_default_params() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with minimal parameters (should use defaults)
+        let params = Some(json!({
+            "query": "test search query"
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_ok(), "handle_hybrid_search should return Ok with default params");
+        
+        let response_str = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&response_str).unwrap();
+        
+        assert!(response["results"].is_array(), "Should return results array");
+        assert!(response["total_count"].as_u64().unwrap() > 0, "Total count should be greater than 0");
+    }
+
+    /// Test handle_hybrid_search with content type filtering
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_content_filtering() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with content type filtering
+        let params = Some(json!({
+            "query": "optimization algorithm",
+            "filter_by_content_type": ["code_snippet", "document"],
+            "max_results": 10
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_ok(), "handle_hybrid_search should return Ok with content filtering");
+        
+        let response_str = result.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&response_str).unwrap();
+        
+        assert!(response["results"].is_array(), "Should return results array");
+        assert!(response["applied_filters"].is_object(), "Should include applied filters");
+    }
+
+    /// Test handle_hybrid_search performance with large result set
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_performance() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with larger result set
+        let params = Some(json!({
+            "query": "machine learning differential geometry optimization",
+            "max_results": 50,
+            "semantic_weight": 0.6,
+            "keyword_weight": 0.4
+        }));
+        
+        let start_time = std::time::Instant::now();
+        let result = server.handle_hybrid_search(&params);
+        let duration = start_time.elapsed();
+        
+        assert!(result.is_ok(), "Should handle large result limit");
+        
+        let response = result.unwrap();
+        let response_json: serde_json::Value = serde_json::from_str(&response)
+            .expect("Response should be valid JSON");
+        
+        assert!(duration.as_millis() < 5000, "Search should complete within 5 seconds");
+        assert!(response_json["results"].as_array().unwrap().len() <= 50, "Should respect max_results limit");
+    }
+
+    /// Test handle_hybrid_search error handling
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_hybrid_search_error_handling() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid parameter types
+        let params = Some(json!({
+            "query": 123, // Should be string
+            "max_results": "invalid" // Should be number
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_err(), "Should return error for invalid parameter types");
+        
+        // Test with unknown fields (should be handled gracefully)
+        let params = Some(json!({
+            "query": "test query",
+            "unknown_field": "value"
+        }));
+        
+        let result = server.handle_hybrid_search(&params);
+        assert!(result.is_ok(), "Should handle unknown fields gracefully");
+    }
 } 
