@@ -11,7 +11,7 @@ use postgresql_embedded::PostgreSQL;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
-use tracing::{info, error};
+use tracing::{info, error, warn};
 
 use crate::error::{ParagonicError, ParagonicResult};
 
@@ -182,15 +182,60 @@ pub async fn initialize() -> ParagonicResult<()> {
     Ok(())
 }
 
-/// Initialize the database for testing with minimal configuration
+/// Initialize the database for testing
 /// 
-/// This function sets up the PostgreSQL Embedded database with minimal
-/// shared memory requirements for testing.
+/// This function sets up a test database that can be used for IRAGL operations.
+/// It uses a minimal PostgreSQL configuration to avoid shared memory issues.
 pub async fn initialize_for_testing() -> ParagonicResult<()> {
-    // For now, skip database initialization in tests to avoid shared memory issues
-    // This is a temporary workaround until we implement proper SQLite support
-    info!("Skipping database initialization for tests to avoid shared memory issues");
-    Ok(())
+    // Check if we should skip database initialization
+    if std::env::var("SKIP_DATABASE_INIT").is_ok() {
+        info!("Skipping database initialization for tests (SKIP_DATABASE_INIT set)");
+        return Ok(());
+    }
+    
+    // Use test configuration with minimal shared memory
+    let config = DatabaseConfig::test_config();
+    
+    // Try to initialize the embedded database
+    match initialize_embedded_db(&config).await {
+        Ok(_) => {
+            info!("Successfully initialized test database for IRAGL");
+            
+            // Create connection string
+            let connection_string = format!(
+                "postgresql://{}:{}@{}:{}/{}",
+                config.username, config.password, config.host, config.port, config.database
+            );
+            
+            // Create connection manager
+            let manager = ConnectionManager::<PgConnection>::new(&connection_string);
+            
+            // Create connection pool with minimal size for testing
+            let pool = Pool::builder()
+                .max_size(config.max_connections)
+                .build(manager)
+                .map_err(|e| {
+                    error!("Failed to create test database pool: {}", e);
+                    ParagonicError::Internal(format!("Test database pool creation failed: {e}"))
+                })?;
+            
+            // Store pool globally
+            DB_POOL.set(Arc::new(pool)).map_err(|_| {
+                ParagonicError::Internal("Test database pool already initialized".to_string())
+            })?;
+            
+            // Run migrations
+            run_migrations().await?;
+            
+            info!("Test database initialized successfully for IRAGL operations");
+            Ok(())
+        }
+        Err(e) => {
+            warn!("Failed to initialize test database: {}. Tests will run without database.", e);
+            // Return success to allow tests to continue without database
+            Ok(())
+        }
+    }
 }
 
 /// Initialize the database for testing with SQLite (in-memory)

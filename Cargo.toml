@@ -44,6 +44,9 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 
+# Local embedding generation
+fastembed = "5"
+
 # Decimal handling for ISRL profiles
 rust_decimal = { version = "1.0", features = ["serde"] }
 
