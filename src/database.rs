@@ -184,8 +184,9 @@ pub async fn initialize() -> ParagonicResult<()> {
 
 /// Initialize the database for testing
 /// 
-/// This function sets up a test database that can be used for IRAGL operations.
-/// It uses a minimal PostgreSQL configuration to avoid shared memory issues.
+/// This function sets up a test database that can be used for unit tests.
+/// It either initializes a real PostgreSQL database or creates a mock setup
+/// depending on the environment and configuration.
 pub async fn initialize_for_testing() -> ParagonicResult<()> {
     // Check if we should skip database initialization
     if std::env::var("SKIP_DATABASE_INIT").is_ok() {
@@ -233,6 +234,7 @@ pub async fn initialize_for_testing() -> ParagonicResult<()> {
         Err(e) => {
             warn!("Failed to initialize test database: {}. Tests will run without database.", e);
             // Return success to allow tests to continue without database
+            // The individual functions will handle the missing database gracefully
             Ok(())
         }
     }
@@ -292,16 +294,28 @@ pub async fn initialize_with_config(config_manager: &crate::config::ConfigManage
 
 /// Get the database connection pool
 /// 
-/// Returns a reference to the global database pool.
+/// Returns the global connection pool if it has been initialized.
+/// In test environments, this may return an error if the database is not initialized.
 pub fn get_pool() -> ParagonicResult<Arc<Pool<ConnectionManager<PgConnection>>>> {
+    // In test environment, check if we should use mock database
+    if cfg!(test) && std::env::var("USE_MOCK_DATABASE").is_ok() {
+        return Err(ParagonicError::Internal("Mock database mode enabled - no real database available".to_string()));
+    }
+    
     DB_POOL.get().cloned().ok_or_else(|| {
-        ParagonicError::Internal("Database not initialized".to_string())
+        // In test environment, provide a more helpful error message
+        if cfg!(test) {
+            ParagonicError::Internal("Database not initialized for tests. Consider setting USE_MOCK_DATABASE=1 or ensuring PostgreSQL is available.".to_string())
+        } else {
+            ParagonicError::Internal("Database not initialized".to_string())
+        }
     })
 }
 
 /// Get a database connection from the pool
 /// 
 /// Returns a connection that can be used for database operations.
+/// In test environments, this will return an error if the database is not initialized.
 pub fn get_connection() -> ParagonicResult<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
     let pool = get_pool()?;
     pool.get().map_err(|e| {
@@ -319,6 +333,43 @@ pub fn reset_for_testing() {
     // Clear the global pool to simulate uninitialized state
     // Note: OnceCell doesn't support clearing, so we'll need to handle this differently
     // For now, we'll rely on test isolation
+}
+
+#[cfg(test)]
+/// Check if the database is available for testing
+/// 
+/// This function checks if the database has been properly initialized
+/// and is available for use in tests.
+pub fn is_database_available() -> bool {
+    DB_POOL.get().is_some()
+}
+
+#[cfg(test)]
+/// Get a test database connection if available
+/// 
+/// This function attempts to get a database connection for testing.
+/// If the database is not available, it returns None instead of an error.
+pub fn get_test_connection() -> Option<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
+    get_pool().ok()?.get().ok()
+}
+
+#[cfg(test)]
+/// Execute a database operation in tests with graceful handling
+/// 
+/// This function executes a database operation and handles the case
+/// where the database is not available gracefully.
+pub async fn execute_test_db_operation<F, T>(operation: F) -> ParagonicResult<Option<T>>
+where
+    F: FnOnce(&mut r2d2::PooledConnection<ConnectionManager<PgConnection>>) -> ParagonicResult<T>,
+{
+    if !is_database_available() {
+        warn!("Database not available for test operation, skipping");
+        return Ok(None);
+    }
+    
+    let mut conn = get_connection()?;
+    let result = operation(&mut conn)?;
+    Ok(Some(result))
 }
 
 /// Get database configuration from config manager
@@ -564,6 +615,16 @@ mod tests {
             }
             _ => panic!("Expected Internal error"),
         }
+    }
+
+    /// Test database availability checking
+    #[test]
+    fn test_database_availability() {
+        // Initially, database should not be available
+        assert!(!is_database_available());
+        
+        // get_test_connection should return None when database is not available
+        assert!(get_test_connection().is_none());
     }
 
     /// Test database initialization
