@@ -316,5 +316,6 @@ mod iragl_processor_tests;
 mod content_association_tests;
 mod optimization_engine_tests;
 mod iragl_search_engine_tests;
+mod rpc_integration_tests;
 
  

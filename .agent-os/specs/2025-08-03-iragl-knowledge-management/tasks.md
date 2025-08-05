@@ -94,10 +94,10 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [ ] 6.13 Verify all analytics tests pass
 
 - [ ] 7. RPC Integration and API Implementation
-  - [ ] 7.1 Write tests for handle_ingest_knowledge_stream RPC method
-  - [ ] 7.2 Implement handle_ingest_knowledge_stream RPC method
-  - [ ] 7.3 Write tests for handle_associate_content RPC method
-  - [ ] 7.4 Implement handle_associate_content RPC method
+  - [x] 7.1 Write tests for handle_ingest_knowledge_stream RPC method
+  - [x] 7.2 Implement handle_ingest_knowledge_stream RPC method
+  - [x] 7.3 Write tests for handle_associate_content RPC method
+  - [x] 7.4 Implement handle_associate_content RPC method
   - [ ] 7.5 Write tests for handle_optimize_knowledge_base RPC method
   - [ ] 7.6 Implement handle_optimize_knowledge_base RPC method
   - [ ] 7.7 Write tests for handle_iragl_search RPC method
