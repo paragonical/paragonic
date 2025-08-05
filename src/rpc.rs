@@ -1586,6 +1586,108 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     }
     
+    /// Handle optimization history requests
+    /// 
+    /// This function retrieves optimization history records for performance analysis
+    /// and system monitoring. Returns historical optimization data with filtering options.
+    pub fn handle_optimization_history(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let limit = if let Some(l) = params.get("limit") {
+            l.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("limit must be a number".to_string())))?
+                as usize
+        } else {
+            20 // Default limit
+        };
+        
+        let include_metadata = params.get("include_metadata")
+            .and_then(|im| im.as_bool())
+            .unwrap_or(false);
+        
+        let filter_by_status = params.get("filter_by_status")
+            .and_then(|fs| fs.as_str())
+            .unwrap_or("all");
+        
+        // Validate status filter
+        let valid_statuses = ["all", "completed", "failed", "in_progress"];
+        if !valid_statuses.contains(&filter_by_status) {
+            return Err(RpcError::invalid_params(Some(format!("Invalid status filter: {}. Valid options are: {}", filter_by_status, valid_statuses.join(", ")))));
+        }
+        
+        // Get optimization history
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::get_optimization_history(Some(limit)).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::get_optimization_history(Some(limit)).await
+                })
+        };
+        
+        match response {
+            Ok(optimization_history) => {
+                // Filter by status if needed
+                let filtered_history = if filter_by_status != "all" {
+                    optimization_history.into_iter()
+                        .filter(|opt| {
+                            let status = if opt.success { "completed" } else { "failed" };
+                            status == filter_by_status
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    optimization_history
+                };
+                
+                // Create response with optimization history
+                let history_response = serde_json::json!({
+                    "optimizations": filtered_history.iter().map(|opt| {
+                        let mut opt_json = serde_json::json!({
+                            "optimization_id": opt.optimization_id,
+                            "optimization_type": opt.optimization_type,
+                            "content_count": opt.content_count,
+                            "performance_improvement": opt.performance_improvement,
+                            "duration_ms": opt.duration_ms,
+                            "success": opt.success,
+                            "created_at": opt.created_at
+                        });
+                        
+                        // Add metadata if requested and available
+                        if include_metadata && opt.metadata.is_some() {
+                            opt_json["metadata"] = opt.metadata.as_ref().unwrap().clone();
+                        }
+                        
+                        // Add error message if available
+                        if let Some(error_msg) = &opt.error_message {
+                            opt_json["error_message"] = serde_json::Value::String(error_msg.clone());
+                        }
+                        
+                        opt_json
+                    }).collect::<Vec<_>>(),
+                    "total_count": filtered_history.len(),
+                    "query_parameters": {
+                        "limit": limit,
+                        "include_metadata": include_metadata,
+                        "filter_by_status": filter_by_status
+                    }
+                });
+                
+                serde_json::to_string(&history_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Failed to retrieve optimization history: {e}"))))
+        }
+    }
+    
     /// Handle hybrid search requests
     /// 
     /// This function performs hybrid search combining vector similarity with text-based filtering.
@@ -1736,6 +1838,8 @@ impl Server for ParagonicServer {
             "optimize_knowledge_base" => Some(self.handle_optimize_knowledge_base(params)),
             // Handle optimization status requests
             "optimization_status" => Some(self.handle_optimization_status(params)),
+            // Handle optimization history requests
+            "optimization_history" => Some(self.handle_optimization_history(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
             _ => None

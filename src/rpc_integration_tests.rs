@@ -594,4 +594,224 @@ mod rpc_integration_tests {
         let result = server.handle_optimization_status(&params);
         assert!(result.is_ok(), "Should handle unknown fields gracefully");
     }
+
+    /// Test handle_optimization_history with valid parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_valid_params() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with valid history parameters
+        let params = Some(json!({
+            "limit": 10,
+            "include_metadata": true,
+            "filter_by_status": "all"
+        }));
+        
+        let result = server.handle_optimization_history(&params);
+        if let Err(e) = &result {
+            println!("Optimization history check failed with error: {:?}", e);
+        }
+        assert!(result.is_ok(), "handle_optimization_history should return Ok");
+        
+        let response = result.unwrap();
+        let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify response structure
+        assert!(response_data.get("optimizations").is_some());
+        assert!(response_data.get("total_count").is_some());
+        assert!(response_data.get("query_parameters").is_some());
+    }
+
+    /// Test handle_optimization_history with default parameters
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_default_params() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with empty parameters (should use defaults)
+        let params = Some(json!({}));
+        
+        let result = server.handle_optimization_history(&params);
+        assert!(result.is_ok(), "handle_optimization_history should return Ok with default params");
+        
+        let response = result.unwrap();
+        let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify response structure
+        assert!(response_data.get("optimizations").is_some());
+        assert!(response_data.get("total_count").is_some());
+    }
+
+    /// Test handle_optimization_history with different limit values
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_limit_values() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with different limit values
+        let test_limits = [1, 5, 20, 50];
+        
+        for limit in test_limits {
+            let params = Some(json!({
+                "limit": limit
+            }));
+            
+            let result = server.handle_optimization_history(&params);
+            assert!(result.is_ok(), "handle_optimization_history should return Ok with limit {}", limit);
+            
+            let response = result.unwrap();
+            let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+            
+            // Verify the limit parameter is reflected in the response
+            let query_params = response_data.get("query_parameters").unwrap();
+            let returned_limit = query_params.get("limit").unwrap().as_u64().unwrap();
+            assert_eq!(returned_limit, limit as u64);
+        }
+    }
+
+    /// Test handle_optimization_history with status filtering
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_status_filtering() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with different status filters
+        let test_statuses = ["all", "completed", "failed", "in_progress"];
+        
+        for status in test_statuses {
+            let params = Some(json!({
+                "filter_by_status": status,
+                "limit": 5
+            }));
+            
+            let result = server.handle_optimization_history(&params);
+            assert!(result.is_ok(), "handle_optimization_history should return Ok with status filter {}", status);
+            
+            let response = result.unwrap();
+            let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+            
+            // Verify the status filter parameter is reflected in the response
+            let query_params = response_data.get("query_parameters").unwrap();
+            let returned_status = query_params.get("filter_by_status").unwrap().as_str().unwrap();
+            assert_eq!(returned_status, status);
+        }
+    }
+
+    /// Test handle_optimization_history with invalid limit
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_invalid_limit() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid limit (string instead of number)
+        let params = Some(json!({
+            "limit": "invalid"
+        }));
+        
+        let result = server.handle_optimization_history(&params);
+        assert!(result.is_err(), "Should return error for invalid limit type");
+    }
+
+    /// Test handle_optimization_history with invalid status filter
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_invalid_status() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid status filter
+        let params = Some(json!({
+            "filter_by_status": "invalid_status"
+        }));
+        
+        let result = server.handle_optimization_history(&params);
+        assert!(result.is_err(), "Should return error for invalid status filter");
+    }
+
+    /// Test handle_optimization_history performance validation
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_performance() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        let start_time = std::time::Instant::now();
+        
+        let params = Some(json!({
+            "limit": 10,
+            "include_metadata": true
+        }));
+        
+        let result = server.handle_optimization_history(&params);
+        assert!(result.is_ok(), "History retrieval should complete successfully");
+        
+        let duration = start_time.elapsed();
+        assert!(duration.as_millis() < 3000, "History retrieval should complete within 3 seconds");
+    }
+
+    /// Test handle_optimization_history with metadata inclusion
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_with_metadata() {
+        // Initialize database for testing
+        let _ = crate::database::initialize_for_testing().await;
+        
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with metadata inclusion
+        let params = Some(json!({
+            "limit": 5,
+            "include_metadata": true
+        }));
+        
+        let result = server.handle_optimization_history(&params);
+        assert!(result.is_ok(), "handle_optimization_history should return Ok with metadata");
+        
+        let response = result.unwrap();
+        let response_data: serde_json::Value = serde_json::from_str(&response).unwrap();
+        
+        // Verify metadata parameter is reflected
+        let query_params = response_data.get("query_parameters").unwrap();
+        let include_metadata = query_params.get("include_metadata").unwrap().as_bool().unwrap();
+        assert!(include_metadata);
+    }
+
+    /// Test handle_optimization_history error handling
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_handle_optimization_history_error_handling() {
+        let config = OllamaConfig::default();
+        let client = OllamaClient::new(config).unwrap();
+        let server = ParagonicServer::new(client);
+        
+        // Test with invalid field (should be ignored)
+        let params = Some(json!({
+            "limit": 10,
+            "invalid_field": "should_be_ignored"
+        }));
+        
+        let result = server.handle_optimization_history(&params);
+        assert!(result.is_ok(), "Should handle unknown fields gracefully");
+    }
 } 
