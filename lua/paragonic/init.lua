@@ -156,6 +156,18 @@ function M.setup(opts)
             vim.notify("Failed to execute AI agent command: " .. action_id, vim.log.levels.ERROR)
         end
     end, {nargs = "*"})
+    vim.api.nvim_create_user_command("ParagonicAIAgentBuffer", function(args)
+        local buffer_id = tonumber(args[1])
+        local start_line = tonumber(args[2])
+        local end_line = tonumber(args[3])
+        
+        local success, action_id, result = M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
+        if success then
+            vim.notify("AI agent buffer read (ID: " .. action_id .. ", " .. result.line_count .. " lines)", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to read buffer: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
     
     -- Initialize backend
     M._initialize_backend()
@@ -365,6 +377,74 @@ function M.execute_ai_agent_command(command, description)
     vim.notify(status_icon .. " AI Agent Command: " .. command, vim.log.levels.INFO)
     
     return success, action_obj.id, action_obj.result
+end
+
+-- Get buffer content from AI agent
+function M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Use current buffer if not specified
+    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
+    
+    -- Validate buffer exists
+    if not vim.api.nvim_buf_is_valid(buffer_id) then
+        return false, "Invalid buffer ID: " .. tostring(buffer_id)
+    end
+    
+    -- Get buffer name
+    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
+    
+    -- Get buffer content
+    local lines = vim.api.nvim_buf_get_lines(buffer_id, 0, -1, false)
+    
+    -- Apply line range if specified
+    if start_line and end_line then
+        start_line = math.max(0, start_line - 1) -- Convert to 0-based
+        end_line = math.min(#lines, end_line) -- Convert to 0-based
+        lines = vim.list_slice(lines, start_line + 1, end_line)
+    end
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "buffer_read",
+        content = "Get buffer content",
+        description = string.format("Read buffer %d (%s)", buffer_id, buffer_name),
+        from_agent = true,
+        status = "completed",
+        result = {
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            line_count = #lines,
+            content = lines,
+            start_line = start_line and (start_line + 1) or 1,
+            end_line = end_line or #lines
+        }
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI buffer read
+    vim.notify("📖 AI Agent: Read buffer " .. buffer_id .. " (" .. #lines .. " lines)", vim.log.levels.INFO)
+    
+    return true, action_obj.id, action_obj.result
 end
 function M.get_ai_agent_session_status()
     if not agent_collaboration_mode or not active_agent_id then
