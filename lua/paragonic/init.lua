@@ -54,6 +54,7 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
     vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
     vim.api.nvim_create_user_command("ParagonicSend", M.send_message_command, {})
+    vim.api.nvim_create_user_command("ParagonicSendDebug", M.send_message_command_debug, {})
     vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
     vim.api.nvim_create_user_command("ParagonicSaveConfig", M.save_config_command, {})
     
@@ -1728,6 +1729,35 @@ function M.send_message_enhanced(message, model)
     return nil, "Unexpected response format: " .. tostring(parsed_response)
 end
 
+-- Append debug message to chat buffer
+function M.append_debug_message(buffer, message, level)
+    if not buffer or not message then
+        return false, "Buffer and message are required"
+    end
+    
+    -- Validate buffer exists
+    if not vim.api.nvim_buf_is_valid(buffer) then
+        return false, "Invalid buffer"
+    end
+    
+    -- Default level
+    level = level or "info"
+    
+    -- Format debug message
+    local formatted_message = "**DEBUG [" .. level:upper() .. "]:** " .. message
+    
+    -- Get current buffer lines
+    local current_lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    
+    -- Append debug message
+    vim.api.nvim_buf_set_lines(buffer, #current_lines, #current_lines, false, {
+        "",
+        formatted_message
+    })
+    
+    return true, "Debug message appended successfully"
+end
+
 -- Get list of available models
 function M.get_available_models()
     local rpc_client = M._get_rpc_client()
@@ -2204,6 +2234,99 @@ function M.send_message_command()
     
     -- Move cursor to end of response
     vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 1, 0})
+end
+
+-- Enhanced send message command with debug messages
+function M.send_message_command_debug()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    -- Only work in chat buffer
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get the current line as the message
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
+    local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
+    local message = lines[1] or ""
+    
+    -- Skip empty lines or lines that start with #
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    -- Debug: Starting message send
+    M.append_debug_message(current_buf, "Starting message send process", "debug")
+    
+    -- Check RPC client
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        M.append_debug_message(current_buf, "RPC client not available", "error")
+        vim.notify("Failed to send message: Backend not available", vim.log.levels.ERROR)
+        return
+    end
+    
+    M.append_debug_message(current_buf, "RPC client available", "info")
+    
+    -- Debug: Sending message
+    M.append_debug_message(current_buf, "Sending message: " .. message:sub(1, 50) .. "...", "debug")
+    
+    -- Send the message using enhanced function
+    local response, err = M.send_message_enhanced(message, "llama2")
+    
+    if not response then
+        M.append_debug_message(current_buf, "Failed to send message: " .. tostring(err), "error")
+        vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+    
+    M.append_debug_message(current_buf, "Successfully received response from AI", "success")
+    
+    -- Debug: Processing response
+    M.append_debug_message(current_buf, "Processing response for buffer insertion", "debug")
+    
+    -- Add the response to the buffer
+    -- Split response into lines to handle multi-line responses
+    local response_content_lines = {}
+    for line in response:gmatch("[^\r\n]+") do
+        if line:match("%S") then  -- Only add non-empty lines
+            table.insert(response_content_lines, line)
+        end
+    end
+    
+    -- If no lines were extracted, add the original response as a single line
+    if #response_content_lines == 0 then
+        table.insert(response_content_lines, response)
+    end
+    
+    local response_lines = {
+        "",
+        "**AI Response:**"
+    }
+    
+    -- Add each line of the response
+    for _, line in ipairs(response_content_lines) do
+        table.insert(response_lines, line)
+    end
+    
+    -- Add closing lines
+    table.insert(response_lines, "")
+    table.insert(response_lines, "---")
+    
+    -- Debug: Inserting response
+    M.append_debug_message(current_buf, "Inserting " .. #response_lines .. " lines into buffer", "debug")
+    
+    -- Insert response after the current line
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, response_lines)
+    
+    -- Move cursor to end of response
+    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 1, 0})
+    
+    -- Debug: Success
+    M.append_debug_message(current_buf, "Message send process completed successfully", "success")
 end
 
 -- Create project command
