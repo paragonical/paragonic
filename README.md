@@ -1,6 +1,6 @@
 # _Paragonic_: Agency-Alliance for Neovim with Ollama
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/paragonic/paragonic/releases/tag/v0.4.0)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/paragonic/paragonic/releases/tag/v0.5.0)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

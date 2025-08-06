@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-12-06
+
+### Added
+- **🎉 AI Agent Session Integration**: Complete session-aware event system for AI agent collaboration
+- **⚡ Real-Time Event Notification System**: Buffer changes, cursor movements, and window events
+- **🔧 Enhanced AI Action Functions**: Comprehensive set of actions for editor control
+- **🧪 Test-Driven Development**: Systematic TDD implementation with red-green-refactor cycles
+- **📊 Session Event History**: Track and retrieve event history from active sessions
+- **🔄 Neovim Autocommand Integration**: Automatic event triggering via Neovim events
+- **🎯 Session-Aware Handlers**: Event handlers that only execute with active sessions
+- **📝 User Commands**: New commands for AI agent actions and event management
+- **✅ Comprehensive Test Suite**: Full test coverage for all new features
+
+### Changed
+- **Event System Architecture**: Events now require active AI agent sessions
+- **Session Management**: Enhanced session context with event tracking
+- **Handler Registration**: Updated with session awareness and validation
+- **AI Actions**: Enhanced with new parameters and capabilities
+
+### Technical Details
+- Added `register_session_aware_handler()` for session-aware event handling
+- Implemented `track_event_in_session()` for event history tracking
+- Added `get_session_event_history()` for retrieving event history
+- Enhanced event triggers with session context and validation
+- Implemented autocommand setup for automatic event triggering
+- Added comprehensive error handling and validation
+
 ## [0.4.0] - 2025-01-XX
 
 ### Added
@@ -83,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.5.0**: AI Agent Session Integration & Real-Time Events
 - **0.4.0**: IRAGL Knowledge Management & PostgreSQL Integration
 - **0.3.0**: Enhanced Tool Calling & Agent Collaboration
 - **0.2.0**: JSON-RPC Backend & File System Tools  

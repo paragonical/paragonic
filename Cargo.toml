@@ -1,6 +1,6 @@
 [package]
 name = "paragonic"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Paragonic Team"]
 description = "Agentic Neovim Extension with Rust backend"
