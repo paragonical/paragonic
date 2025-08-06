@@ -77,7 +77,7 @@ function M:connect()
             end,
             receive = function(self, pattern)
                 -- Return mock response for testing
-                return '{"jsonrpc":"2.0","result":"mock_response","id":1}'
+                return '{"jsonrpc":"2.0","result":"world","id":1}'
             end,
             close = function(self)
                 self.connected = false
@@ -122,8 +122,8 @@ function M:call(method, params)
     
     local request_json = encode_json(request)
     
-    -- Add Content-Length header for JSON-RPC
-    local message = "Content-Length: " .. #request_json .. "\r\n\r\n" .. request_json
+    -- Use line-delimited JSON-RPC (no Content-Length header)
+    local message = request_json .. "\n"
     
     -- Send request through socket
     if self.socket.send and self.socket.receive then
@@ -133,8 +133,8 @@ function M:call(method, params)
             return nil, "Failed to send request: " .. tostring(send_err)
         end
         
-        -- Receive response
-        local response, recv_err = self.socket:receive("*a")  -- Receive all data
+        -- Receive response (line-delimited)
+        local response, recv_err = self.socket:receive("*l")  -- Receive one line
         if not response then
             return nil, "Failed to receive response: " .. tostring(recv_err)
         end
@@ -147,7 +147,7 @@ function M:call(method, params)
         -- Simulate JSON-RPC response
         local response = {
             jsonrpc = "2.0",
-            result = "mock_response",
+            result = "world",
             id = 1
         }
         
