@@ -622,20 +622,40 @@ function M.send_message(message, model)
     
     -- Extract AI message content
     -- Handle different response formats:
-    -- 1. JSON-RPC result wrapper: {result: {message: {content: "..."}}}
-    -- 2. Direct Ollama response: {message: {content: "..."}}
-    -- 3. Direct content: {content: "..."}
-    if parsed_response.result and parsed_response.result.message then
-        return parsed_response.result.message.content
-    elseif parsed_response.result and parsed_response.result.content then
-        return parsed_response.result.content
-    elseif parsed_response.message then
-        return parsed_response.message.content
-    elseif parsed_response.content then
-        return parsed_response.content
-    else
-        return nil, "Unexpected response format: " .. vim.inspect(parsed_response)
+    -- 1. JSON-RPC result wrapper with JSON string: {result: "{\"message\":{\"content\":\"...\"}}"}
+    -- 2. JSON-RPC result wrapper: {result: {message: {content: "..."}}}
+    -- 3. Direct Ollama response: {message: {content: "..."}}
+    -- 4. Direct content: {content: "..."}
+    
+    if parsed_response.result then
+        -- Check if result is a JSON string (from backend)
+        if type(parsed_response.result) == "string" then
+            local success, inner_result = pcall(vim.json.decode, parsed_response.result)
+            if success and inner_result and inner_result.message then
+                return inner_result.message.content
+            end
+        end
+        
+        -- Check if result is a table with message
+        if type(parsed_response.result) == "table" and parsed_response.result.message then
+            return parsed_response.result.message.content
+        end
+        
+        -- Check if result is a table with content
+        if type(parsed_response.result) == "table" and parsed_response.result.content then
+            return parsed_response.result.content
+        end
     end
+    
+    if parsed_response.message then
+        return parsed_response.message.content
+    end
+    
+    if parsed_response.content then
+        return parsed_response.content
+    end
+    
+    return nil, "Unexpected response format: " .. tostring(parsed_response)
 end
 
 -- Get list of available models
