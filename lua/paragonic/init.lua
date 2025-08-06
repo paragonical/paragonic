@@ -284,8 +284,10 @@ function M.setup(opts)
         end
     end, {nargs = "*"})
     
-    -- Initialize backend
-    M._initialize_backend()
+    -- Initialize backend asynchronously to avoid startup delay
+    vim.defer_fn(function()
+        M._initialize_backend()
+    end, 100)
     
     -- Set up keyboard mappings
     M._setup_keymaps()
@@ -299,7 +301,9 @@ end
 -- Get RPC client, initializing backend if needed
 function M._get_rpc_client()
     if not M._rpc_client then
-        M._initialize_backend()
+        -- Return nil immediately - let calling functions handle the case
+        -- Backend will be initialized asynchronously during startup
+        return nil
     end
     return M._rpc_client
 end
@@ -1569,7 +1573,11 @@ end
 function M.send_message(message, model)
     local rpc_client = M._get_rpc_client()
     if not rpc_client then
-        return nil, "Backend not available"
+        -- Try to initialize backend if not available
+        if not M.initialize_backend() then
+            return nil, "Backend not available"
+        end
+        rpc_client = M._get_rpc_client()
     end
     
     -- Use default model if not specified
@@ -1762,7 +1770,11 @@ end
 function M.get_available_models()
     local rpc_client = M._get_rpc_client()
     if not rpc_client then
-        return nil, "Backend not available"
+        -- Try to initialize backend if not available
+        if not M.initialize_backend() then
+            return nil, "Backend not available"
+        end
+        rpc_client = M._get_rpc_client()
     end
     
     -- Get models list
@@ -1947,6 +1959,14 @@ function M._initialize_backend()
     vim.notify("Paragonic backend connected successfully", vim.log.levels.INFO)
 end
 
+-- Manually initialize backend when needed
+function M.initialize_backend()
+    if not M._rpc_client then
+        M._initialize_backend()
+    end
+    return M._rpc_client ~= nil
+end
+
 -- Open chat interface
 function M.open_chat()
     -- Check if chat buffer already exists
@@ -2003,6 +2023,7 @@ function M.open_chat()
         
         -- Set up buffer-local commands
         vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true})
+    vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader><CR>", ":ParagonicSendDebug<CR>", {noremap = true, silent = true})
     end
     
     -- Open the buffer in a new window
