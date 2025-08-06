@@ -2959,7 +2959,7 @@ function M.clear_search_history()
     -- Auto-save to disk
     M._save_search_history()
     
-    vim.notify("Search history cleared", vim.log.levels.INFO)
+    vim.notify("Paragonic: Search history cleared", vim.log.levels.INFO)
 end
 
 -- Save a search
@@ -2993,7 +2993,7 @@ function M.save_search(name, query, search_type, content_type, limit, threshold)
     -- Auto-save to disk
     M._save_saved_searches()
     
-    vim.notify("Search '" .. name .. "' saved successfully", vim.log.levels.INFO)
+    vim.notify("Paragonic: Search '" .. name .. "' saved successfully", vim.log.levels.INFO)
     return true
 end
 
@@ -3011,7 +3011,7 @@ function M.delete_saved_search(name)
         -- Auto-save to disk
         M._save_saved_searches()
         
-        vim.notify("Saved search '" .. name .. "' deleted", vim.log.levels.INFO)
+        vim.notify("Paragonic: Saved search '" .. name .. "' deleted", vim.log.levels.INFO)
         return true
         end
     end
@@ -3054,7 +3054,7 @@ end
 -- Show search history
 function M.show_search_history()
     if #search_history == 0 then
-        vim.notify("No search history available", vim.log.levels.INFO)
+        vim.notify("Paragonic: No search history available", vim.log.levels.INFO)
         return
     end
     
@@ -3132,7 +3132,7 @@ end
 -- Show saved searches
 function M.show_saved_searches()
     if #saved_searches == 0 then
-        vim.notify("No saved searches available", vim.log.levels.INFO)
+        vim.notify("Paragonic: No saved searches available", vim.log.levels.INFO)
         return
     end
     
@@ -3417,7 +3417,7 @@ function M._load_persistent_data()
     search_history = M._load_search_history()
     saved_searches = M._load_saved_searches()
     
-    vim.notify("Loaded " .. #search_history .. " history entries and " .. #saved_searches .. " saved searches", vim.log.levels.INFO)
+    vim.notify("Paragonic: Loaded " .. #search_history .. " history entries and " .. #saved_searches .. " saved searches", vim.log.levels.INFO)
 end
 
 -- Auto-save function
@@ -3443,7 +3443,7 @@ function M.export_data()
     
     local success = M._save_to_json(export_data, export_path)
     if success then
-        vim.notify("Data exported successfully to " .. export_path, vim.log.levels.INFO)
+        vim.notify("Paragonic: Data exported successfully to " .. export_path, vim.log.levels.INFO)
     else
         vim.notify("Failed to export data", vim.log.levels.ERROR)
     end
@@ -3502,7 +3502,7 @@ function M.import_data()
     -- Save to disk
     M._auto_save()
     
-    vim.notify(string.format("Imported %d history entries and %d saved searches", imported_history, imported_saved), vim.log.levels.INFO)
+    vim.notify(string.format("Paragonic: Imported %d history entries and %d saved searches", imported_history, imported_saved), vim.log.levels.INFO)
 end
 
 -- Backup data
@@ -3524,7 +3524,7 @@ function M.backup_data()
     
     local success = M._save_to_json(backup_data, backup_path)
     if success then
-        vim.notify("Backup created successfully: " .. backup_path, vim.log.levels.INFO)
+        vim.notify("Paragonic: Backup created successfully: " .. backup_path, vim.log.levels.INFO)
     else
         vim.notify("Failed to create backup", vim.log.levels.ERROR)
     end
