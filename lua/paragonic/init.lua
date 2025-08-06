@@ -188,6 +188,92 @@ function M.setup(opts)
         end
     end, {nargs = "*"})
     
+    -- Enhanced AI Agent Action Commands
+    vim.api.nvim_create_user_command("ParagonicAIAgentSwitchBuffer", function(args)
+        local buffer_id = tonumber(args[1])
+        local success, action_id, result = M.ai_agent_switch_buffer(buffer_id)
+        if success then
+            vim.notify("AI agent switched to buffer " .. result.buffer_id, vim.log.levels.INFO)
+        else
+            vim.notify("Failed to switch buffer: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "?"})
+    
+    vim.api.nvim_create_user_command("ParagonicAIAgentSetCursor", function(args)
+        local line = tonumber(args[1]) or 1
+        local column = tonumber(args[2]) or 0
+        local success, action_id, result = M.ai_agent_set_cursor(line, column)
+        if success then
+            vim.notify("AI agent set cursor to line " .. line .. ", column " .. column, vim.log.levels.INFO)
+        else
+            vim.notify("Failed to set cursor: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
+    
+    vim.api.nvim_create_user_command("ParagonicAIAgentCreateWindow", function(args)
+        local split_type = args[1] or "split"
+        local buffer_id = tonumber(args[2])
+        local success, action_id, result = M.ai_agent_create_window(split_type, buffer_id)
+        if success then
+            vim.notify("AI agent created " .. split_type .. " window", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to create window: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
+    
+    vim.api.nvim_create_user_command("ParagonicAIAgentInsertText", function(args)
+        if #args < 1 then
+            vim.notify("Usage: :ParagonicAIAgentInsertText <text> [mode]", vim.log.levels.WARN)
+            return
+        end
+        
+        local text = table.concat(args, " ")
+        local mode = args[#args] == "insert" or args[#args] == "append" or args[#args] == "replace" and args[#args] or "insert"
+        if mode ~= "insert" and mode ~= "append" and mode ~= "replace" then
+            mode = "insert"
+        end
+        
+        local success, action_id, result = M.ai_agent_insert_text(text, mode)
+        if success then
+            vim.notify("AI agent inserted text (" .. mode .. " mode)", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to insert text: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {nargs = "*"})
+    
+    vim.api.nvim_create_user_command("ParagonicAIAgentGetState", function()
+        local success, action_id, state = M.ai_agent_get_state()
+        if success then
+            vim.notify("AI agent retrieved Neovim state (" .. #state.buffers .. " buffers, " .. #state.windows .. " windows)", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to get state: " .. action_id, vim.log.levels.ERROR)
+        end
+    end, {})
+    
+    vim.api.nvim_create_user_command("ParagonicAIAgentExecuteSequence", function(args)
+        if #args < 1 then
+            vim.notify("Usage: :ParagonicAIAgentExecuteSequence <action1> <action2> ...", vim.log.levels.WARN)
+            return
+        end
+        
+        -- For now, this is a simple implementation that executes commands
+        -- In a full implementation, this would parse action objects
+        local actions = {}
+        for i, arg in ipairs(args) do
+            table.insert(actions, {
+                type = "command",
+                params = {command = arg}
+            })
+        end
+        
+        local success, action_id, result = M.ai_agent_execute_sequence(actions)
+        if success then
+            vim.notify("AI agent executed sequence (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.INFO)
+        else
+            vim.notify("AI agent executed sequence with errors (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.WARN)
+        end
+    end, {nargs = "*"})
+    
     -- Initialize backend
     M._initialize_backend()
     
@@ -554,6 +640,565 @@ function M.set_ai_agent_buffer_content(buffer_id, lines, start_line, end_line)
     
     return success, action_obj.id, action_obj.result
 end
+
+-- AI Agent Action Functions for Enhanced Collaboration
+
+-- Switch to a specific buffer
+function M.ai_agent_switch_buffer(buffer_id)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Use current buffer if not specified
+    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
+    
+    -- Validate buffer exists
+    if not vim.api.nvim_buf_is_valid(buffer_id) then
+        return false, "Invalid buffer ID: " .. tostring(buffer_id)
+    end
+    
+    -- Get buffer name
+    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "switch_buffer",
+        content = "Switch to buffer",
+        description = string.format("Switch to buffer %d (%s)", buffer_id, buffer_name),
+        from_agent = true,
+        status = "executing"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Switch to the buffer
+    local success, result = pcall(vim.api.nvim_set_current_buf, buffer_id)
+    
+    -- Update action status
+    if success then
+        action_obj.status = "completed"
+        action_obj.result = {
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            message = "Successfully switched to buffer"
+        }
+    else
+        action_obj.status = "failed"
+        action_obj.result = {
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            error = tostring(result),
+            message = "Failed to switch to buffer"
+        }
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI buffer switch
+    local status_icon = success and "🔄" or "❌"
+    vim.notify(status_icon .. " AI Agent: Switch to buffer " .. buffer_id, vim.log.levels.INFO)
+    
+    return success, action_obj.id, action_obj.result
+end
+
+-- Set cursor position in current buffer
+function M.ai_agent_set_cursor(line, column)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Use current window
+    local current_win = vim.api.nvim_get_current_win()
+    
+    -- Validate line and column
+    line = line or 1
+    column = column or 0
+    
+    -- Get buffer info
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buffer_name = vim.api.nvim_buf_get_name(current_buf)
+    local line_count = vim.api.nvim_buf_line_count(current_buf)
+    
+    -- Validate line number
+    if line < 1 or line > line_count then
+        return false, "Line number out of range: " .. line .. " (valid range: 1-" .. line_count .. ")"
+    end
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "set_cursor",
+        content = "Set cursor position",
+        description = string.format("Set cursor to line %d, column %d in buffer %d", line, column, current_buf),
+        from_agent = true,
+        status = "executing"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Set cursor position (convert to 0-based)
+    local success, result = pcall(vim.api.nvim_win_set_cursor, current_win, {line, column})
+    
+    -- Update action status
+    if success then
+        action_obj.status = "completed"
+        action_obj.result = {
+            window_id = current_win,
+            buffer_id = current_buf,
+            buffer_name = buffer_name,
+            line = line,
+            column = column,
+            message = "Cursor position set successfully"
+        }
+    else
+        action_obj.status = "failed"
+        action_obj.result = {
+            window_id = current_win,
+            buffer_id = current_buf,
+            buffer_name = buffer_name,
+            error = tostring(result),
+            message = "Failed to set cursor position"
+        }
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI cursor movement
+    local status_icon = success and "📍" or "❌"
+    vim.notify(status_icon .. " AI Agent: Set cursor to line " .. line .. ", column " .. column, vim.log.levels.INFO)
+    
+    return success, action_obj.id, action_obj.result
+end
+
+-- Create a new window and switch to it
+function M.ai_agent_create_window(split_type, buffer_id)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Use current buffer if not specified
+    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
+    
+    -- Validate buffer exists
+    if not vim.api.nvim_buf_is_valid(buffer_id) then
+        return false, "Invalid buffer ID: " .. tostring(buffer_id)
+    end
+    
+    -- Default split type
+    split_type = split_type or "split"
+    
+    -- Get buffer name
+    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "create_window",
+        content = "Create new window",
+        description = string.format("Create %s window with buffer %d (%s)", split_type, buffer_id, buffer_name),
+        from_agent = true,
+        status = "executing"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Create window
+    local success, result = pcall(function()
+        if split_type == "split" then
+            vim.cmd("split")
+        elseif split_type == "vsplit" then
+            vim.cmd("vsplit")
+        elseif split_type == "tabnew" then
+            vim.cmd("tabnew")
+        else
+            error("Invalid split type: " .. split_type)
+        end
+        
+        -- Switch to the specified buffer in the new window
+        vim.api.nvim_set_current_buf(buffer_id)
+        
+        return vim.api.nvim_get_current_win()
+    end)
+    
+    -- Update action status
+    if success then
+        local new_win = result
+        action_obj.status = "completed"
+        action_obj.result = {
+            window_id = new_win,
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            split_type = split_type,
+            message = "Window created successfully"
+        }
+    else
+        action_obj.status = "failed"
+        action_obj.result = {
+            buffer_id = buffer_id,
+            buffer_name = buffer_name,
+            split_type = split_type,
+            error = tostring(result),
+            message = "Failed to create window"
+        }
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI window creation
+    local status_icon = success and "🪟" or "❌"
+    vim.notify(status_icon .. " AI Agent: Create " .. split_type .. " window", vim.log.levels.INFO)
+    
+    return success, action_obj.id, action_obj.result
+end
+
+-- Insert text at cursor position
+function M.ai_agent_insert_text(text, mode)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    if not text or text == "" then
+        return false, "Text content is required"
+    end
+    
+    -- Default mode
+    mode = mode or "insert"
+    
+    -- Get current buffer info
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buffer_name = vim.api.nvim_buf_get_name(current_buf)
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "insert_text",
+        content = "Insert text",
+        description = string.format("Insert text in %s mode at line %d", mode, cursor_pos[1]),
+        from_agent = true,
+        status = "executing"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Insert text based on mode
+    local success, result = pcall(function()
+        if mode == "insert" then
+            -- Enter insert mode and insert text
+            vim.cmd("startinsert")
+            vim.api.nvim_put({text}, "", false, true)
+            vim.cmd("stopinsert")
+        elseif mode == "append" then
+            -- Enter insert mode after cursor and insert text
+            vim.cmd("startinsert!")
+            vim.api.nvim_put({text}, "", false, true)
+            vim.cmd("stopinsert")
+        elseif mode == "replace" then
+            -- Replace current line with text
+            local lines = {text}
+            vim.api.nvim_buf_set_lines(current_buf, cursor_pos[1] - 1, cursor_pos[1], false, lines)
+        else
+            error("Invalid mode: " .. mode)
+        end
+        
+        return "Text inserted successfully"
+    end)
+    
+    -- Update action status
+    if success then
+        action_obj.status = "completed"
+        action_obj.result = {
+            buffer_id = current_buf,
+            buffer_name = buffer_name,
+            text = text,
+            mode = mode,
+            line = cursor_pos[1],
+            column = cursor_pos[2],
+            message = result
+        }
+    else
+        action_obj.status = "failed"
+        action_obj.result = {
+            buffer_id = current_buf,
+            buffer_name = buffer_name,
+            text = text,
+            mode = mode,
+            error = tostring(result),
+            message = "Failed to insert text"
+        }
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI text insertion
+    local status_icon = success and "✍️" or "❌"
+    vim.notify(status_icon .. " AI Agent: Insert text (" .. mode .. " mode)", vim.log.levels.INFO)
+    
+    return success, action_obj.id, action_obj.result
+end
+
+-- Get current Neovim state for AI agent
+function M.ai_agent_get_state()
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Get comprehensive state information
+    local state = {
+        timestamp = os.time(),
+        buffers = {},
+        windows = {},
+        current_buffer = vim.api.nvim_get_current_buf(),
+        current_window = vim.api.nvim_get_current_win(),
+        cursor_position = vim.api.nvim_win_get_cursor(0),
+        mode = vim.fn.mode(),
+        current_file = vim.fn.expand("%:p"),
+        current_directory = vim.fn.getcwd(),
+        terminal_size = {
+            columns = vim.o.columns,
+            lines = vim.o.lines
+        }
+    }
+    
+    -- Get buffer information
+    local buffers = vim.api.nvim_list_bufs()
+    for _, buf in ipairs(buffers) do
+        if vim.api.nvim_buf_is_valid(buf) then
+            local buf_name = vim.api.nvim_buf_get_name(buf)
+            local buftype = vim.api.nvim_buf_get_option(buf, "buftype")
+            local modifiable = vim.api.nvim_buf_get_option(buf, "modifiable")
+            local line_count = vim.api.nvim_buf_line_count(buf)
+            local modified = vim.api.nvim_buf_get_option(buf, "modified")
+            
+            table.insert(state.buffers, {
+                id = buf,
+                name = buf_name,
+                type = buftype,
+                modifiable = modifiable,
+                line_count = line_count,
+                modified = modified,
+                is_current = (buf == state.current_buffer)
+            })
+        end
+    end
+    
+    -- Get window information
+    local windows = vim.api.nvim_list_wins()
+    for _, win in ipairs(windows) do
+        if vim.api.nvim_win_is_valid(win) then
+            local buf = vim.api.nvim_win_get_buf(win)
+            local cursor = vim.api.nvim_win_get_cursor(win)
+            local pos = vim.api.nvim_win_get_position(win)
+            local size = vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win)
+            
+            table.insert(state.windows, {
+                id = win,
+                buffer_id = buf,
+                cursor_line = cursor[1],
+                cursor_column = cursor[2],
+                position = {row = pos[1], col = pos[2]},
+                size = {width = size, height = size},
+                is_current = (win == state.current_window)
+            })
+        end
+    end
+    
+    -- Create action object
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "get_state",
+        content = "Get Neovim state",
+        description = "Retrieve current Neovim state for AI agent",
+        from_agent = true,
+        status = "completed",
+        result = state
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI state retrieval
+    vim.notify("📊 AI Agent: Retrieved Neovim state", vim.log.levels.INFO)
+    
+    return true, action_obj.id, state
+end
+
+-- Execute a sequence of AI agent actions
+function M.ai_agent_execute_sequence(actions)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    if not actions or type(actions) ~= "table" or #actions == 0 then
+        return false, "Actions sequence is required"
+    end
+    
+    -- Create action object for the sequence
+    local action_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "execute_sequence",
+        content = "Execute action sequence",
+        description = string.format("Execute sequence of %d actions", #actions),
+        from_agent = true,
+        status = "executing",
+        sequence_results = {}
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, action_obj)
+    
+    -- Execute each action in sequence
+    local success_count = 0
+    local failed_count = 0
+    
+    for i, action in ipairs(actions) do
+        local action_type = action.type
+        local action_params = action.params or {}
+        
+        local success, result_id, result
+        
+        if action_type == "command" then
+            success, result_id, result = M.execute_ai_agent_command(action_params.command, action_params.description)
+        elseif action_type == "switch_buffer" then
+            success, result_id, result = M.ai_agent_switch_buffer(action_params.buffer_id)
+        elseif action_type == "set_cursor" then
+            success, result_id, result = M.ai_agent_set_cursor(action_params.line, action_params.column)
+        elseif action_type == "create_window" then
+            success, result_id, result = M.ai_agent_create_window(action_params.split_type, action_params.buffer_id)
+        elseif action_type == "insert_text" then
+            success, result_id, result = M.ai_agent_insert_text(action_params.text, action_params.mode)
+        elseif action_type == "buffer_read" then
+            success, result_id, result = M.get_ai_agent_buffer_content(action_params.buffer_id, action_params.start_line, action_params.end_line)
+        elseif action_type == "buffer_write" then
+            success, result_id, result = M.set_ai_agent_buffer_content(action_params.buffer_id, action_params.lines, action_params.start_line, action_params.end_line)
+        else
+            success = false
+            result = "Unknown action type: " .. action_type
+        end
+        
+        -- Record result
+        table.insert(action_obj.sequence_results, {
+            index = i,
+            type = action_type,
+            success = success,
+            result_id = result_id,
+            result = result
+        })
+        
+        if success then
+            success_count = success_count + 1
+        else
+            failed_count = failed_count + 1
+        end
+    end
+    
+    -- Update action status
+    if failed_count == 0 then
+        action_obj.status = "completed"
+        action_obj.result = {
+            total_actions = #actions,
+            successful_actions = success_count,
+            failed_actions = failed_count,
+            message = "All actions completed successfully"
+        }
+    else
+        action_obj.status = "partial"
+        action_obj.result = {
+            total_actions = #actions,
+            successful_actions = success_count,
+            failed_actions = failed_count,
+            message = string.format("%d actions completed, %d failed", success_count, failed_count)
+        }
+    end
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    -- Notify user of AI sequence execution
+    local status_icon = (failed_count == 0) and "✅" or "⚠️"
+    vim.notify(status_icon .. " AI Agent: Executed sequence (" .. success_count .. "/" .. #actions .. " successful)", vim.log.levels.INFO)
+    
+    return (failed_count == 0), action_obj.id, action_obj.result
+end
+
 function M.get_ai_agent_session_status()
     if not agent_collaboration_mode or not active_agent_id then
         return {
