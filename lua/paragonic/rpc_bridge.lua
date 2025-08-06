@@ -46,31 +46,33 @@ function M.send_request(server_address, method, params)
     vim.fn.writefile({request_json}, request_file)
     
     -- Create the external Lua script
-    local script_content = string.format([[
+    -- Build script content in segments
+    local script_header = [[
 -- External RPC script
-package.path = package.path .. ";%s/lua/?.lua;%s/lua/?/init.lua"
+package.path = package.path .. "]] .. string.format("%s/lua/?.lua;%s/lua/?/init.lua", vim.fn.getcwd(), vim.fn.getcwd()) .. [["
 
 local socket = require("socket")
 local json = require("cjson")
 
 -- Read request
-local request_file = "%s"
-local response_file = "%s"
+local request_file = "]] .. string.format("%s", request_file) .. [["
+local response_file = "]] .. string.format("%s", response_file) .. [["
 
 local request_content = io.open(request_file, "r"):read("*a")
 local request = json.decode(request_content)
 
 -- Parse server address
-local server_addr = "%s"
+local server_addr = "]] .. string.format("%s", server_address) .. [["
 local host, port = server_addr:match("([^:]+):?([0-9]*)")
 port = port or "3000"
 
 -- Connect to server
 local tcp = socket.tcp()
-tcp:settimeout(60)
+tcp:settimeout(5)  -- Shorter timeout
 local success, err = tcp:connect(host, tonumber(port))
 
 if not success then
+    print("DEBUG: Connection failed:", err)
     local error_response = json.encode({
         jsonrpc = "2.0",
         error = {code = -1, message = "Connection failed: " .. err},
@@ -80,27 +82,44 @@ if not success then
     os.exit(1)
 end
 
+print("DEBUG: Connected successfully")
+
 -- Send request
 local request_json = json.encode(request)
+print("DEBUG: Sending request:", request_json)
 tcp:send(request_json .. "\n")
 
--- Receive response
-local response, err = tcp:receive("*l")
+-- Receive response with shorter timeout
+print("DEBUG: Waiting for response...")
+tcp:settimeout(5)  -- 5 second timeout for receive
+
+-- Try to receive response line by line
+local response, err = tcp:receive("*l")  -- Receive line by line
 tcp:close()
 
 if not response then
+    print("DEBUG: Failed to receive response:", err)
     local error_response = json.encode({
         jsonrpc = "2.0",
-        error = {code = -1, message = "Failed to receive response: " .. err},
+        error = {code = -1, message = "Failed to receive response: " .. (err or "timeout")},
         id = request.id
     })
     io.open(response_file, "w"):write(error_response):close()
     os.exit(1)
 end
 
+print("DEBUG: Received response:", response)
+
+-- Trim any trailing whitespace/newlines
+response = response:gsub("%s+$", "")
+
 -- Write response to file
+print("DEBUG: Writing response to", response_file)
 io.open(response_file, "w"):write(response):close()
-]], vim.fn.getcwd(), vim.fn.getcwd(), request_file, response_file, server_address)
+print("DEBUG: Script completed successfully")
+]]
+    
+    local script_content = script_header
     
     local script_file = temp_file .. "_script.lua"
     vim.fn.writefile(vim.fn.split(script_content, "\n"), script_file)
@@ -108,12 +127,12 @@ io.open(response_file, "w"):write(response):close()
     -- Execute the external script with timeout (macOS compatible)
     local timeout_cmd
     if vim.fn.executable("timeout") == 1 then
-        timeout_cmd = "timeout 120 lua " .. script_file
+        timeout_cmd = "timeout 10 lua " .. script_file
     elseif vim.fn.executable("gtimeout") == 1 then
-        timeout_cmd = "gtimeout 120 lua " .. script_file
+        timeout_cmd = "gtimeout 10 lua " .. script_file
     else
         -- macOS fallback: use background process with sleep and kill
-        timeout_cmd = "lua " .. script_file .. " & sleep 120 && kill $! 2>/dev/null || true"
+        timeout_cmd = "lua " .. script_file .. " & sleep 10 && kill $! 2>/dev/null || true"
     end
     local result = vim.fn.system(timeout_cmd)
     
