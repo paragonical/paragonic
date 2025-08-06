@@ -42,8 +42,8 @@ function M:connect()
         -- Use real TCP socket
         self.socket = socket.tcp()
         
-        -- Set timeout for connection
-        self.socket:settimeout(5)
+        -- Set timeout for connection (increased for AI operations)
+        self.socket:settimeout(60)
         
         -- Attempt to connect
         local success, err = self.socket:connect(host, tonumber(port))

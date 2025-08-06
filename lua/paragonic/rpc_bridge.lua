@@ -67,7 +67,7 @@ port = port or "3000"
 
 -- Connect to server
 local tcp = socket.tcp()
-tcp:settimeout(5)
+tcp:settimeout(60)
 local success, err = tcp:connect(host, tonumber(port))
 
 if not success then
@@ -108,12 +108,12 @@ io.open(response_file, "w"):write(response):close()
     -- Execute the external script with timeout (macOS compatible)
     local timeout_cmd
     if vim.fn.executable("timeout") == 1 then
-        timeout_cmd = "timeout 10 lua " .. script_file
+        timeout_cmd = "timeout 120 lua " .. script_file
     elseif vim.fn.executable("gtimeout") == 1 then
-        timeout_cmd = "gtimeout 10 lua " .. script_file
+        timeout_cmd = "gtimeout 120 lua " .. script_file
     else
         -- macOS fallback: use background process with sleep and kill
-        timeout_cmd = "lua " .. script_file .. " & sleep 10 && kill $! 2>/dev/null || true"
+        timeout_cmd = "lua " .. script_file .. " & sleep 120 && kill $! 2>/dev/null || true"
     end
     local result = vim.fn.system(timeout_cmd)
     
