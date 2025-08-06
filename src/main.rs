@@ -2,9 +2,26 @@ use paragonic::{initialize, start_rpc_server, iragl::{demonstrate_iragl_capabili
 use std::process;
 use std::env;
 use uuid::Uuid;
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() {
+    // Initialize logging
+    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(log_level.clone()));
+    
+    fmt()
+        .with_env_filter(env_filter)
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_file(true)
+        .with_line_number(true)
+        .init();
+    
+    tracing::info!("Paragonic server starting up...");
+    
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
     
@@ -211,16 +228,18 @@ async fn main() {
         println!("Paragonic backend initialized successfully");
     }
     
-    println!("Starting RPC server on 127.0.0.1:3000...");
+    tracing::info!("Starting RPC server on 127.0.0.1:3000...");
 
     // Start the RPC server (this is not async, it just sets up the server)
     if let Err(e) = start_rpc_server("127.0.0.1:3000") {
-        eprintln!("Failed to start RPC server: {e}");
+        tracing::error!("Failed to start RPC server: {}", e);
         process::exit(1);
     }
 
+    tracing::info!("RPC server started successfully");
     println!("RPC server started successfully");
     println!("Press Ctrl+C to stop the server");
+    println!("Log level: {}", log_level);
 
     // Keep the server running
     loop {

@@ -59,20 +59,34 @@ impl ParagonicServer {
     
     /// Handle chat completion request
     pub fn handle_chat_completion(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        tracing::debug!("Chat completion request started");
+        
         let params = params.as_ref()
             .and_then(|p| p.as_array())
-            .ok_or_else(|| RpcError::invalid_params(None))?;
+            .ok_or_else(|| {
+                tracing::error!("Chat completion: invalid params format");
+                RpcError::invalid_params(None)
+            })?;
         
         if params.len() < 2 {
+            tracing::error!("Chat completion: insufficient parameters (expected 2, got {})", params.len());
             return Err(RpcError::invalid_params(None));
         }
         
         let message = params[0].as_str()
-            .ok_or_else(|| RpcError::invalid_params(None))?
+            .ok_or_else(|| {
+                tracing::error!("Chat completion: first parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
             .to_string();
         let model = params[1].as_str()
-            .ok_or_else(|| RpcError::invalid_params(None))?
+            .ok_or_else(|| {
+                tracing::error!("Chat completion: second parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
             .to_string();
+        
+        tracing::info!("Chat completion: model={}, message_length={}", model, message.len());
         
         // Create chat message
         let chat_message = ChatMessage {
@@ -81,6 +95,9 @@ impl ParagonicServer {
         };
         
         // Make actual Ollama API call
+        tracing::info!("Making Ollama API call to model: {}", model);
+        let ollama_start = std::time::Instant::now();
+        
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             // We're in a runtime context, use block_in_place
             tokio::task::block_in_place(|| {
@@ -91,21 +108,31 @@ impl ParagonicServer {
         } else {
             // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .map_err(|e| {
+                    tracing::error!("Failed to create runtime: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to create runtime: {e}")))
+                })?
                 .block_on(async {
                     self.ollama_client.chat_completion(&model, vec![chat_message], false).await
                 })
         };
         
+        let ollama_duration = ollama_start.elapsed();
+        tracing::info!("Ollama API call completed in {:?}", ollama_duration);
+        
         match response {
             Ok(chat_response) => {
+                tracing::info!("Chat completion successful: response_length={}", chat_response.message.content.len());
                 // Return the response as JSON
                 serde_json::to_string(&chat_response)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                    .map_err(|e| {
+                        tracing::error!("Failed to serialize response: {}", e);
+                        RpcError::invalid_params(Some(format!("Failed to serialize response: {e}")))
+                    })
             }
             Err(e) => {
                 // Log the error and return a user-friendly error message
-                error!("Ollama chat completion failed: {}", e);
+                tracing::error!("Ollama chat completion failed: {}", e);
                 Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
@@ -2020,7 +2047,13 @@ impl Server for ParagonicServer {
     
     fn rpc(&self, ctl: &ServerCtl, method: &str, params: &Option<Value>) 
         -> Option<Self::RpcCallResult> {
-        match method {
+        
+        // Log incoming request
+        tracing::info!("RPC Request: method={}, params={:?}", method, params);
+        
+        let start_time = std::time::Instant::now();
+        
+        let result = match method {
             // Accept a hello message and finish the greeting
             "hello" => Some(Ok("world".to_owned())),
             // When the other side says bye, terminate the connection
@@ -2095,7 +2128,26 @@ impl Server for ParagonicServer {
             // Handle knowledge stream ingestion requests
             "ingest_knowledge_stream" => Some(self.handle_ingest_knowledge_stream(params)),
             _ => None
+        };
+        
+        // Log response and timing
+        let duration = start_time.elapsed();
+        match &result {
+            Some(Ok(response)) => {
+                tracing::info!("RPC Response: method={}, success=true, duration={:?}, response_length={}", 
+                    method, duration, response.len());
+            }
+            Some(Err(error)) => {
+                tracing::error!("RPC Response: method={}, success=false, duration={:?}, error={:?}", 
+                    method, duration, error);
+            }
+            None => {
+                tracing::warn!("RPC Response: method={}, unknown_method=true, duration={:?}", 
+                    method, duration);
+            }
         }
+        
+        result
     }
 }
 
