@@ -1991,32 +1991,33 @@ function M.open_chat()
         vim.api.nvim_buf_set_option(chat_buf, "swapfile", false)
         vim.api.nvim_buf_set_option(chat_buf, "modifiable", true)
         
-        -- Get available models for display
-        local models_info = "Available models: llama2 (default)"
-        local models_response = M.get_available_models()
-        if models_response then
-            -- Display actual models from parsed response
-            local model_names = {}
-            for _, model in ipairs(models_response) do
-                table.insert(model_names, model.name)
-            end
-            if #model_names > 0 then
-                models_info = "Available models: " .. table.concat(model_names, ", ")
-            else
-                models_info = "Available models: llama2 (default) - check backend for full list"
-            end
-        end
-        
-        -- Add initial content with model information
+        -- Add initial content with default model information
         vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
             "# Paragonic Chat",
             "",
-            models_info,
+            "Available models: llama2 (default)",
             "",
             "Type your message below and use :ParagonicSend to send:",
             "",
             "---"
         })
+        
+        -- Update models info asynchronously if backend is available
+        vim.defer_fn(function()
+            local models_response = M.get_available_models()
+            if models_response then
+                -- Display actual models from parsed response
+                local model_names = {}
+                for _, model in ipairs(models_response) do
+                    table.insert(model_names, model.name)
+                end
+                if #model_names > 0 then
+                    local models_info = "Available models: " .. table.concat(model_names, ", ")
+                    -- Update the models line in the buffer
+                    vim.api.nvim_buf_set_lines(chat_buf, 2, 3, false, {models_info})
+                end
+            end
+        end, 100)
         
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
