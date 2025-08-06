@@ -28,6 +28,14 @@ local ai_agent_sessions = {}
 local active_agent_id = nil
 local agent_collaboration_mode = false
 
+-- Real-time event notification state
+local event_handlers = {
+    buffer_change = {},
+    cursor_movement = {},
+    window_change = {}
+}
+local event_registration_enabled = false
+
 -- Persistent storage paths
 local data_dir = vim.fn.stdpath("data") .. "/paragonic"
 local history_file = data_dir .. "/search_history.json"
@@ -1197,6 +1205,116 @@ function M.ai_agent_execute_sequence(actions)
     vim.notify(status_icon .. " AI Agent: Executed sequence (" .. success_count .. "/" .. #actions .. " successful)", vim.log.levels.INFO)
     
     return (failed_count == 0), action_obj.id, action_obj.result
+end
+
+-- Real-time Event Notification Functions (TDD Implementation)
+
+-- Register buffer change event handler
+function M.register_buffer_change_handler(handler)
+    if not handler or type(handler) ~= "function" then
+        return false, "Handler must be a function"
+    end
+    
+    table.insert(event_handlers.buffer_change, handler)
+    event_registration_enabled = true
+    
+    return true, "Buffer change handler registered successfully"
+end
+
+-- Register cursor movement event handler
+function M.register_cursor_movement_handler(handler)
+    if not handler or type(handler) ~= "function" then
+        return false, "Handler must be a function"
+    end
+    
+    table.insert(event_handlers.cursor_movement, handler)
+    event_registration_enabled = true
+    
+    return true, "Cursor movement handler registered successfully"
+end
+
+-- Register window change event handler
+function M.register_window_change_handler(handler)
+    if not handler or type(handler) ~= "function" then
+        return false, "Handler must be a function"
+    end
+    
+    table.insert(event_handlers.window_change, handler)
+    event_registration_enabled = true
+    
+    return true, "Window change handler registered successfully"
+end
+
+-- Trigger buffer change event
+function M.trigger_buffer_change_event(buffer_id, change_type)
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    local event_data = {
+        type = "buffer_change",
+        buffer_id = buffer_id,
+        change_type = change_type,
+        timestamp = os.time()
+    }
+    
+    -- Execute all registered handlers
+    for _, handler in ipairs(event_handlers.buffer_change) do
+        local success, result = pcall(handler, event_data)
+        if not success then
+            print("Error in buffer change handler: " .. tostring(result))
+        end
+    end
+    
+    return true, "Buffer change event triggered successfully"
+end
+
+-- Trigger cursor movement event
+function M.trigger_cursor_movement_event(line, column)
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    local event_data = {
+        type = "cursor_movement",
+        line = line,
+        column = column,
+        timestamp = os.time()
+    }
+    
+    -- Execute all registered handlers
+    for _, handler in ipairs(event_handlers.cursor_movement) do
+        local success, result = pcall(handler, event_data)
+        if not success then
+            print("Error in cursor movement handler: " .. tostring(result))
+        end
+    end
+    
+    return true, "Cursor movement event triggered successfully"
+end
+
+-- Trigger window change event
+function M.trigger_window_change_event(window_id, change_type)
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    local event_data = {
+        type = "window_change",
+        window_id = window_id,
+        change_type = change_type,
+        timestamp = os.time()
+    }
+    
+    -- Execute all registered handlers
+    for _, handler in ipairs(event_handlers.window_change) do
+        local success, result = pcall(handler, event_data)
+        if not success then
+            print("Error in window change handler: " .. tostring(result))
+        end
+    end
+    
+    return true, "Window change event triggered successfully"
 end
 
 function M.get_ai_agent_session_status()
