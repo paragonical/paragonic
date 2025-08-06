@@ -1580,8 +1580,90 @@ function M.send_message(message, model)
         return nil, "Failed to get response from AI"
     end
     
-    -- Parse JSON response
-    local parsed_response = M.parse_json_response(response)
+    -- Parse JSON response using enhanced parser
+    local parsed_response = M.parse_json_response_enhanced(response)
+    if not parsed_response then
+        return nil, "Failed to parse AI response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "AI error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract AI message content
+    -- Handle different response formats:
+    -- 1. JSON-RPC result wrapper with JSON string: {result: "{\"message\":{\"content\":\"...\"}}"}
+    -- 2. JSON-RPC result wrapper: {result: {message: {content: "..."}}}
+    -- 3. Direct Ollama response: {message: {content: "..."}}
+    -- 4. Direct content: {content: "..."}
+    
+    if parsed_response.result then
+        -- Check if result is a JSON string (from backend)
+        if type(parsed_response.result) == "string" then
+            -- Try using cjson if available
+            local cjson_ok, cjson = pcall(require, "cjson")
+            if cjson_ok then
+                local success, inner_result = pcall(cjson.decode, parsed_response.result)
+                if success and inner_result and inner_result.message then
+                    return inner_result.message.content
+                end
+            end
+            -- Try using dkjson if available
+            local dkjson_ok, dkjson = pcall(require, "dkjson")
+            if dkjson_ok then
+                local success, inner_result = pcall(dkjson.decode, parsed_response.result)
+                if success and inner_result and inner_result.message then
+                    return inner_result.message.content
+                end
+            end
+            -- Fallback to vim.json.decode
+            local success, inner_result = pcall(vim.json.decode, parsed_response.result)
+            if success and inner_result and inner_result.message then
+                return inner_result.message.content
+            end
+        end
+        
+        -- Check if result is a table with message
+        if type(parsed_response.result) == "table" and parsed_response.result.message then
+            return parsed_response.result.message.content
+        end
+        
+        -- Check if result is a table with content
+        if type(parsed_response.result) == "table" and parsed_response.result.content then
+            return parsed_response.result.content
+        end
+    end
+    
+    if parsed_response.message then
+        return parsed_response.message.content
+    end
+    
+    if parsed_response.content then
+        return parsed_response.content
+    end
+    
+    return nil, "Unexpected response format: " .. tostring(parsed_response)
+end
+
+-- Enhanced send message with improved response parsing
+function M.send_message_enhanced(message, model)
+    local rpc_client = M._get_rpc_client()
+    if not rpc_client then
+        return nil, "Backend not available"
+    end
+    
+    -- Use default model if not specified
+    model = model or "llama2"
+    
+    -- Send chat completion request
+    local response = rpc_client:chat_completion(model, message)
+    if not response then
+        return nil, "Failed to get response from AI"
+    end
+    
+    -- Parse response using enhanced parser (handles both strings and tables)
+    local parsed_response = M.parse_json_response_enhanced(response)
     if not parsed_response then
         return nil, "Failed to parse AI response"
     end
@@ -1772,6 +1854,36 @@ function M.parse_json_response(json_string)
     end
     
     return result
+end
+
+-- Enhanced parse JSON-RPC response (handles both strings and tables)
+function M.parse_json_response_enhanced(input)
+    if not input then
+        return nil, "Empty input"
+    end
+    
+    -- If input is already a table, return it directly
+    if type(input) == "table" then
+        return input
+    end
+    
+    -- If input is a string, parse it as JSON
+    if type(input) == "string" then
+        if input == "" then
+            return nil, "Empty JSON string"
+        end
+        
+        -- Parse JSON with error handling using vim.json
+        local success, result = pcall(vim.json.decode, input)
+        if not success then
+            return nil, "Failed to parse JSON: " .. tostring(result)
+        end
+        
+        return result
+    end
+    
+    -- Unsupported input type
+    return nil, "Unsupported input type: " .. type(input)
 end
 
 -- Initialize Rust backend
@@ -2052,21 +2164,40 @@ function M.send_message_command()
         return
     end
     
-    -- Send the message
-    local response, err = M.send_message(message, "llama2")
+    -- Send the message using enhanced function
+    local response, err = M.send_message_enhanced(message, "llama2")
     if not response then
         vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
         return
     end
     
     -- Add the response to the buffer
+    -- Split response into lines to handle multi-line responses
+    local response_content_lines = {}
+    for line in response:gmatch("[^\r\n]+") do
+        if line:match("%S") then  -- Only add non-empty lines
+            table.insert(response_content_lines, line)
+        end
+    end
+    
+    -- If no lines were extracted, add the original response as a single line
+    if #response_content_lines == 0 then
+        table.insert(response_content_lines, response)
+    end
+    
     local response_lines = {
         "",
-        "**AI Response:**",
-        response,
-        "",
-        "---"
+        "**AI Response:**"
     }
+    
+    -- Add each line of the response
+    for _, line in ipairs(response_content_lines) do
+        table.insert(response_lines, line)
+    end
+    
+    -- Add closing lines
+    table.insert(response_lines, "")
+    table.insert(response_lines, "---")
     
     -- Insert response after the current line
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, response_lines)
