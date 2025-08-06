@@ -1066,11 +1066,25 @@ function M:chat_completion(model, message)
         return "This is a mock response to: " .. message
     end
     
+    -- For 127.0.0.1:3000, ensure we're connected to the real backend
+    if self.server_address == "127.0.0.1:3000" and not self.connected then
+        -- Try to connect to the real backend
+        local success, error_msg = test_server_connectivity(self.server_address)
+        if success then
+            self.connected = true
+        else
+            return nil, "Failed to connect to backend: " .. (error_msg or "unknown error")
+        end
+    end
+    
     -- Send chat completion request with parameters as array [message, model]
+    log_message(self, "info", "Sending chat completion request to " .. self.server_address .. " with message: " .. message)
     local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "chat_completion", {message, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
+        log_message(self, "info", "Chat completion response received: " .. tostring(result))
         return result
     else
+        log_message(self, "error", "Chat completion failed: " .. tostring(error_msg))
         return nil, error_msg
     end
 end

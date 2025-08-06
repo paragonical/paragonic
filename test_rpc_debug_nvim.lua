@@ -1,8 +1,5 @@
--- Debug script to test RPC client connection
+-- Debug script for Neovim to test RPC client
 print("=== RPC Client Debug Test ===")
-
--- Add lua directory to package path
-package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
 
 -- Load the paragonic module
 local paragonic = require("paragonic")

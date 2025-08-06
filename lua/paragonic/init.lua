@@ -621,12 +621,20 @@ function M.send_message(message, model)
     end
     
     -- Extract AI message content
+    -- Handle different response formats:
+    -- 1. JSON-RPC result wrapper: {result: {message: {content: "..."}}}
+    -- 2. Direct Ollama response: {message: {content: "..."}}
+    -- 3. Direct content: {content: "..."}
     if parsed_response.result and parsed_response.result.message then
         return parsed_response.result.message.content
     elseif parsed_response.result and parsed_response.result.content then
         return parsed_response.result.content
+    elseif parsed_response.message then
+        return parsed_response.message.content
+    elseif parsed_response.content then
+        return parsed_response.content
     else
-        return nil, "Unexpected response format"
+        return nil, "Unexpected response format: " .. vim.inspect(parsed_response)
     end
 end
 
