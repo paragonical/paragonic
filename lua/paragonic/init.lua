@@ -1252,11 +1252,17 @@ function M.trigger_buffer_change_event(buffer_id, change_type)
         return false, "Event registration not enabled"
     end
     
+    -- Check if there's an active AI agent session
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent session"
+    end
+    
     local event_data = {
         type = "buffer_change",
         buffer_id = buffer_id,
         change_type = change_type,
-        timestamp = os.time()
+        timestamp = os.time(),
+        session_id = active_agent_id
     }
     
     -- Execute all registered handlers
@@ -1276,11 +1282,17 @@ function M.trigger_cursor_movement_event(line, column)
         return false, "Event registration not enabled"
     end
     
+    -- Check if there's an active AI agent session
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent session"
+    end
+    
     local event_data = {
         type = "cursor_movement",
         line = line,
         column = column,
-        timestamp = os.time()
+        timestamp = os.time(),
+        session_id = active_agent_id
     }
     
     -- Execute all registered handlers
@@ -1300,11 +1312,17 @@ function M.trigger_window_change_event(window_id, change_type)
         return false, "Event registration not enabled"
     end
     
+    -- Check if there's an active AI agent session
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent session"
+    end
+    
     local event_data = {
         type = "window_change",
         window_id = window_id,
         change_type = change_type,
-        timestamp = os.time()
+        timestamp = os.time(),
+        session_id = active_agent_id
     }
     
     -- Execute all registered handlers
@@ -1407,6 +1425,104 @@ function M.setup_all_event_autocommands()
     else
         return false, "Failed to setup some autocommands"
     end
+end
+
+-- AI Agent Session Integration Functions (TDD Implementation)
+
+-- Register session-aware event handler
+function M.register_session_aware_handler(event_type, handler)
+    if not handler or type(handler) ~= "function" then
+        return false, "Handler must be a function"
+    end
+    
+    if not event_type or type(event_type) ~= "string" then
+        return false, "Event type must be a string"
+    end
+    
+    -- Validate event type
+    if event_type ~= "buffer_change" and event_type ~= "cursor_movement" and event_type ~= "window_change" then
+        return false, "Invalid event type: " .. event_type
+    end
+    
+    -- Add session context to handler
+    local session_aware_handler = function(event_data)
+        -- Only execute if there's an active session
+        if agent_collaboration_mode and active_agent_id then
+            event_data.session_id = active_agent_id
+            event_data.session_name = ai_agent_sessions[active_agent_id] and ai_agent_sessions[active_agent_id].name or "Unknown"
+            handler(event_data)
+        end
+    end
+    
+    -- Register the session-aware handler
+    table.insert(event_handlers[event_type], session_aware_handler)
+    event_registration_enabled = true
+    
+    return true, "Session-aware handler registered successfully"
+end
+
+-- Track event in session
+function M.track_event_in_session(event_type, event_data)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Create event tracking object
+    local event_obj = {
+        id = #session.interactions + 1,
+        timestamp = os.time(),
+        type = "event",
+        event_type = event_type,
+        event_data = event_data,
+        from_agent = false,
+        status = "tracked"
+    }
+    
+    -- Add to session interactions
+    table.insert(session.interactions, event_obj)
+    
+    -- Update session context
+    session.context = {
+        current_file = vim.fn.expand("%"),
+        current_directory = vim.fn.getcwd(),
+        buffer_count = #vim.api.nvim_list_bufs(),
+        mode = vim.fn.mode()
+    }
+    
+    return true, "Event tracked in session successfully"
+end
+
+-- Get session event history
+function M.get_session_event_history()
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Filter interactions to only include events
+    local event_history = {}
+    for _, interaction in ipairs(session.interactions) do
+        if interaction.type == "event" then
+            table.insert(event_history, {
+                id = interaction.id,
+                timestamp = interaction.timestamp,
+                event_type = interaction.event_type,
+                event_data = interaction.event_data,
+                status = interaction.status
+            })
+        end
+    end
+    
+    return true, event_history
 end
 
 function M.get_ai_agent_session_status()
