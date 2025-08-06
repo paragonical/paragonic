@@ -35,6 +35,7 @@ local event_handlers = {
     window_change = {}
 }
 local event_registration_enabled = false
+local autocommand_group_id = nil
 
 -- Persistent storage paths
 local data_dir = vim.fn.stdpath("data") .. "/paragonic"
@@ -1315,6 +1316,97 @@ function M.trigger_window_change_event(window_id, change_type)
     end
     
     return true, "Window change event triggered successfully"
+end
+
+-- Neovim Autocommand Integration Functions (TDD Implementation)
+
+-- Setup buffer change autocommands
+function M.setup_buffer_change_autocommands()
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    -- Create autocommand group if it doesn't exist
+    if not autocommand_group_id then
+        autocommand_group_id = vim.api.nvim_create_augroup("ParagonicAIEvents", {clear = true})
+    end
+    
+    -- Setup buffer change autocommands
+    vim.api.nvim_create_autocmd({"BufWritePost", "BufModifiedSet"}, {
+        group = autocommand_group_id,
+        callback = function(args)
+            local buffer_id = args.buf
+            local change_type = args.event == "BufWritePost" and "saved" or "modified"
+            M.trigger_buffer_change_event(buffer_id, change_type)
+        end
+    })
+    
+    return true, "Buffer change autocommands setup successfully"
+end
+
+-- Setup cursor movement autocommands
+function M.setup_cursor_movement_autocommands()
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    -- Create autocommand group if it doesn't exist
+    if not autocommand_group_id then
+        autocommand_group_id = vim.api.nvim_create_augroup("ParagonicAIEvents", {clear = true})
+    end
+    
+    -- Setup cursor movement autocommands
+    vim.api.nvim_create_autocmd("CursorMoved", {
+        group = autocommand_group_id,
+        callback = function(args)
+            local cursor_pos = vim.api.nvim_win_get_cursor(args.win)
+            M.trigger_cursor_movement_event(cursor_pos[1], cursor_pos[2])
+        end
+    })
+    
+    return true, "Cursor movement autocommands setup successfully"
+end
+
+-- Setup window change autocommands
+function M.setup_window_change_autocommands()
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    -- Create autocommand group if it doesn't exist
+    if not autocommand_group_id then
+        autocommand_group_id = vim.api.nvim_create_augroup("ParagonicAIEvents", {clear = true})
+    end
+    
+    -- Setup window change autocommands
+    vim.api.nvim_create_autocmd({"WinNew", "WinClosed", "WinScrolled"}, {
+        group = autocommand_group_id,
+        callback = function(args)
+            local window_id = args.win or vim.api.nvim_get_current_win()
+            local change_type = args.event:lower()
+            M.trigger_window_change_event(window_id, change_type)
+        end
+    })
+    
+    return true, "Window change autocommands setup successfully"
+end
+
+-- Setup all event autocommands
+function M.setup_all_event_autocommands()
+    if not event_registration_enabled then
+        return false, "Event registration not enabled"
+    end
+    
+    -- Setup all autocommand types
+    local success1, _ = M.setup_buffer_change_autocommands()
+    local success2, _ = M.setup_cursor_movement_autocommands()
+    local success3, _ = M.setup_window_change_autocommands()
+    
+    if success1 and success2 and success3 then
+        return true, "All event autocommands setup successfully"
+    else
+        return false, "Failed to setup some autocommands"
+    end
 end
 
 function M.get_ai_agent_session_status()
