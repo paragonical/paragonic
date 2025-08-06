@@ -32,9 +32,8 @@ static INITIALIZED: OnceCell<()> = OnceCell::const_new();
 pub async fn initialize() -> ParagonicResult<()> {
     // Ensure initialization only happens once
     INITIALIZED.get_or_init(|| async {
-        // Initialize logging only once
-        tracing_subscriber::fmt::init();
-        tracing::info!("Logging initialized");
+        // Logging is initialized in main.rs, so we don't initialize it here
+        tracing::info!("Backend initialization started");
     }).await;
     
     // Check if database is already initialized before trying to initialize it
