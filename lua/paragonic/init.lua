@@ -630,6 +630,23 @@ function M.send_message(message, model)
     if parsed_response.result then
         -- Check if result is a JSON string (from backend)
         if type(parsed_response.result) == "string" then
+            -- Try using cjson if available
+            local cjson_ok, cjson = pcall(require, "cjson")
+            if cjson_ok then
+                local success, inner_result = pcall(cjson.decode, parsed_response.result)
+                if success and inner_result and inner_result.message then
+                    return inner_result.message.content
+                end
+            end
+            -- Try using dkjson if available
+            local dkjson_ok, dkjson = pcall(require, "dkjson")
+            if dkjson_ok then
+                local success, inner_result = pcall(dkjson.decode, parsed_response.result)
+                if success and inner_result and inner_result.message then
+                    return inner_result.message.content
+                end
+            end
+            -- Fallback to vim.json.decode
             local success, inner_result = pcall(vim.json.decode, parsed_response.result)
             if success and inner_result and inner_result.message then
                 return inner_result.message.content
