@@ -88,6 +88,50 @@ local function wrap_text(text, max_width, indent)
     return lines
 end
 
+-- Word wrapping helper function for first line with diamond
+local function wrap_text_with_diamond(text, max_width)
+    if not text or text == "" then
+        return {"🮮"}
+    end
+    
+    local lines = {}
+    local words = {}
+    
+    -- Split text into words, preserving spaces
+    for word in text:gmatch("[%s]*[^%s]+") do
+        table.insert(words, word)
+    end
+    
+    local current_line = "🮮  "
+    local current_length = 3  -- Length of diamond + two spaces
+    
+    for _, word in ipairs(words) do
+        local word_length = #word
+        
+        -- If adding this word would exceed the line limit
+        if current_length + word_length > max_width then
+            -- Add current line to lines (if not empty)
+            if current_line ~= "🮮  " then
+                table.insert(lines, current_line)
+            end
+            -- Start new line with three spaces (no diamond)
+            current_line = "   " .. word
+            current_length = 3 + word_length
+        else
+            -- Add word to current line
+            current_line = current_line .. word
+            current_length = current_length + word_length
+        end
+    end
+    
+    -- Add the last line if it has content
+    if current_line ~= "🮮  " then
+        table.insert(lines, current_line)
+    end
+    
+    return lines
+end
+
 -- Initialize the plugin
 function M.setup(opts)
     -- Check if we're in Neovim environment
@@ -2588,7 +2632,7 @@ function M.send_message_command()
     
     -- Add first line with diamond prefix and remaining lines with three-space indent
     if #response_content_lines > 0 then
-        local wrapped_first = wrap_text(response_content_lines[1], base_width, "🮮  ")
+        local wrapped_first = wrap_text_with_diamond(response_content_lines[1], base_width)
         for _, line in ipairs(wrapped_first) do
             table.insert(response_lines, line)
         end
@@ -2766,7 +2810,7 @@ function M.send_message_command_debug()
     
     -- Add first line with diamond prefix and remaining lines with three-space indent
     if #response_content_lines > 0 then
-        local wrapped_first = wrap_text(response_content_lines[1], base_width, "🮮  ")
+        local wrapped_first = wrap_text_with_diamond(response_content_lines[1], base_width)
         for _, line in ipairs(wrapped_first) do
             table.insert(response_lines, line)
         end
