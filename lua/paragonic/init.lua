@@ -3367,12 +3367,22 @@ end
 
 -- Persistent storage functionality
 
--- Ensure data directory exists
+-- Ensure data directory exists with error handling
 function M._ensure_data_directory()
-    local dir = vim.fn.stdpath("data") .. "/paragonic"
-    if vim.fn.isdirectory(dir) == 0 then
-        vim.fn.mkdir(dir, "p")
+    local success, dir = pcall(function()
+        return vim.fn.stdpath("data") .. "/paragonic"
+    end)
+    if not success then
+        return false
     end
+    
+    local success2, is_dir = pcall(vim.fn.isdirectory, dir)
+    if not success2 or is_dir == 0 then
+        local success3 = pcall(vim.fn.mkdir, dir, "p")
+        return success3
+    end
+    
+    return true
 end
 
 -- Save data to JSON file
@@ -3394,22 +3404,24 @@ function M._save_to_json(data, file_path)
     return true
 end
 
--- Load data from JSON file
+-- Load data from JSON file with better error handling
 function M._load_from_json(file_path)
-    if vim.fn.filereadable(file_path) == 0 then
+    -- Use pcall for all file operations to prevent blocking
+    local success, filereadable = pcall(vim.fn.filereadable, file_path)
+    if not success or filereadable == 0 then
         return {}
     end
     
-    local lines = vim.fn.readfile(file_path)
-    if #lines == 0 then
+    local success2, lines = pcall(vim.fn.readfile, file_path)
+    if not success2 or #lines == 0 then
         return {}
     end
     
     local json_string = table.concat(lines, "\n")
-    local success, data = pcall(vim.json.decode, json_string)
+    local success3, data = pcall(vim.json.decode, json_string)
     
-    if not success or not data then
-        vim.notify("Failed to parse JSON from " .. file_path, vim.log.levels.ERROR)
+    if not success3 or not data then
+        -- Don't show error notification during startup to avoid blocking
         return {}
     end
     
@@ -3421,22 +3433,29 @@ function M._save_search_history()
     return M._save_to_json(search_history, history_file)
 end
 
--- Load search history from disk
+-- Load search history from disk with error handling
 function M._load_search_history()
     local data = M._load_from_json(history_file)
     
-    -- Validate and clean data
+    -- Validate and clean data with error handling
     local cleaned_data = {}
-    for _, entry in ipairs(data) do
-        if entry.query and entry.type and entry.results_count then
-            -- Ensure all required fields are present
-            entry.timestamp = entry.timestamp or os.time()
-            entry.date = entry.date or os.date("%Y-%m-%d %H:%M:%S", entry.timestamp)
-            table.insert(cleaned_data, entry)
+    local success, result = pcall(function()
+        for _, entry in ipairs(data) do
+            if entry.query and entry.type and entry.results_count then
+                -- Ensure all required fields are present
+                entry.timestamp = entry.timestamp or os.time()
+                entry.date = entry.date or os.date("%Y-%m-%d %H:%M:%S", entry.timestamp)
+                table.insert(cleaned_data, entry)
+            end
         end
-    end
+        return cleaned_data
+    end)
     
-    return cleaned_data
+    if success then
+        return result
+    else
+        return {}
+    end
 end
 
 -- Save saved searches to disk
@@ -3444,32 +3463,54 @@ function M._save_saved_searches()
     return M._save_to_json(saved_searches, saved_searches_file)
 end
 
--- Load saved searches from disk
+-- Load saved searches from disk with error handling
 function M._load_saved_searches()
     local data = M._load_from_json(saved_searches_file)
     
-    -- Validate and clean data
+    -- Validate and clean data with error handling
     local cleaned_data = {}
-    for _, saved in ipairs(data) do
-        if saved.name and saved.query and saved.type then
-            -- Ensure all required fields are present
-            saved.limit = saved.limit or 10
-            saved.threshold = saved.threshold or 0.0
-            saved.created_at = saved.created_at or os.time()
-            saved.created_date = saved.created_date or os.date("%Y-%m-%d %H:%M:%S", saved.created_at)
-            table.insert(cleaned_data, saved)
+    local success, result = pcall(function()
+        for _, saved in ipairs(data) do
+            if saved.name and saved.query and saved.type then
+                -- Ensure all required fields are present
+                saved.limit = saved.limit or 10
+                saved.threshold = saved.threshold or 0.0
+                saved.created_at = saved.created_at or os.time()
+                saved.created_date = saved.created_date or os.date("%Y-%m-%d %H:%M:%S", saved.created_at)
+                table.insert(cleaned_data, saved)
+            end
         end
-    end
+        return cleaned_data
+    end)
     
-    return cleaned_data
+    if success then
+        return result
+    else
+        return {}
+    end
 end
 
--- Load all persistent data
+-- Load all persistent data with error handling
 function M._load_persistent_data()
-    search_history = M._load_search_history()
-    saved_searches = M._load_saved_searches()
+    -- Use pcall to prevent any errors from blocking startup
+    local success1, history = pcall(M._load_search_history)
+    if success1 then
+        search_history = history
+    else
+        search_history = {}
+    end
     
-    vim.notify("Paragonic: Loaded " .. #search_history .. " history entries and " .. #saved_searches .. " saved searches", vim.log.levels.INFO)
+    local success2, searches = pcall(M._load_saved_searches)
+    if success2 then
+        saved_searches = searches
+    else
+        saved_searches = {}
+    end
+    
+    -- Use pcall for notification to prevent blocking
+    pcall(function()
+        vim.notify("Paragonic: Loaded " .. #search_history .. " history entries and " .. #saved_searches .. " saved searches", vim.log.levels.INFO)
+    end)
 end
 
 -- Auto-save function
