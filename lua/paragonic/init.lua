@@ -582,212 +582,48 @@ function M.ai_agent_execute_sequence(actions)
     return ai_agent.ai_agent_execute_sequence(actions)
 end
 
--- Real-time Event Notification Functions (TDD Implementation)
-
--- Register buffer change event handler
+-- Event handling functions - delegate to events module
 function M.register_buffer_change_handler(handler)
-    if not handler or type(handler) ~= "function" then
-        return false, "Handler must be a function"
-    end
-    
-    table.insert(event_handlers.buffer_change, handler)
-    event_registration_enabled = true
-    
-    return true, "Buffer change handler registered successfully"
+    return events.register_buffer_change_handler(handler)
 end
 
--- Register cursor movement event handler
 function M.register_cursor_movement_handler(handler)
-    if not handler or type(handler) ~= "function" then
-        return false, "Handler must be a function"
-    end
-    
-    table.insert(event_handlers.cursor_movement, handler)
-    event_registration_enabled = true
-    
-    return true, "Cursor movement handler registered successfully"
+    return events.register_cursor_movement_handler(handler)
 end
 
--- Register window change event handler
 function M.register_window_change_handler(handler)
-    if not handler or type(handler) ~= "function" then
-        return false, "Handler must be a function"
-    end
-    
-    table.insert(event_handlers.window_change, handler)
-    event_registration_enabled = true
-    
-    return true, "Window change handler registered successfully"
+    return events.register_window_change_handler(handler)
 end
 
--- Trigger buffer change event
+-- Event trigger functions - delegate to events module
 function M.trigger_buffer_change_event(buffer_id, change_type)
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
-    
-    -- Check if there's an active AI agent session
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent session"
-    end
-    
-    local event_data = {
-        type = "buffer_change",
-        buffer_id = buffer_id,
-        change_type = change_type,
-        timestamp = os.time(),
-        session_id = active_agent_id
-    }
-    
-    -- Execute all registered handlers
-    for _, handler in ipairs(event_handlers.buffer_change) do
-            local success, result = pcall(handler, event_data)
-    if not success then
-        M.debug_print("Error in buffer change handler: " .. tostring(result), "error")
-    end
-    end
-    
-    return true, "Buffer change event triggered successfully"
+    return events.trigger_buffer_change_event(buffer_id, change_type)
 end
 
--- Trigger cursor movement event
 function M.trigger_cursor_movement_event(line, column)
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
-    
-    -- Check if there's an active AI agent session
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent session"
-    end
-    
-    local event_data = {
-        type = "cursor_movement",
-        line = line,
-        column = column,
-        timestamp = os.time(),
-        session_id = active_agent_id
-    }
-    
-    -- Execute all registered handlers
-    for _, handler in ipairs(event_handlers.cursor_movement) do
-            local success, result = pcall(handler, event_data)
-    if not success then
-        M.debug_print("Error in cursor movement handler: " .. tostring(result), "error")
-    end
-    end
-    
-    return true, "Cursor movement event triggered successfully"
+    return events.trigger_cursor_movement_event(line, column)
 end
 
--- Trigger window change event
 function M.trigger_window_change_event(window_id, change_type)
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
-    
-    -- Check if there's an active AI agent session
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent session"
-    end
-    
-    local event_data = {
-        type = "window_change",
-        window_id = window_id,
-        change_type = change_type,
-        timestamp = os.time(),
-        session_id = active_agent_id
-    }
-    
-    -- Execute all registered handlers
-    for _, handler in ipairs(event_handlers.window_change) do
-            local success, result = pcall(handler, event_data)
-    if not success then
-        M.debug_print("Error in window change handler: " .. tostring(result), "error")
-    end
-    end
-    
-    return true, "Window change event triggered successfully"
+    return events.trigger_window_change_event(window_id, change_type)
 end
 
--- Neovim Autocommand Integration Functions (TDD Implementation)
-
--- Setup buffer change autocommands
+-- Event setup functions - delegate to events module
 function M.setup_buffer_change_autocommands()
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
-    
-    -- Create autocommand group if it doesn't exist
-    if not autocommand_group_id then
-        autocommand_group_id = vim.api.nvim_create_augroup("ParagonicAIEvents", {clear = true})
-    end
-    
-    -- Setup buffer change autocommands
-    vim.api.nvim_create_autocmd({"BufWritePost", "BufModifiedSet"}, {
-        group = autocommand_group_id,
-        callback = function(args)
-            local buffer_id = args.buf
-            local change_type = args.event == "BufWritePost" and "saved" or "modified"
-            M.trigger_buffer_change_event(buffer_id, change_type)
-        end
-    })
-    
-    return true, "Buffer change autocommands setup successfully"
+    return events.setup_buffer_change_autocommands()
 end
 
--- Setup cursor movement autocommands
 function M.setup_cursor_movement_autocommands()
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
-    
-    -- Create autocommand group if it doesn't exist
-    if not autocommand_group_id then
-        autocommand_group_id = vim.api.nvim_create_augroup("ParagonicAIEvents", {clear = true})
-    end
-    
-    -- Setup cursor movement autocommands
-    vim.api.nvim_create_autocmd("CursorMoved", {
-        group = autocommand_group_id,
-        callback = function(args)
-            local cursor_pos = vim.api.nvim_win_get_cursor(args.win)
-            M.trigger_cursor_movement_event(cursor_pos[1], cursor_pos[2])
-        end
-    })
-    
-    return true, "Cursor movement autocommands setup successfully"
+    return events.setup_cursor_movement_autocommands()
 end
 
--- Setup window change autocommands
 function M.setup_window_change_autocommands()
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
-    
-    -- Create autocommand group if it doesn't exist
-    if not autocommand_group_id then
-        autocommand_group_id = vim.api.nvim_create_augroup("ParagonicAIEvents", {clear = true})
-    end
-    
-    -- Setup window change autocommands
-    vim.api.nvim_create_autocmd({"WinNew", "WinClosed", "WinScrolled"}, {
-        group = autocommand_group_id,
-        callback = function(args)
-            local window_id = args.win or vim.api.nvim_get_current_win()
-            local change_type = args.event:lower()
-            M.trigger_window_change_event(window_id, change_type)
-        end
-    })
-    
-    return true, "Window change autocommands setup successfully"
+    return events.setup_window_change_autocommands()
 end
 
--- Setup all event autocommands
 function M.setup_all_event_autocommands()
-    if not event_registration_enabled then
-        return false, "Event registration not enabled"
-    end
+    return events.setup_all_event_autocommands()
+end
     
     -- Setup all autocommand types
     local success1, _ = M.setup_buffer_change_autocommands()
@@ -803,36 +639,9 @@ end
 
 -- AI Agent Session Integration Functions (TDD Implementation)
 
--- Register session-aware event handler
+-- Session-aware event handler - delegate to events module
 function M.register_session_aware_handler(event_type, handler)
-    if not handler or type(handler) ~= "function" then
-        return false, "Handler must be a function"
-    end
-    
-    if not event_type or type(event_type) ~= "string" then
-        return false, "Event type must be a string"
-    end
-    
-    -- Validate event type
-    if event_type ~= "buffer_change" and event_type ~= "cursor_movement" and event_type ~= "window_change" then
-        return false, "Invalid event type: " .. event_type
-    end
-    
-    -- Add session context to handler
-    local session_aware_handler = function(event_data)
-        -- Only execute if there's an active session
-        if agent_collaboration_mode and active_agent_id then
-            event_data.session_id = active_agent_id
-            event_data.session_name = ai_agent_sessions[active_agent_id] and ai_agent_sessions[active_agent_id].name or "Unknown"
-            handler(event_data)
-        end
-    end
-    
-    -- Register the session-aware handler
-    table.insert(event_handlers[event_type], session_aware_handler)
-    event_registration_enabled = true
-    
-    return true, "Session-aware handler registered successfully"
+    return events.register_session_aware_handler(event_type, handler)
 end
 
 -- Track event in session
