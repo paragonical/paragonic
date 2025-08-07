@@ -3125,9 +3125,9 @@ function M.setup_which_key()
         { "<leader>Pp", "<cmd>ParagonicProjects<CR>", desc = "📁 Open Projects" },
         { "<leader>Po", "<cmd>ParagonicConfig<CR>", desc = "⚙️  Open Config" },
         { "<leader>Pd", "<cmd>ParagonicDebug<CR>", desc = "🐛 Open Debug" },
-        { "<leader>Ph", "<cmd>ParagonicSearchHistory<CR>", desc = "📚 Search History" },
-        { "<leader>Ps", "<cmd>ParagonicSavedSearches<CR>", desc = "💾 Saved Searches" },
-        { "<leader>Ps", "<cmd>ParagonicSaveSearch<CR>", desc = "💾 Save Current Search" },
+        { "<leader>Py", "<cmd>ParagonicSearchHistory<CR>", desc = "📚 Search History" },
+        { "<leader>Pv", "<cmd>ParagonicSavedSearches<CR>", desc = "💾 Saved Searches" },
+        { "<leader>Pw", "<cmd>ParagonicSaveSearch<CR>", desc = "💾 Save Current Search" },
         { "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", desc = "🤖 AI Agent Session" },
         { "<leader>Pe", "<cmd>ParagonicExportData<CR>", desc = "📤 Export Data" },
         { "<leader>Pi", "<cmd>ParagonicImportData<CR>", desc = "📥 Import Data" },
@@ -3194,6 +3194,9 @@ function M._setup_keymaps()
     vim.keymap.set("n", "<leader>Pp", "<cmd>ParagonicProjects<CR>", {desc = "Paragonic: Open Projects"})
     vim.keymap.set("n", "<leader>Po", "<cmd>ParagonicConfig<CR>", {desc = "Paragonic: Open Config"})
     vim.keymap.set("n", "<leader>Pd", "<cmd>ParagonicDebug<CR>", {desc = "Paragonic: Open Debug"})
+    vim.keymap.set("n", "<leader>Py", "<cmd>ParagonicSearchHistory<CR>", {desc = "Paragonic: Search History"})
+    vim.keymap.set("n", "<leader>Pv", "<cmd>ParagonicSavedSearches<CR>", {desc = "Paragonic: Saved Searches"})
+    vim.keymap.set("n", "<leader>Pw", "<cmd>ParagonicSaveSearch<CR>", {desc = "Paragonic: Save Current Search"})
     vim.keymap.set("n", "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", {desc = "Paragonic: AI Agent Session"})
     vim.keymap.set("n", "<leader>Pe", "<cmd>ParagonicExportData<CR>", {desc = "Paragonic: Export Data"})
     vim.keymap.set("n", "<leader>Pi", "<cmd>ParagonicImportData<CR>", {desc = "Paragonic: Import Data"})
