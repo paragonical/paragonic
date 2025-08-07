@@ -59,13 +59,15 @@ function M:connect()
             return false, err
         end
     elseif vim and vim.fn then
-        -- Use RPC bridge for Neovim
-        local bridge_ok, bridge = pcall(require, "paragonic.rpc_bridge")
-        if bridge_ok then
-            self.bridge = bridge
+        -- Use simple RPC client for Neovim (no system() calls)
+        local simple_rpc_ok, simple_rpc = pcall(require, "paragonic.rpc_simple")
+        if simple_rpc_ok then
+            print("🔧 RPC: Using simple RPC client for Neovim")
+            self.simple_rpc = simple_rpc.new(self.server_address)
             self.connected = true
             return true
         else
+            print("❌ RPC: Failed to load simple RPC client: " .. tostring(simple_rpc))
             -- Fallback to mock socket for testing
             -- Check if this is a test failure scenario
             if host == "127.0.0.1" and port == "9999" then
@@ -149,9 +151,10 @@ function M:call(method, params)
         return nil, "Not connected to server"
     end
     
-    if self.bridge then
-        -- Use RPC bridge for Neovim
-        return self.bridge.send_request(self.server_address, method, params)
+    if self.simple_rpc then
+        -- Use simple RPC client for Neovim
+        print("🔧 RPC: Using simple RPC client for method: " .. method)
+        return self.simple_rpc:call(method, params)
     elseif self.socket.send and self.socket.receive then
         -- Use real socket communication
         local request = {
