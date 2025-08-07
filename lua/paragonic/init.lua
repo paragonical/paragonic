@@ -2581,21 +2581,22 @@ function M.send_message_command()
     
     local response_lines = {}
     
-    -- Get buffer width for word wrapping (with 13 character right margin)
-    local buffer_width = vim.api.nvim_win_get_width(0) - 13
-    if buffer_width < 20 then buffer_width = 20 end -- Minimum width
+    -- Get buffer width for word wrapping (70% of buffer width after indentation)
+    local full_buffer_width = vim.api.nvim_win_get_width(0)
+    local base_width = math.floor(full_buffer_width * 0.7)
+    if base_width < 20 then base_width = 20 end -- Minimum width
     
     -- Add first line with diamond and two spaces
     if #response_content_lines > 0 then
         local first_line = "🮮  " .. response_content_lines[1]
-        local wrapped_first = wrap_text(first_line, buffer_width, "")
+        local wrapped_first = wrap_text(first_line, base_width, "")
         for _, line in ipairs(wrapped_first) do
             table.insert(response_lines, line)
         end
         
         -- Add remaining lines with three spaces indentation
         for i = 2, #response_content_lines do
-            local wrapped_lines = wrap_text(response_content_lines[i], buffer_width, "   ")
+            local wrapped_lines = wrap_text(response_content_lines[i], base_width, "   ")
             for _, line in ipairs(wrapped_lines) do
                 table.insert(response_lines, line)
             end
@@ -2759,21 +2760,22 @@ function M.send_message_command_debug()
     
     local response_lines = {}
     
-    -- Get buffer width for word wrapping (with 13 character right margin)
-    local buffer_width = vim.api.nvim_win_get_width(0) - 13
-    if buffer_width < 20 then buffer_width = 20 end -- Minimum width
+    -- Get buffer width for word wrapping (70% of buffer width after indentation)
+    local full_buffer_width = vim.api.nvim_win_get_width(0)
+    local base_width = math.floor(full_buffer_width * 0.7)
+    if base_width < 20 then base_width = 20 end -- Minimum width
     
     -- Add first line with diamond and two spaces
     if #response_content_lines > 0 then
         local first_line = "🮮  " .. response_content_lines[1]
-        local wrapped_first = wrap_text(first_line, buffer_width, "")
+        local wrapped_first = wrap_text(first_line, base_width, "")
         for _, line in ipairs(wrapped_first) do
             table.insert(response_lines, line)
         end
         
         -- Add remaining lines with three spaces indentation
         for i = 2, #response_content_lines do
-            local wrapped_lines = wrap_text(response_content_lines[i], buffer_width, "   ")
+            local wrapped_lines = wrap_text(response_content_lines[i], base_width, "   ")
             for _, line in ipairs(wrapped_lines) do
                 table.insert(response_lines, line)
             end
