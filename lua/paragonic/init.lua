@@ -2586,10 +2586,9 @@ function M.send_message_command()
     local base_width = math.floor(full_buffer_width * 0.7)
     if base_width < 20 then base_width = 20 end -- Minimum width
     
-    -- Add first line with diamond and two spaces
+    -- Add first line with diamond prefix and remaining lines with three-space indent
     if #response_content_lines > 0 then
-        local first_line = "🮮  " .. response_content_lines[1]
-        local wrapped_first = wrap_text(first_line, base_width, "")
+        local wrapped_first = wrap_text(response_content_lines[1], base_width, "🮮  ")
         for _, line in ipairs(wrapped_first) do
             table.insert(response_lines, line)
         end
@@ -2765,10 +2764,9 @@ function M.send_message_command_debug()
     local base_width = math.floor(full_buffer_width * 0.7)
     if base_width < 20 then base_width = 20 end -- Minimum width
     
-    -- Add first line with diamond and two spaces
+    -- Add first line with diamond prefix and remaining lines with three-space indent
     if #response_content_lines > 0 then
-        local first_line = "🮮  " .. response_content_lines[1]
-        local wrapped_first = wrap_text(first_line, base_width, "")
+        local wrapped_first = wrap_text(response_content_lines[1], base_width, "🮮  ")
         for _, line in ipairs(wrapped_first) do
             table.insert(response_lines, line)
         end
