@@ -2471,6 +2471,9 @@ function M.send_message_command()
     progress_timer = vim.loop.new_timer()
     progress_timer:start(5000, 5000, vim.schedule_wrap(update_progress))
     
+    -- Add zigzag arrow to indicate request is being sent
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
     
@@ -2603,6 +2606,9 @@ function M.send_message_command_debug()
     -- Start progress updates every 3 seconds for debug mode
     progress_timer = vim.loop.new_timer()
     progress_timer:start(3000, 3000, vim.schedule_wrap(update_progress))
+    
+    -- Add zigzag arrow to indicate request is being sent
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
