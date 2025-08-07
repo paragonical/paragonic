@@ -102,8 +102,36 @@ local function wrap_text(text, max_width, indent)
                 table.insert(lines, current_line)
             end
             
-            -- Add blank line after this paragraph (except after the last one)
+            -- Check if we should add a blank line after this paragraph
+            local should_add_blank = false
+            
+            -- Add blank line if this is not the last line
             if i < #text_lines then
+                local next_line = text_lines[i + 1]
+                if next_line and next_line:match("%S") then
+                    -- Check if next line starts a new paragraph type
+                    local next_clean = next_line:match("^%s*(.+)$")
+                    
+                    -- Add blank line if next line is a numbered list item
+                    if next_clean and next_clean:match("^%d+%.") then
+                        should_add_blank = true
+                    -- Add blank line if next line starts with common paragraph starters
+                    elseif next_clean and (next_clean:match("^The ") or 
+                                         next_clean:match("^This ") or 
+                                         next_clean:match("^These ") or
+                                         next_clean:match("^In ") or
+                                         next_clean:match("^When ") or
+                                         next_clean:match("^While ") or
+                                         next_clean:match("^However ") or
+                                         next_clean:match("^Additionally ") or
+                                         next_clean:match("^Furthermore ") or
+                                         next_clean:match("^Moreover ")) then
+                        should_add_blank = true
+                    end
+                end
+            end
+            
+            if should_add_blank then
                 table.insert(lines, "")
             end
         end
@@ -170,8 +198,36 @@ local function wrap_text_with_diamond(text, max_width)
                 table.insert(lines, current_line)
             end
             
-            -- Add blank line after this paragraph (except after the last one)
+            -- Check if we should add a blank line after this paragraph
+            local should_add_blank = false
+            
+            -- Add blank line if this is not the last line
             if i < #text_lines then
+                local next_line = text_lines[i + 1]
+                if next_line and next_line:match("%S") then
+                    -- Check if next line starts a new paragraph type
+                    local next_clean = next_line:match("^%s*(.+)$")
+                    
+                    -- Add blank line if next line is a numbered list item
+                    if next_clean and next_clean:match("^%d+%.") then
+                        should_add_blank = true
+                    -- Add blank line if next line starts with common paragraph starters
+                    elseif next_clean and (next_clean:match("^The ") or 
+                                         next_clean:match("^This ") or 
+                                         next_clean:match("^These ") or
+                                         next_clean:match("^In ") or
+                                         next_clean:match("^When ") or
+                                         next_clean:match("^While ") or
+                                         next_clean:match("^However ") or
+                                         next_clean:match("^Additionally ") or
+                                         next_clean:match("^Furthermore ") or
+                                         next_clean:match("^Moreover ")) then
+                        should_add_blank = true
+                    end
+                end
+            end
+            
+            if should_add_blank then
                 table.insert(lines, "")
             end
         end
