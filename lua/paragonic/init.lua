@@ -2216,12 +2216,20 @@ function M.send_message_command()
         return
     end
     
+    -- Add immediate visual feedback that the chat is being sent
+    M.append_debug_message(current_buf, "Sending message to AI...", "info")
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
     if not response then
+        -- Update the status message to show failure
+        M.append_debug_message(current_buf, "Failed to send message: " .. (err or "unknown error"), "error")
         vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
         return
     end
+    
+    -- Update the status message to show success
+    M.append_debug_message(current_buf, "Message sent successfully, processing response...", "success")
     
     -- Add the response to the buffer
     -- Split response into lines to handle multi-line responses
@@ -2280,6 +2288,9 @@ function M.send_message_command_debug()
         return
     end
     
+    -- Add immediate visual feedback that the chat is being sent
+    M.append_debug_message(current_buf, "🚀 Sending message to AI...", "info")
+    
     -- Debug: Starting message send
     M.append_debug_message(current_buf, "Starting message send process", "debug")
     
@@ -2305,7 +2316,7 @@ function M.send_message_command_debug()
         return
     end
     
-    M.append_debug_message(current_buf, "Successfully received response from AI", "success")
+    M.append_debug_message(current_buf, "✅ Successfully received response from AI", "success")
     
     -- Debug: Processing response
     M.append_debug_message(current_buf, "Processing response for buffer insertion", "debug")
