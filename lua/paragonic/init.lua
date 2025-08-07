@@ -3117,7 +3117,7 @@ function M.setup_which_key()
     
     -- Register Paragonic keymaps with which-key (new spec format)
     wk.register({
-        { "<leader>P", group = "🚀 Paragonic", icon = "🚀" },
+        { "<leader>P", name = "🚀 Paragonic", icon = "🚀" },
         { "<leader>Ps", "<cmd>ParagonicSearch<CR>", desc = "🔍 Basic Search" },
         { "<leader>Pf", "<cmd>ParagonicSearchFiltered<CR>", desc = "🔍 Filtered Search" },
         { "<leader>Ph", "<cmd>ParagonicSearchHybrid<CR>", desc = "🔍 Hybrid Search" },
