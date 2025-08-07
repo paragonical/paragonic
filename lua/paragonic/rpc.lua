@@ -73,12 +73,27 @@ function M:connect()
         local use_real_backend = vim.g.paragonic_use_real_backend or false
         
         if use_real_backend then
-            -- Use system() with nc (netcat) for real backend communication
-            print("🔧 RPC: Using system() with nc for real backend")
-            self.use_nc = true
-            self.connected = true
-            print("✅ RPC: Real backend mode enabled (using nc)")
-            return true
+            -- Try to use vim.uv.new_tcp for Neovim
+            if vim and vim.uv and vim.uv.new_tcp then
+                print("🔧 RPC: Using vim.uv.new_tcp for Neovim")
+                self.socket = vim.uv.new_tcp()
+                
+                -- Attempt to connect
+                local success, err = self.socket:connect(host, tonumber(port))
+                if success then
+                    self.connected = true
+                    print("✅ RPC: Successfully connected to backend")
+                    return true
+                else
+                    self.socket:close()
+                    self.socket = nil
+                    self.connected = false
+                    print("❌ RPC: Failed to connect to backend: " .. tostring(err))
+                    return false, err
+                end
+            else
+                print("❌ RPC: vim.uv.new_tcp not available, falling back to mock")
+            end
         end
         
         -- Use simple RPC client for Neovim (mock)
@@ -184,9 +199,9 @@ function M:call(method, params)
         -- Use simple RPC client for Neovim
         print("🔧 RPC: Using simple RPC client for method: " .. method)
         return self.simple_rpc:call(method, params)
-    elseif self.use_nc then
-        -- Use system() with nc (netcat) for real backend communication
-        print("🔧 RPC: Using nc for method: " .. method)
+    elseif self.socket and vim.uv and self.socket:is_active() then
+        -- Use vim.uv TCP socket communication with synchronous wrapper
+        print("🔧 RPC: Using vim.uv TCP socket for method: " .. method)
         
         local request = {
             jsonrpc = "2.0",
@@ -198,16 +213,44 @@ function M:call(method, params)
         local request_json = encode_json(request)
         local message = request_json .. "\n"
         
-        -- Use nc to send the request to the backend
-        local host, port = self.server_address:match("([^:]+):([^:]+)")
-        local nc_command = string.format("echo '%s' | nc %s %s", message:gsub("'", "'\"'\"'"), host, port)
+        -- Synchronous wrapper for vim.uv socket communication
+        local response_received = false
+        local response_data = nil
+        local response_error = nil
         
-        local result = vim.fn.system(nc_command)
-        if vim.v.shell_error ~= 0 then
-            return nil, "Failed to communicate with backend via nc: " .. tostring(result)
+        -- Set up read callback
+        self.socket:read_start(function(err, data)
+            if err then
+                response_error = "Failed to receive response: " .. tostring(err)
+                response_received = true
+            elseif data then
+                response_data = data
+                response_received = true
+            end
+        end)
+        
+        -- Send the request
+        local send_success, send_err = self.socket:write(message)
+        if not send_success then
+            return nil, "Failed to send request: " .. tostring(send_err)
         end
         
-        return result
+        -- Wait for response with timeout using vim.wait
+        local timeout = 30 -- 30 seconds timeout
+        local start_time = vim.uv.now()
+        
+        while not response_received do
+            if vim.uv.now() - start_time > timeout * 1000 then
+                return nil, "Timeout waiting for response"
+            end
+            vim.wait(100) -- Wait 100ms
+        end
+        
+        if response_error then
+            return nil, response_error
+        end
+        
+        return response_data
     elseif self.socket.send and self.socket.receive then
         -- Use traditional socket communication (for non-vim.loop sockets)
         local request = {
