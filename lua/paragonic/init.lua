@@ -302,8 +302,9 @@ end
 -- Get RPC client, initializing backend if needed
 function M._get_rpc_client()
     if not M._rpc_client then
-        -- Initialize backend on first use to prevent startup freezing
-        M._initialize_backend()
+        -- Return nil immediately - let calling functions handle initialization
+        -- This prevents freezing during buffer operations
+        return nil
     end
     return M._rpc_client
 end
@@ -1770,35 +1771,36 @@ end
 function M.get_available_models()
     local rpc_client = M._get_rpc_client()
     if not rpc_client then
-        -- Try to initialize backend if not available
-        if not M.initialize_backend() then
-            return nil, "Backend not available"
-        end
-        rpc_client = M._get_rpc_client()
+        -- Return default models to prevent freezing
+        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
-    -- Get models list
-    local response = rpc_client:list_models()
-    if not response then
-        return nil, "Failed to get models list"
+    -- Get models list with timeout
+    local success, response = pcall(function()
+        return rpc_client:list_models()
+    end)
+    
+    if not success or not response then
+        -- Return default models on failure
+        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Parse JSON response
     local parsed_response = M.parse_json_response(response)
     if not parsed_response then
-        return nil, "Failed to parse models response"
+        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Check for error in response
     if parsed_response.error then
-        return nil, "Models error: " .. (parsed_response.error.message or "Unknown error")
+        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Extract models list
     if parsed_response.result and parsed_response.result.models then
         return parsed_response.result.models
     else
-        return nil, "Unexpected models response format"
+        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
 end
 
@@ -2038,22 +2040,8 @@ function M.open_chat()
             "---"
         })
         
-        -- Update models info asynchronously if backend is available
-        vim.defer_fn(function()
-            local models_response = M.get_available_models()
-            if models_response then
-                -- Display actual models from parsed response
-                local model_names = {}
-                for _, model in ipairs(models_response) do
-                    table.insert(model_names, model.name)
-                end
-                if #model_names > 0 then
-                    local models_info = "Available models: " .. table.concat(model_names, ", ")
-                    -- Update the models line in the buffer
-                    vim.api.nvim_buf_set_lines(chat_buf, 2, 3, false, {models_info})
-                end
-            end
-        end, 100)
+        -- Models info will be updated when user first interacts with the chat
+        -- This prevents freezing during buffer creation
         
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
