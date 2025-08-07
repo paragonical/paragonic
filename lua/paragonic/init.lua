@@ -899,43 +899,9 @@ function M.get_session_event_history()
     return true, event_history
 end
 
+-- AI agent session status getter - delegate to ai_agent module
 function M.get_ai_agent_session_status()
-    if not agent_collaboration_mode or not active_agent_id then
-        return {
-            active = false,
-            session_id = nil,
-            message = "No active AI agent collaboration session"
-        }
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return {
-            active = false,
-            session_id = nil,
-            message = "Session data not found"
-        }
-    end
-    
-    local current_time = os.time()
-    local duration = current_time - session.start_time
-    
-    return {
-        active = true,
-        session_id = active_agent_id,
-        agent_name = session.name,
-        start_time = session.start_time,
-        duration = duration,
-        capabilities = session.capabilities,
-        context = {
-            current_file = vim.fn.expand("%"),
-            current_directory = vim.fn.getcwd(),
-            buffer_count = #vim.api.nvim_list_bufs(),
-            mode = vim.fn.mode()
-        },
-        interaction_count = #session.interactions,
-        message = "AI agent collaboration session active"
-    }
+    return ai_agent.get_ai_agent_session_status()
 end
 
 -- Send a message to the AI and get response
