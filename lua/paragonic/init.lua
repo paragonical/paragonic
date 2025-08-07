@@ -2505,13 +2505,20 @@ function M.send_message_command()
     end
     
     local response_lines = {
-        "",
-        "🮮"
+        ""
     }
     
-    -- Add each line of the response with indentation
-    for _, line in ipairs(response_content_lines) do
-        table.insert(response_lines, "   " .. line)
+    -- Add first line with diamond and two spaces
+    if #response_content_lines > 0 then
+        table.insert(response_lines, "🮮  " .. response_content_lines[1])
+        
+        -- Add remaining lines with three spaces indentation
+        for i = 2, #response_content_lines do
+            table.insert(response_lines, "   " .. response_content_lines[i])
+        end
+    else
+        -- If no content, just add the diamond
+        table.insert(response_lines, "🮮")
     end
     
     -- Add closing lines
@@ -2632,13 +2639,20 @@ function M.send_message_command_debug()
     end
     
     local response_lines = {
-        "",
-        "🮮"
+        ""
     }
     
-    -- Add each line of the response with indentation
-    for _, line in ipairs(response_content_lines) do
-        table.insert(response_lines, "   " .. line)
+    -- Add first line with diamond and two spaces
+    if #response_content_lines > 0 then
+        table.insert(response_lines, "🮮  " .. response_content_lines[1])
+        
+        -- Add remaining lines with three spaces indentation
+        for i = 2, #response_content_lines do
+            table.insert(response_lines, "   " .. response_content_lines[i])
+        end
+    else
+        -- If no content, just add the diamond
+        table.insert(response_lines, "🮮")
     end
     
     -- Add closing lines
