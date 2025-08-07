@@ -284,16 +284,18 @@ function M.setup(opts)
         end
     end, {nargs = "*"})
     
+    -- Set up keyboard mappings immediately
+    M._setup_keymaps()
+    
+    -- Load persistent data asynchronously to avoid startup delay
+    vim.defer_fn(function()
+        M._load_persistent_data()
+    end, 500)  -- Wait 500ms after startup
+    
     -- Initialize backend asynchronously to avoid startup delay
     vim.defer_fn(function()
         M._initialize_backend()
-    end, 100)
-    
-    -- Set up keyboard mappings
-    M._setup_keymaps()
-    
-    -- Load persistent data
-    M._load_persistent_data()
+    end, 2000)  -- Wait 2 seconds after startup
     
     -- Add any autocommands here as needed
 end
