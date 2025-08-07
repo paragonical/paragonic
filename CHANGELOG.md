@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **🮮 Diamond AI Responses**: AI responses now prefixed with diamond symbol (🮮) for better visual distinction
 - **📊 Timestamped Debug Logs**: Debug messages include timestamps for better tracking
 - **🔧 Debug Print Integration**: All internal print statements now write to debug buffer instead of terminal
-- **🎛️ AstroNvim Menu**: Beautiful floating menu accessible via `<leader>P` with all Paragonic commands
+- **🎛️ Which-Key Integration**: Full integration with [which-key.nvim](https://github.com/folke/which-key.nvim) for keymap discovery
+  - All Paragonic commands accessible via `<leader>P` prefix
+  - Visual mode support for searching selected text
+  - Fallback keymaps when which-key is not available
+  - Proper Neovim environment detection for standalone testing
 
 ### Changed
 - **Connection Resilience**: Client no longer gets confused when server restarts
@@ -37,9 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `:ParagonicDebug` command to open debug buffer
 - Added `debug_print()` function to replace all internal print statements
 - Replaced all print statements with debug buffer appends for cleaner terminal output
-- Added `show_paragonic_menu()` function with AstroNvim-style floating menu
-- Added `<leader>P` keymap to access the Paragonic menu
-- Added `:ParagonicMenu` command for menu access
+- Added `setup_which_key()` function for which-key integration
+- Added `<leader>P` keymaps with which-key registration
+- Added visual mode keymaps for searching selected text
+- Added proper Neovim environment detection for standalone testing
 
 ## [0.6.0] - 2025-08-07
 
