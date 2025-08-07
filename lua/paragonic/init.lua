@@ -2474,6 +2474,11 @@ function M.send_message_command()
     -- Add zigzag arrow to indicate request is being sent
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
+    -- Force buffer update to show zigzag immediately
+    vim.api.nvim_buf_call(current_buf, function()
+        vim.cmd("redraw!")
+    end)
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
     
@@ -2507,9 +2512,7 @@ function M.send_message_command()
         table.insert(response_content_lines, response)
     end
     
-    local response_lines = {
-        ""
-    }
+    local response_lines = {}
     
     -- Add first line with diamond and two spaces
     if #response_content_lines > 0 then
@@ -2610,6 +2613,11 @@ function M.send_message_command_debug()
     -- Add zigzag arrow to indicate request is being sent
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
+    -- Force buffer update to show zigzag immediately
+    vim.api.nvim_buf_call(current_buf, function()
+        vim.cmd("redraw!")
+    end)
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
     
@@ -2644,9 +2652,7 @@ function M.send_message_command_debug()
         table.insert(response_content_lines, response)
     end
     
-    local response_lines = {
-        ""
-    }
+    local response_lines = {}
     
     -- Add first line with diamond and two spaces
     if #response_content_lines > 0 then
