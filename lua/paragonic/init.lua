@@ -73,7 +73,7 @@ local function wrap_text(text, max_width, indent)
             local current_line = indent
             local current_length = #indent
             
-            for _, word in ipairs(words) do
+            for i, word in ipairs(words) do
                 local word_length = #word
                 
                 -- If adding this word would exceed the line limit
@@ -86,9 +86,14 @@ local function wrap_text(text, max_width, indent)
                     current_line = indent .. word
                     current_length = #indent + word_length
                 else
-                    -- Add word to current line
-                    current_line = current_line .. word
-                    current_length = current_length + word_length
+                    -- Add word to current line (with space if not first word)
+                    if current_line ~= indent then
+                        current_line = current_line .. " " .. word
+                        current_length = current_length + 1 + word_length
+                    else
+                        current_line = current_line .. word
+                        current_length = current_length + word_length
+                    end
                 end
             end
             
@@ -136,7 +141,7 @@ local function wrap_text_with_diamond(text, max_width)
             local current_line = "🮮  "
             local current_length = 3  -- Length of diamond + two spaces
             
-            for _, word in ipairs(words) do
+            for i, word in ipairs(words) do
                 local word_length = #word
                 
                 -- If adding this word would exceed the line limit
@@ -149,9 +154,14 @@ local function wrap_text_with_diamond(text, max_width)
                     current_line = "   " .. word
                     current_length = 3 + word_length
                 else
-                    -- Add word to current line
-                    current_line = current_line .. word
-                    current_length = current_length + word_length
+                    -- Add word to current line (with space if not first word)
+                    if current_line ~= "🮮  " then
+                        current_line = current_line .. " " .. word
+                        current_length = current_length + 1 + word_length
+                    else
+                        current_line = current_line .. word
+                        current_length = current_length + word_length
+                    end
                 end
             end
             
