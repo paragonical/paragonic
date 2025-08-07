@@ -73,28 +73,12 @@ function M:connect()
         local use_real_backend = vim.g.paragonic_use_real_backend or false
         
         if use_real_backend then
-            -- Try to use real TCP socket for Neovim
-            local socket_available = pcall(require, "socket")
-            local socket = socket_available and require("socket") or nil
-            
-            if socket and socket.tcp then
-                print("🔧 RPC: Using real TCP socket for Neovim")
-                self.socket = socket.tcp()
-                self.socket:settimeout(60)
-                
-                local success, err = self.socket:connect(host, tonumber(port))
-                if success then
-                    self.connected = true
-                    return true
-                else
-                    self.socket:close()
-                    self.socket = nil
-                    self.connected = false
-                    return false, err
-                end
-            else
-                print("❌ RPC: Socket library not available, falling back to mock")
-            end
+            -- Use system() with nc (netcat) for real backend communication
+            print("🔧 RPC: Using system() with nc for real backend")
+            self.use_nc = true
+            self.connected = true
+            print("✅ RPC: Real backend mode enabled (using nc)")
+            return true
         end
         
         -- Use simple RPC client for Neovim (mock)
@@ -200,8 +184,32 @@ function M:call(method, params)
         -- Use simple RPC client for Neovim
         print("🔧 RPC: Using simple RPC client for method: " .. method)
         return self.simple_rpc:call(method, params)
+    elseif self.use_nc then
+        -- Use system() with nc (netcat) for real backend communication
+        print("🔧 RPC: Using nc for method: " .. method)
+        
+        local request = {
+            jsonrpc = "2.0",
+            method = method,
+            params = params or {},
+            id = 1
+        }
+        
+        local request_json = encode_json(request)
+        local message = request_json .. "\n"
+        
+        -- Use nc to send the request to the backend
+        local host, port = self.server_address:match("([^:]+):([^:]+)")
+        local nc_command = string.format("echo '%s' | nc %s %s", message:gsub("'", "'\"'\"'"), host, port)
+        
+        local result = vim.fn.system(nc_command)
+        if vim.v.shell_error ~= 0 then
+            return nil, "Failed to communicate with backend via nc: " .. tostring(result)
+        end
+        
+        return result
     elseif self.socket.send and self.socket.receive then
-        -- Use real socket communication
+        -- Use traditional socket communication (for non-vim.loop sockets)
         local request = {
             jsonrpc = "2.0",
             method = method,
