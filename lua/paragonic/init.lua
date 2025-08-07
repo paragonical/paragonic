@@ -2213,7 +2213,7 @@ function M.open_chat()
             "",
             "Type your message below and use :ParagonicSend to send:",
             "",
-            "---"
+            "⎯⎯⎯"
         })
         
         -- Models info will be updated when user first interacts with the chat
