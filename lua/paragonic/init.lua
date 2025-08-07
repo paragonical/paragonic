@@ -1974,7 +1974,7 @@ function M._initialize_backend()
     print("✅ paragonic.rpc module loaded successfully")
     
     print("🔧 Step 2: About to create RPC client with rpc.new()...")
-    local success2, client = pcall(rpc.new, rpc, "127.0.0.1:3000")
+    local success2, client = pcall(function() return rpc.new("127.0.0.1:3000") end)
     if not success2 then
         print("❌ Failed to create RPC client: " .. tostring(client))
         return false
