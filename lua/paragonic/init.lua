@@ -52,52 +52,53 @@ local function wrap_text(text, max_width, indent)
     indent = indent or ""
     local lines = {}
     
-    -- Handle paragraph breaks by splitting on double newlines
-    local paragraphs = {}
-    for paragraph in text:gmatch("[^\r\n]+") do
-        if paragraph:match("%S") then  -- Only add non-empty paragraphs
-            table.insert(paragraphs, paragraph)
-        end
+    -- Split text into lines and detect paragraph breaks
+    local text_lines = {}
+    for line in text:gmatch("[^\r\n]+") do
+        table.insert(text_lines, line)
     end
     
-    for _, paragraph in ipairs(paragraphs) do
-        local words = {}
-        
-        -- Split paragraph into words, preserving spaces
-        for word in paragraph:gmatch("[%s]*[^%s]+") do
-            table.insert(words, word)
-        end
-        
-        local current_line = indent
-        local current_length = #indent
-        
-        for _, word in ipairs(words) do
-            local word_length = #word
+    -- Process each line as a potential paragraph
+    for i, line in ipairs(text_lines) do
+        if line:match("%S") then  -- Only process non-empty lines
+            local words = {}
             
-            -- If adding this word would exceed the line limit
-            if current_length + word_length > max_width then
-                -- Add current line to lines (if not empty)
-                if current_line ~= indent then
-                    table.insert(lines, current_line)
-                end
-                -- Start new line with indent
-                current_line = indent .. word
-                current_length = #indent + word_length
-            else
-                -- Add word to current line
-                current_line = current_line .. word
-                current_length = current_length + word_length
+            -- Split line into words, preserving spaces
+            for word in line:gmatch("[%s]*[^%s]+") do
+                table.insert(words, word)
             end
-        end
-        
-        -- Add the last line if it has content
-        if current_line ~= indent then
-            table.insert(lines, current_line)
-        end
-        
-        -- Add blank line between paragraphs (except after the last one)
-        if _ < #paragraphs then
-            table.insert(lines, "")
+            
+            local current_line = indent
+            local current_length = #indent
+            
+            for _, word in ipairs(words) do
+                local word_length = #word
+                
+                -- If adding this word would exceed the line limit
+                if current_length + word_length > max_width then
+                    -- Add current line to lines (if not empty)
+                    if current_line ~= indent then
+                        table.insert(lines, current_line)
+                    end
+                    -- Start new line with indent
+                    current_line = indent .. word
+                    current_length = #indent + word_length
+                else
+                    -- Add word to current line
+                    current_line = current_line .. word
+                    current_length = current_length + word_length
+                end
+            end
+            
+            -- Add the last line if it has content
+            if current_line ~= indent then
+                table.insert(lines, current_line)
+            end
+            
+            -- Add blank line after this paragraph (except after the last one)
+            if i < #text_lines then
+                table.insert(lines, "")
+            end
         end
     end
     
@@ -112,52 +113,53 @@ local function wrap_text_with_diamond(text, max_width)
     
     local lines = {}
     
-    -- Handle paragraph breaks by splitting on double newlines
-    local paragraphs = {}
-    for paragraph in text:gmatch("[^\r\n]+") do
-        if paragraph:match("%S") then  -- Only add non-empty paragraphs
-            table.insert(paragraphs, paragraph)
-        end
+    -- Split text into lines and detect paragraph breaks
+    local text_lines = {}
+    for line in text:gmatch("[^\r\n]+") do
+        table.insert(text_lines, line)
     end
     
-    for i, paragraph in ipairs(paragraphs) do
-        local words = {}
-        
-        -- Split paragraph into words, preserving spaces
-        for word in paragraph:gmatch("[%s]*[^%s]+") do
-            table.insert(words, word)
-        end
-        
-        local current_line = "🮮  "
-        local current_length = 3  -- Length of diamond + two spaces
-        
-        for _, word in ipairs(words) do
-            local word_length = #word
+    -- Process each line as a potential paragraph
+    for i, line in ipairs(text_lines) do
+        if line:match("%S") then  -- Only process non-empty lines
+            local words = {}
             
-            -- If adding this word would exceed the line limit
-            if current_length + word_length > max_width then
-                -- Add current line to lines (if not empty)
-                if current_line ~= "🮮  " then
-                    table.insert(lines, current_line)
-                end
-                -- Start new line with three spaces (no diamond)
-                current_line = "   " .. word
-                current_length = 3 + word_length
-            else
-                -- Add word to current line
-                current_line = current_line .. word
-                current_length = current_length + word_length
+            -- Split line into words, preserving spaces
+            for word in line:gmatch("[%s]*[^%s]+") do
+                table.insert(words, word)
             end
-        end
-        
-        -- Add the last line if it has content
-        if current_line ~= "🮮  " then
-            table.insert(lines, current_line)
-        end
-        
-        -- Add blank line between paragraphs (except after the last one)
-        if i < #paragraphs then
-            table.insert(lines, "")
+            
+            local current_line = "🮮  "
+            local current_length = 3  -- Length of diamond + two spaces
+            
+            for _, word in ipairs(words) do
+                local word_length = #word
+                
+                -- If adding this word would exceed the line limit
+                if current_length + word_length > max_width then
+                    -- Add current line to lines (if not empty)
+                    if current_line ~= "🮮  " then
+                        table.insert(lines, current_line)
+                    end
+                    -- Start new line with three spaces (no diamond)
+                    current_line = "   " .. word
+                    current_length = 3 + word_length
+                else
+                    -- Add word to current line
+                    current_line = current_line .. word
+                    current_length = current_length + word_length
+                end
+            end
+            
+            -- Add the last line if it has content
+            if current_line ~= "🮮  " then
+                table.insert(lines, current_line)
+            end
+            
+            -- Add blank line after this paragraph (except after the last one)
+            if i < #text_lines then
+                table.insert(lines, "")
+            end
         end
     end
     
