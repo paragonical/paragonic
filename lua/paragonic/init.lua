@@ -59,6 +59,9 @@ function M.setup(opts)
         insights_file = data_dir .. "/search_insights.json"
     end
     
+    -- Set debug buffer flag for RPC module
+    vim.g.paragonic_debug_buffer = true
+    
     -- Set database path if not already set
     if not config.database_path then
         config.database_path = vim.fn.stdpath("data") .. "/paragonic/db"

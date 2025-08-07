@@ -4,6 +4,23 @@ Paragonic RPC Client for connecting to Rust JSON-RPC server
 
 local M = {}
 
+-- Debug print function that uses debug buffer if available
+local function debug_print(message, level)
+    if vim and vim.g and vim.g.paragonic_debug_buffer then
+        -- Try to use the main module's debug print if available
+        local ok, paragonic = pcall(require, "paragonic")
+        if ok and paragonic.debug_print then
+            paragonic.debug_print(message, level or "info")
+        else
+            -- Fallback to vim.notify
+            vim.notify("RPC: " .. message, vim.log.levels.INFO)
+        end
+    else
+        -- Fallback to print for standalone testing
+        print("RPC: " .. message)
+    end
+end
+
 -- JSON encode function using vim.json
 local function encode_json(obj)
     return vim.json.encode(obj)
@@ -54,7 +71,7 @@ function M:check_connection_health()
     end)
     
     if not success or not result then
-        print("🔧 RPC: Connection health check failed, marking as disconnected")
+        debug_print("🔧 Connection health check failed, marking as disconnected", "warning")
         self.connected = false
         return false
     end
@@ -64,7 +81,7 @@ end
 
 -- Attempt to reconnect to the server
 function M:reconnect()
-    print("🔧 RPC: Attempting to reconnect to server...")
+    debug_print("🔧 Attempting to reconnect to server...", "info")
     
     -- Clean up existing connection
     if self.socket then
@@ -76,33 +93,33 @@ function M:reconnect()
     
     -- Try to reconnect
     for attempt = 1, self.max_reconnect_attempts do
-        print("🔧 RPC: Reconnection attempt " .. attempt .. "/" .. self.max_reconnect_attempts)
+        debug_print("🔧 Reconnection attempt " .. attempt .. "/" .. self.max_reconnect_attempts, "info")
         
         local success, err = self:connect()
         if success then
-            print("✅ RPC: Reconnection successful")
+            debug_print("✅ Reconnection successful", "success")
             return true
         else
-            print("❌ RPC: Reconnection attempt " .. attempt .. " failed: " .. tostring(err))
+            debug_print("❌ Reconnection attempt " .. attempt .. " failed: " .. tostring(err), "error")
             
             if attempt < self.max_reconnect_attempts then
-                print("⏳ RPC: Waiting " .. self.reconnect_delay .. " seconds before next attempt...")
+                debug_print("⏳ Waiting " .. self.reconnect_delay .. " seconds before next attempt...", "info")
                 vim.wait(self.reconnect_delay * 1000)
             end
         end
     end
     
-    print("❌ RPC: Failed to reconnect after " .. self.max_reconnect_attempts .. " attempts")
+    debug_print("❌ Failed to reconnect after " .. self.max_reconnect_attempts .. " attempts", "error")
     return false
 end
 
 -- Connect to the RPC server
 function M:connect()
-    print("🔧 RPC connect() called, server_address=" .. tostring(self.server_address))
+    debug_print("🔧 connect() called, server_address=" .. tostring(self.server_address), "debug")
     
     -- Check if server_address is valid
     if not self.server_address then
-        print("❌ RPC connect(): server_address is nil")
+        debug_print("❌ connect(): server_address is nil", "error")
         return false, "Server address is nil"
     end
     
@@ -110,7 +127,7 @@ function M:connect()
     local host, port = self.server_address:match("([^:]+):?(%d*)")
     port = port or "3000" -- Default port if not specified
     
-    print("🔧 RPC connect(): parsed host=" .. tostring(host) .. ", port=" .. tostring(port))
+    debug_print("🔧 connect(): parsed host=" .. tostring(host) .. ", port=" .. tostring(port), "debug")
     
     -- Try to load socket library
     local socket_available = pcall(require, "socket")
@@ -143,31 +160,31 @@ function M:connect()
         if use_real_backend then
             -- Try to use vim.uv.new_tcp for Neovim
             if vim and vim.uv and vim.uv.new_tcp then
-                print("🔧 RPC: Using vim.uv.new_tcp for Neovim")
+                debug_print("🔧 Using vim.uv.new_tcp for Neovim", "debug")
                 self.socket = vim.uv.new_tcp()
                 
                 -- Attempt to connect
                 local success, err = self.socket:connect(host, tonumber(port))
                 if success then
                     self.connected = true
-                    print("✅ RPC: Successfully connected to backend")
+                    debug_print("✅ Successfully connected to backend", "success")
                     return true
                 else
                     self.socket:close()
                     self.socket = nil
                     self.connected = false
-                    print("❌ RPC: Failed to connect to backend: " .. tostring(err))
+                    debug_print("❌ Failed to connect to backend: " .. tostring(err), "error")
                     return false, err
                 end
             else
-                print("❌ RPC: vim.uv.new_tcp not available, falling back to mock")
+                debug_print("❌ vim.uv.new_tcp not available, falling back to mock", "warning")
             end
         end
         
         -- Use simple RPC client for Neovim (mock)
         local simple_rpc_ok, simple_rpc = pcall(require, "paragonic.rpc_simple")
         if simple_rpc_ok then
-            print("🔧 RPC: Using simple RPC client for Neovim")
+            debug_print("🔧 Using simple RPC client for Neovim", "debug")
             self.simple_rpc = simple_rpc.new(self.server_address)
             -- Connect the simple RPC client
             local success, err = self.simple_rpc:connect()
@@ -175,11 +192,11 @@ function M:connect()
                 self.connected = true
                 return true
             else
-                print("❌ RPC: Simple RPC client connection failed: " .. tostring(err))
+                debug_print("❌ Simple RPC client connection failed: " .. tostring(err), "error")
                 return false, err
             end
         else
-            print("❌ RPC: Failed to load simple RPC client: " .. tostring(simple_rpc))
+            debug_print("❌ Failed to load simple RPC client: " .. tostring(simple_rpc), "error")
             -- Fallback to mock socket for testing
             -- Check if this is a test failure scenario
             if host == "127.0.0.1" and port == "9999" then
@@ -275,11 +292,11 @@ function M:call(method, params)
     
     if self.simple_rpc then
         -- Use simple RPC client for Neovim
-        print("🔧 RPC: Using simple RPC client for method: " .. method)
+        debug_print("🔧 Using simple RPC client for method: " .. method, "debug")
         return self.simple_rpc:call(method, params)
     elseif self.socket and vim.uv and self.connected then
         -- Use vim.uv TCP socket communication with synchronous wrapper
-        print("🔧 RPC: Using vim.uv TCP socket for method: " .. method)
+        debug_print("🔧 Using vim.uv TCP socket for method: " .. method, "debug")
         
         local request = {
             jsonrpc = "2.0",
@@ -311,7 +328,7 @@ function M:call(method, params)
         local send_success, send_err = self.socket:write(message)
         if not send_success then
             -- Connection might be broken, try to reconnect
-            print("🔧 RPC: Send failed, attempting reconnection...")
+            debug_print("🔧 Send failed, attempting reconnection...", "warning")
             if self:reconnect() then
                 -- Retry the call after reconnection
                 return self:call(method, params)
@@ -333,7 +350,7 @@ function M:call(method, params)
         
         if response_error then
             -- Connection error, try to reconnect
-            print("🔧 RPC: Response error, attempting reconnection...")
+            debug_print("🔧 Response error, attempting reconnection...", "warning")
             if self:reconnect() then
                 -- Retry the call after reconnection
                 return self:call(method, params)
@@ -360,7 +377,7 @@ function M:call(method, params)
         local send_success, send_err = self.socket:send(message)
         if not send_success then
             -- Connection might be broken, try to reconnect
-            print("🔧 RPC: Send failed, attempting reconnection...")
+            debug_print("🔧 Send failed, attempting reconnection...", "warning")
             if self:reconnect() then
                 -- Retry the call after reconnection
                 return self:call(method, params)
@@ -373,7 +390,7 @@ function M:call(method, params)
         local response, recv_err = self.socket:receive("*l")  -- Receive one line
         if not response then
             -- Connection error, try to reconnect
-            print("🔧 RPC: Receive failed, attempting reconnection...")
+            debug_print("🔧 Receive failed, attempting reconnection...", "warning")
             if self:reconnect() then
                 -- Retry the call after reconnection
                 return self:call(method, params)
