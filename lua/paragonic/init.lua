@@ -1692,290 +1692,43 @@ end
 
 -- Search history and saved searches functionality
 
--- Add search to history
+-- Search history functions - delegate to search module
 function M.add_to_search_history(query, search_type, results_count, timestamp)
-    timestamp = timestamp or os.time()
-    
-    local history_entry = {
-        query = query,
-        type = search_type,
-        results_count = results_count,
-        timestamp = timestamp,
-        date = os.date("%Y-%m-%d %H:%M:%S", timestamp)
-    }
-    
-    -- Add to beginning of history
-    table.insert(search_history, 1, history_entry)
-    
-    -- Keep history size manageable
-    if #search_history > max_history_size then
-        table.remove(search_history, #search_history)
-    end
-    
-    -- Auto-save to disk
-    M._save_search_history()
+    return search.add_to_search_history(query, search_type, results_count, timestamp)
 end
 
--- Get search history
 function M.get_search_history()
-    return search_history
+    return search.get_search_history()
 end
 
--- Clear search history
 function M.clear_search_history()
-    search_history = {}
-    
-    -- Auto-save to disk
-    M._save_search_history()
-    
-    vim.notify("Paragonic: Search history cleared", vim.log.levels.INFO)
+    return search.clear_search_history()
 end
 
--- Save a search
 function M.save_search(name, query, search_type, content_type, limit, threshold)
-    if not name or name == "" then
-        vim.notify("Search name is required", vim.log.levels.WARN)
-        return false
-    end
-    
-    -- Check if name already exists
-    for _, saved in ipairs(saved_searches) do
-        if saved.name == name then
-            vim.notify("A saved search with this name already exists", vim.log.levels.WARN)
-            return false
-        end
-    end
-    
-    local saved_search = {
-        name = name,
-        query = query,
-        type = search_type,
-        content_type = content_type,
-        limit = limit or 10,
-        threshold = threshold or 0.0,
-        created_at = os.time(),
-        created_date = os.date("%Y-%m-%d %H:%M:%S")
-    }
-    
-    table.insert(saved_searches, saved_search)
-    
-    -- Auto-save to disk
-    M._save_saved_searches()
-    
-    vim.notify("Paragonic: Search '" .. name .. "' saved successfully", vim.log.levels.INFO)
-    return true
+    return search.save_search(name, query, search_type, content_type, limit, threshold)
 end
 
--- Get saved searches
 function M.get_saved_searches()
-    return saved_searches
+    return search.get_saved_searches()
 end
 
--- Delete a saved search
 function M.delete_saved_search(name)
-    for i, saved in ipairs(saved_searches) do
-        if saved.name == name then
-                    table.remove(saved_searches, i)
-        
-        -- Auto-save to disk
-        M._save_saved_searches()
-        
-        vim.notify("Paragonic: Saved search '" .. name .. "' deleted", vim.log.levels.INFO)
-        return true
-        end
-    end
-    vim.notify("Saved search '" .. name .. "' not found", vim.log.levels.WARN)
-    return false
+    return search.delete_saved_search(name)
 end
 
--- Execute a saved search
 function M.execute_saved_search(name)
-    for _, saved in ipairs(saved_searches) do
-        if saved.name == name then
-            local results, err
-            
-            if saved.type == "basic" then
-                results, err = M.search_embeddings(saved.query, saved.limit)
-            elseif saved.type == "filtered" then
-                results, err = M.find_similar_content(saved.query, saved.content_type, saved.limit, saved.threshold)
-            elseif saved.type == "hybrid" then
-                results, err = M.hybrid_search(saved.query, saved.content_type, saved.limit, saved.threshold, true)
-            end
-            
-            if results then
-                -- Add to history
-                M.add_to_search_history(saved.query, saved.type, results.results and #results.results or 0)
-                
-                -- Display results
-                M.display_search_results(results, "Saved Search: " .. saved.name)
-                return true
-            else
-                vim.notify("Failed to execute saved search: " .. (err or "unknown error"), vim.log.levels.ERROR)
-                return false
-            end
-        end
-    end
-    
-    vim.notify("Saved search '" .. name .. "' not found", vim.log.levels.WARN)
-    return false
+    return search.execute_saved_search(name)
 end
 
--- Show search history
+-- Show search history - delegate to search module
 function M.show_search_history()
-    if #search_history == 0 then
-        vim.notify("Paragonic: No search history available", vim.log.levels.INFO)
-        return
-    end
-    
-    -- Create buffer for history
-    local buf = vim.api.nvim_create_buf(true, true)
-    vim.api.nvim_buf_set_name(buf, "paragonic://search-history")
-    
-    -- Format history
-    local lines = {
-        "📚 Search History",
-        string.rep("─", 15),
-        "",
-        "Recent searches:",
-        ""
-    }
-    
-    for i, entry in ipairs(search_history) do
-        local type_emoji = {
-            basic = "🔍",
-            filtered = "📁",
-            hybrid = "🔗"
-        }
-        local emoji = type_emoji[entry.type] or "🔍"
-        
-        table.insert(lines, string.format("%d. %s %s (%d results) - %s", 
-            i, emoji, entry.query, entry.results_count, entry.date))
-    end
-    
-    -- Add footer
-    table.insert(lines, "")
-    table.insert(lines, string.rep("─", 50))
-    table.insert(lines, "⌨️  Navigation: j/k to move, <CR> to repeat, d to delete, q to close")
-    
-    -- Set buffer content
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    
-    -- Set buffer options
-    vim.api.nvim_buf_set_option(buf, "modifiable", false)
-    vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-    vim.api.nvim_buf_set_option(buf, "swapfile", false)
-    vim.api.nvim_buf_set_option(buf, "filetype", "paragonic-history")
-    
-    -- Create window
-    local width = math.min(80, vim.o.columns - 4)
-    local height = math.min(20, vim.o.lines - 4)
-    local row = math.floor((vim.o.lines - height) / 2)
-    local col = math.floor((vim.o.columns - width) / 2)
-    
-    local win = vim.api.nvim_open_win(buf, true, {
-        relative = "editor",
-        width = width,
-        height = height,
-        row = row,
-        col = col,
-        style = "minimal",
-        border = "rounded",
-        title = " Search History ",
-        title_pos = "center"
-    })
-    
-    -- Set up keymaps
-    vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", function()
-        M.repeat_search_from_history(buf)
-    end, {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "d", function()
-        M.delete_from_search_history(buf)
-    end, {noremap = true, silent = true})
-    
-    -- Set cursor to first entry
-    vim.api.nvim_win_set_cursor(win, {5, 0})
+    return search.show_search_history()
 end
 
--- Show saved searches
+-- Show saved searches - delegate to search module
 function M.show_saved_searches()
-    if #saved_searches == 0 then
-        vim.notify("Paragonic: No saved searches available", vim.log.levels.INFO)
-        return
-    end
-    
-    -- Create buffer for saved searches
-    local buf = vim.api.nvim_create_buf(true, true)
-    vim.api.nvim_buf_set_name(buf, "paragonic://saved-searches")
-    
-    -- Format saved searches
-    local lines = {
-        "💾 Saved Searches",
-        string.rep("─", 17),
-        "",
-        "Your saved searches:",
-        ""
-    }
-    
-    for i, saved in ipairs(saved_searches) do
-        local type_emoji = {
-            basic = "🔍",
-            filtered = "📁",
-            hybrid = "🔗"
-        }
-        local emoji = type_emoji[saved.type] or "🔍"
-        
-        table.insert(lines, string.format("%d. %s %s (%s)", 
-            i, emoji, saved.name, saved.query))
-        table.insert(lines, string.format("   Type: %s, Limit: %d, Created: %s", 
-            saved.type, saved.limit, saved.created_date))
-        table.insert(lines, "")
-    end
-    
-    -- Add footer
-    table.insert(lines, string.rep("─", 50))
-    table.insert(lines, "⌨️  Navigation: j/k to move, <CR> to execute, d to delete, q to close")
-    
-    -- Set buffer content
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    
-    -- Set buffer options
-    vim.api.nvim_buf_set_option(buf, "modifiable", false)
-    vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-    vim.api.nvim_buf_set_option(buf, "swapfile", false)
-    vim.api.nvim_buf_set_option(buf, "filetype", "paragonic-saved")
-    
-    -- Create window
-    local width = math.min(80, vim.o.columns - 4)
-    local height = math.min(20, vim.o.lines - 4)
-    local row = math.floor((vim.o.lines - height) / 2)
-    local col = math.floor((vim.o.columns - width) / 2)
-    
-    local win = vim.api.nvim_open_win(buf, true, {
-        relative = "editor",
-        width = width,
-        height = height,
-        row = row,
-        col = col,
-        style = "minimal",
-        border = "rounded",
-        title = " Saved Searches ",
-        title_pos = "center"
-    })
-    
-    -- Set up keymaps
-    vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", function()
-        M.execute_saved_search_from_list(buf)
-    end, {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(buf, "n", "d", function()
-        M.delete_saved_search_from_list(buf)
-    end, {noremap = true, silent = true})
-    
-    -- Set cursor to first entry
-    vim.api.nvim_win_set_cursor(win, {5, 0})
+    return search.show_saved_searches()
 end
 
 -- Repeat search from history
