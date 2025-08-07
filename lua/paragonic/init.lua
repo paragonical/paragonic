@@ -2602,150 +2602,37 @@ M.config_schema = {
 }
 
 -- Get current configuration (with defaults)
+-- Configuration functions - delegate to config module
 function M.get_configuration()
-    local ok, config = pcall(vim.api.nvim_get_var, "g:paragonic_config")
-    if not ok or type(config) ~= "table" then config = {} end
-    for key, schema in pairs(M.config_schema) do
-        if config[key] == nil and schema.default ~= nil then
-            config[key] = schema.default
-        end
-    end
-    return config
+    return config.get_configuration()
 end
 
--- Validate configuration value
 function M.validate_config_value(key, value)
-    local schema = M.config_schema[key]
-    if not schema then
-        return false, "Unknown configuration key: " .. key
-    end
-    if schema.type == "string" and type(value) ~= "string" then
-        return false, "Value must be a string for key: " .. key
-    elseif schema.type == "integer" and type(value) ~= "number" then
-        return false, "Value must be a number for key: " .. key
-    elseif schema.type == "boolean" and type(value) ~= "boolean" then
-        return false, "Value must be a boolean for key: " .. key
-    end
-    if schema.enum and type(value) == "string" then
-        local valid = false
-        for _, enum_value in ipairs(schema.enum) do
-            if value == enum_value then valid = true; break end
-        end
-        if not valid then
-            return false, "Value must be one of: " .. table.concat(schema.enum, ", ")
-        end
-    end
-    if schema.minimum and type(value) == "number" and value < schema.minimum then
-        return false, "Value must be at least " .. schema.minimum .. " for key: " .. key
-    end
-    if schema.maximum and type(value) == "number" and value > schema.maximum then
-        return false, "Value must be at most " .. schema.maximum .. " for key: " .. key
-    end
-    return true, nil
+    return config.validate_config_value(key, value)
 end
 
--- Set configuration value (with validation)
 function M.set_configuration_value(key, value)
-    local valid, err = M.validate_config_value(key, value)
-    if not valid then return false, err end
-    local config = M.get_configuration()
-    config[key] = value
-    vim.api.nvim_set_var("g:paragonic_config", config)
-    return true, nil
+    return config.set_configuration_value(key, value)
 end
 
--- Save configuration to file
 function M.save_configuration_to_file(config, file_path)
-    local config_dir = vim.fn.fnamemodify(file_path, ":h")
-    if not vim.fn.isdirectory(config_dir) then
-        vim.fn.mkdir(config_dir, "p")
-    end
-    local config_json = vim.json.encode(config)
-    vim.fn.writefile({config_json}, file_path)
-    return true
+    return config.save_configuration_to_file(config, file_path)
 end
 
--- Load configuration from file
 function M.load_configuration_from_file(file_path)
-    if vim.fn.filereadable(file_path) == 0 then
-        return nil, "Configuration file not found: " .. file_path
-    end
-    local lines = vim.fn.readfile(file_path)
-    if #lines == 0 then
-        return nil, "Configuration file is empty: " .. file_path
-    end
-    local ok, config = pcall(vim.json.decode, lines[1])
-    if not ok then
-        return nil, "Invalid JSON in configuration file: " .. file_path
-    end
-    return config
+    return config.load_configuration_from_file(file_path)
 end
 
--- Get configuration schema as MCP resource
 function M.get_configuration_schema()
-    local schema_resources = {}
-    for key, schema in pairs(M.config_schema) do
-        table.insert(schema_resources, {
-            key = key,
-            type = schema.type,
-            description = schema.description,
-            default = schema.default,
-            enum = schema.enum,
-            minimum = schema.minimum,
-            maximum = schema.maximum
-        })
-    end
-    return schema_resources
+    return config.get_configuration_schema()
 end
 
--- Expose configuration as MCP resource
 function M.get_configuration_as_resource()
-    local config = M.get_configuration()
-    local schema = M.get_configuration_schema()
-    return {
-        uri = "neovim://configuration",
-        name = "Neovim Configuration",
-        description = "Current configuration settings and schema",
-        mime_type = "application/json",
-        content = {
-            config = config,
-            schema = schema,
-            timestamp = os.time()
-        }
-    }
+    return config.get_configuration_as_resource()
 end
 
--- Handle MCP configuration methods
 function M.handle_configuration_method(method, params)
-    if method == "config/get" then
-        local config = M.get_configuration()
-        return { config = config }
-    elseif method == "config/set" then
-        local key = params.key
-        local value = params.value
-        if not key then
-            return { error = { code = -32602, message = "Configuration key is required" } }
-        end
-        local success, err = M.set_configuration_value(key, value)
-        if success then
-            return { success = true, message = "Configuration updated successfully" }
-        else
-            return { error = { code = -32602, message = err } }
-        end
-    elseif method == "config/schema" then
-        local schema = M.get_configuration_schema()
-        return { schema = schema }
-    elseif method == "config/validate" then
-        local key = params.key
-        local value = params.value
-        if not key then
-            return { error = { code = -32602, message = "Configuration key is required" } }
-        end
-        local valid, err = M.validate_config_value(key, value)
-        return { valid = valid, error = err }
-    else
-        return { error = { code = -32601, message = "Unknown configuration method: " .. tostring(method) } }
-    end
+    return config.handle_configuration_method(method, params)
 end
 
 -- Integrate with MCP resource listing
