@@ -53,8 +53,18 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicChat", M.open_chat, {})
     vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
     vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
-    vim.api.nvim_create_user_command("ParagonicSend", M.send_message_command, {})
+    vim.api.nvim_create_user_command("ParagonicSend", function()
+        print("WRAPPER: About to call send_message_command")
+        vim.notify("WRAPPER: About to call send_message_command", vim.log.levels.INFO)
+        M.send_message_command()
+        print("WRAPPER: send_message_command completed")
+        vim.notify("WRAPPER: send_message_command completed", vim.log.levels.INFO)
+    end, {})
     vim.api.nvim_create_user_command("ParagonicSendDebug", M.send_message_command_debug, {})
+    vim.api.nvim_create_user_command("ParagonicTest", function()
+        print("TEST COMMAND WORKING")
+        vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)
+    end, {})
     vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
     vim.api.nvim_create_user_command("ParagonicSaveConfig", M.save_config_command, {})
     
@@ -2246,7 +2256,9 @@ end
 
 -- Send message command
 function M.send_message_command()
-    vim.notify("🚀 send_message_command() called", vim.log.levels.INFO)
+    -- Immediate debugging at function entry
+    print("🚀 send_message_command() called - PRINT")
+    vim.notify("🚀 send_message_command() called - NOTIFY", vim.log.levels.INFO)
     
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
