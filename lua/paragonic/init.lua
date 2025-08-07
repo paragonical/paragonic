@@ -43,6 +43,51 @@ local history_file = nil
 local saved_searches_file = nil
 local insights_file = nil
 
+-- Word wrapping helper function
+local function wrap_text(text, max_width, indent)
+    if not text or text == "" then
+        return {}
+    end
+    
+    indent = indent or ""
+    local lines = {}
+    local words = {}
+    
+    -- Split text into words, preserving spaces
+    for word in text:gmatch("[%s]*[^%s]+") do
+        table.insert(words, word)
+    end
+    
+    local current_line = indent
+    local current_length = #indent
+    
+    for _, word in ipairs(words) do
+        local word_length = #word
+        
+        -- If adding this word would exceed the line limit
+        if current_length + word_length > max_width then
+            -- Add current line to lines (if not empty)
+            if current_line ~= indent then
+                table.insert(lines, current_line)
+            end
+            -- Start new line with indent
+            current_line = indent .. word
+            current_length = #indent + word_length
+        else
+            -- Add word to current line
+            current_line = current_line .. word
+            current_length = current_length + word_length
+        end
+    end
+    
+    -- Add the last line if it has content
+    if current_line ~= indent then
+        table.insert(lines, current_line)
+    end
+    
+    return lines
+end
+
 -- Initialize the plugin
 function M.setup(opts)
     -- Check if we're in Neovim environment
@@ -2536,13 +2581,24 @@ function M.send_message_command()
     
     local response_lines = {}
     
+    -- Get buffer width for word wrapping (with 13 character right margin)
+    local buffer_width = vim.api.nvim_win_get_width(0) - 13
+    if buffer_width < 20 then buffer_width = 20 end -- Minimum width
+    
     -- Add first line with diamond and two spaces
     if #response_content_lines > 0 then
-        table.insert(response_lines, "🮮  " .. response_content_lines[1])
+        local first_line = "🮮  " .. response_content_lines[1]
+        local wrapped_first = wrap_text(first_line, buffer_width, "")
+        for _, line in ipairs(wrapped_first) do
+            table.insert(response_lines, line)
+        end
         
         -- Add remaining lines with three spaces indentation
         for i = 2, #response_content_lines do
-            table.insert(response_lines, "   " .. response_content_lines[i])
+            local wrapped_lines = wrap_text(response_content_lines[i], buffer_width, "   ")
+            for _, line in ipairs(wrapped_lines) do
+                table.insert(response_lines, line)
+            end
         end
     else
         -- If no content, just add the diamond
@@ -2703,13 +2759,24 @@ function M.send_message_command_debug()
     
     local response_lines = {}
     
+    -- Get buffer width for word wrapping (with 13 character right margin)
+    local buffer_width = vim.api.nvim_win_get_width(0) - 13
+    if buffer_width < 20 then buffer_width = 20 end -- Minimum width
+    
     -- Add first line with diamond and two spaces
     if #response_content_lines > 0 then
-        table.insert(response_lines, "🮮  " .. response_content_lines[1])
+        local first_line = "🮮  " .. response_content_lines[1]
+        local wrapped_first = wrap_text(first_line, buffer_width, "")
+        for _, line in ipairs(wrapped_first) do
+            table.insert(response_lines, line)
+        end
         
         -- Add remaining lines with three spaces indentation
         for i = 2, #response_content_lines do
-            table.insert(response_lines, "   " .. response_content_lines[i])
+            local wrapped_lines = wrap_text(response_content_lines[i], buffer_width, "   ")
+            for _, line in ipairs(wrapped_lines) do
+                table.insert(response_lines, line)
+            end
         end
     else
         -- If no content, just add the diamond
