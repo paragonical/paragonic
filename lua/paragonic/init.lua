@@ -294,7 +294,11 @@ function M.setup(opts)
     
     -- Initialize backend asynchronously to avoid startup delay
     vim.defer_fn(function()
-        M._initialize_backend()
+        -- Use pcall to prevent freezing if backend initialization fails
+        local success = pcall(M._initialize_backend)
+        if not success then
+            vim.notify("Paragonic backend initialization failed - will retry when needed", vim.log.levels.WARN)
+        end
     end, 2000)  -- Wait 2 seconds after startup
     
     -- Add any autocommands here as needed
@@ -1937,28 +1941,49 @@ function M._initialize_backend()
         return
     end
     
-    -- Create RPC client
+    -- Create RPC client with timeout
     local rpc = require("paragonic.rpc")
     M._rpc_client = rpc.new("127.0.0.1:3000")
     
-    -- Connect to the Rust backend
+    -- Set a timeout for the connection attempt
+    local connection_timeout = 5000 -- 5 seconds
+    local start_time = vim.loop.hrtime() / 1000000
+    
+    -- Connect to the Rust backend with timeout
     local success, err = M._rpc_client:connect()
     if not success then
-        vim.notify("Failed to connect to Paragonic backend: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        local end_time = vim.loop.hrtime() / 1000000
+        local duration = end_time - start_time
+        
+        if duration > connection_timeout then
+            vim.notify("Paragonic backend connection timed out after " .. string.format("%.1f", duration) .. "ms", vim.log.levels.ERROR)
+        else
+            vim.notify("Failed to connect to Paragonic backend: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        end
+        
         M._rpc_client = nil
         return
     end
     
-    -- Test connection with hello call
+    -- Test connection with hello call (also with timeout)
+    local hello_start = vim.loop.hrtime() / 1000000
     local response = M._rpc_client:hello()
+    local hello_end = vim.loop.hrtime() / 1000000
+    local hello_duration = hello_end - hello_start
+    
     if not response then
-        vim.notify("Failed to communicate with Paragonic backend", vim.log.levels.ERROR)
+        if hello_duration > connection_timeout then
+            vim.notify("Paragonic backend hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.ERROR)
+        else
+            vim.notify("Failed to communicate with Paragonic backend", vim.log.levels.ERROR)
+        end
+        
         M._rpc_client:disconnect()
         M._rpc_client = nil
         return
     end
     
-    vim.notify("Paragonic backend connected successfully", vim.log.levels.INFO)
+    vim.notify("Paragonic backend connected successfully in " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.INFO)
 end
 
 -- Manually initialize backend when needed
