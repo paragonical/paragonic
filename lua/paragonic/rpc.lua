@@ -30,9 +30,19 @@ end
 
 -- Connect to the RPC server
 function M:connect()
+    print("🔧 RPC connect() called, server_address=" .. tostring(self.server_address))
+    
+    -- Check if server_address is valid
+    if not self.server_address then
+        print("❌ RPC connect(): server_address is nil")
+        return false, "Server address is nil"
+    end
+    
     -- Parse server address
     local host, port = self.server_address:match("([^:]+):?(%d*)")
     port = port or "3000" -- Default port if not specified
+    
+    print("🔧 RPC connect(): parsed host=" .. tostring(host) .. ", port=" .. tostring(port))
     
     -- Try to load socket library
     local socket_available = pcall(require, "socket")
