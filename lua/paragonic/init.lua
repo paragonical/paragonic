@@ -3136,7 +3136,7 @@ function M.setup_which_key()
     })
     
     -- Register visual mode keymaps for search with selection (new spec format)
-    wk.register({
+    wk.add({
         {
             mode = { "v" },
             { "<leader>Ps", function()
