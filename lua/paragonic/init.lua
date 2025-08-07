@@ -2243,6 +2243,17 @@ function M.send_message_command()
     -- Add immediate visual feedback that the chat is being sent
     M.append_debug_message(current_buf, "Sending message to AI...", "info")
     
+    -- Initialize backend if not available
+    if not M._rpc_client then
+        M.append_debug_message(current_buf, "Initializing backend...", "info")
+        local success = M._initialize_backend()
+        if not success then
+            M.append_debug_message(current_buf, "Failed to initialize backend", "error")
+            vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
+            return
+        end
+    end
+    
     -- Start a progress indicator for long operations
     local progress_timer = nil
     local progress_count = 0
@@ -2337,6 +2348,17 @@ function M.send_message_command_debug()
     
     -- Debug: Starting message send
     M.append_debug_message(current_buf, "Starting message send process", "debug")
+    
+    -- Initialize backend if not available
+    if not M._rpc_client then
+        M.append_debug_message(current_buf, "Initializing backend...", "info")
+        local success = M._initialize_backend()
+        if not success then
+            M.append_debug_message(current_buf, "Failed to initialize backend", "error")
+            vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
+            return
+        end
+    end
     
     -- Check RPC client
     local rpc_client = M._get_rpc_client()
