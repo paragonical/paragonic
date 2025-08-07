@@ -2213,7 +2213,7 @@ function M.open_chat()
             "",
             "Type your message below and use :ParagonicSend to send:",
             "",
-            "⎯⎯⎯"
+            "∎"
         })
         
         -- Models info will be updated when user first interacts with the chat
@@ -2471,6 +2471,9 @@ function M.send_message_command()
     progress_timer = vim.loop.new_timer()
     progress_timer:start(5000, 5000, vim.schedule_wrap(update_progress))
     
+    -- Record start time for timing information
+    local start_time = vim.uv.now()
+    
     -- Add zigzag arrow to indicate request is being sent
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
@@ -2509,6 +2512,11 @@ function M.send_message_command()
         return
     end
     
+    -- Calculate timing information
+    local end_time = vim.uv.now()
+    local duration_ms = end_time - start_time
+    local duration_sec = duration_ms / 1000
+    
     -- Update the status message to show success
     M.append_debug_message(current_buf, "Message sent successfully, processing response...", "success")
     
@@ -2541,15 +2549,19 @@ function M.send_message_command()
         table.insert(response_lines, "🮮")
     end
     
+    -- Add timing information
+    table.insert(response_lines, "")
+    table.insert(response_lines, "   ⏱️  " .. string.format("%.2fs", duration_sec))
+    
     -- Add closing lines
     table.insert(response_lines, "")
-    table.insert(response_lines, "⎯⎯⎯")
+    table.insert(response_lines, "∎")
     
     -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
     vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
     
-    -- Move cursor to end of response
-    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 2, 0})
+    -- Move cursor to line below the separator
+    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 3, 0})
 end
 
 -- Enhanced send message command with debug messages
@@ -2624,6 +2636,9 @@ function M.send_message_command_debug()
     progress_timer = vim.loop.new_timer()
     progress_timer:start(3000, 3000, vim.schedule_wrap(update_progress))
     
+    -- Record start time for timing information
+    local start_time = vim.uv.now()
+    
     -- Add zigzag arrow to indicate request is being sent
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
@@ -2661,6 +2676,11 @@ function M.send_message_command_debug()
         return
     end
     
+    -- Calculate timing information
+    local end_time = vim.uv.now()
+    local duration_ms = end_time - start_time
+    local duration_sec = duration_ms / 1000
+    
     M.append_debug_message(current_buf, "✅ Successfully received response from AI", "success")
     
     -- Debug: Processing response
@@ -2695,9 +2715,13 @@ function M.send_message_command_debug()
         table.insert(response_lines, "🮮")
     end
     
+    -- Add timing information
+    table.insert(response_lines, "")
+    table.insert(response_lines, "   ⏱️  " .. string.format("%.2fs", duration_sec))
+    
     -- Add closing lines
     table.insert(response_lines, "")
-    table.insert(response_lines, "⎯⎯⎯")
+    table.insert(response_lines, "∎")
     
     -- Debug: Inserting response
     M.append_debug_message(current_buf, "Inserting " .. #response_lines .. " lines into buffer", "debug")
@@ -2705,8 +2729,8 @@ function M.send_message_command_debug()
     -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
     vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
     
-    -- Move cursor to end of response
-    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 2, 0})
+    -- Move cursor to line below the separator
+    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 3, 0})
     
     -- Debug: Success
     M.append_debug_message(current_buf, "Message send process completed successfully", "success")
