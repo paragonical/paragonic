@@ -55,10 +55,8 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
     vim.api.nvim_create_user_command("ParagonicSend", function()
         print("WRAPPER: About to call send_message_command")
-        vim.notify("WRAPPER: About to call send_message_command", vim.log.levels.INFO)
         M.send_message_command()
         print("WRAPPER: send_message_command completed")
-        vim.notify("WRAPPER: send_message_command completed", vim.log.levels.INFO)
     end, {})
     vim.api.nvim_create_user_command("ParagonicSendDebug", M.send_message_command_debug, {})
     vim.api.nvim_create_user_command("ParagonicTest", function()
@@ -1750,20 +1748,20 @@ end
 
 -- Append debug message to chat buffer
 function M.append_debug_message(buffer, message, level)
-    vim.notify("🔧 append_debug_message() called with buffer=" .. tostring(buffer) .. ", message=" .. tostring(message), vim.log.levels.INFO)
+    print("🔧 append_debug_message() called with buffer=" .. tostring(buffer) .. ", message=" .. tostring(message))
     
     if not buffer or not message then
-        vim.notify("❌ append_debug_message: Buffer and message are required", vim.log.levels.ERROR)
+        print("❌ append_debug_message: Buffer and message are required")
         return false, "Buffer and message are required"
     end
     
     -- Validate buffer exists
     if not vim.api.nvim_buf_is_valid(buffer) then
-        vim.notify("❌ append_debug_message: Invalid buffer " .. tostring(buffer), vim.log.levels.ERROR)
+        print("❌ append_debug_message: Invalid buffer " .. tostring(buffer))
         return false, "Invalid buffer"
     end
     
-    vim.notify("✅ Buffer is valid", vim.log.levels.INFO)
+    print("✅ Buffer is valid")
     
     -- Default level
     level = level or "info"
@@ -1771,14 +1769,14 @@ function M.append_debug_message(buffer, message, level)
     -- Format debug message
     local formatted_message = "**DEBUG [" .. level:upper() .. "]:** " .. message
     
-    vim.notify("🔧 About to get buffer lines...", vim.log.levels.INFO)
+    print("🔧 About to get buffer lines...")
     
     -- Get current buffer lines
     local current_lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
     
-    vim.notify("✅ Got " .. #current_lines .. " lines from buffer", vim.log.levels.INFO)
+    print("✅ Got " .. #current_lines .. " lines from buffer")
     
-    vim.notify("🔧 About to set buffer lines...", vim.log.levels.INFO)
+    print("🔧 About to set buffer lines...")
     
     -- Append debug message
     vim.api.nvim_buf_set_lines(buffer, #current_lines, #current_lines, false, {
@@ -1786,7 +1784,7 @@ function M.append_debug_message(buffer, message, level)
         formatted_message
     })
     
-    vim.notify("✅ append_debug_message completed successfully", vim.log.levels.INFO)
+    print("✅ append_debug_message completed successfully")
     
     return true, "Debug message appended successfully"
 end
@@ -2258,42 +2256,46 @@ end
 function M.send_message_command()
     -- Immediate debugging at function entry
     print("🚀 send_message_command() called - PRINT")
-    vim.notify("🚀 send_message_command() called - NOTIFY", vim.log.levels.INFO)
+    print("📝 Starting send_message_command function")
     
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
     
-    vim.notify("📝 Current buffer: " .. buf_name, vim.log.levels.INFO)
+    print("📝 Current buffer: " .. buf_name)
     
     -- Only work in chat buffer
     if buf_name ~= "paragonic://chat" then
-        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        print("❌ This command only works in the chat buffer")
         return
     end
+    
+    print("✅ Buffer check passed")
     
     -- Get the current line as the message
     local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
     local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
     local message = lines[1] or ""
     
-    vim.notify("📝 Message: " .. message:sub(1, 50), vim.log.levels.INFO)
+    print("📝 Message: " .. message:sub(1, 50))
     
     -- Skip empty lines or lines that start with #
     if message == "" or message:match("^%s*#") then
-        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        print("❌ Please enter a message to send")
         return
     end
     
-    vim.notify("🔧 About to call append_debug_message...", vim.log.levels.INFO)
+    print("✅ Message validation passed")
+    print("🔧 About to call append_debug_message...")
     
     -- Add immediate visual feedback that the chat is being sent
+    print("🔧 Calling append_debug_message...")
     local success, err = M.append_debug_message(current_buf, "Sending message to AI...", "info")
     
     if not success then
-        vim.notify("❌ append_debug_message failed: " .. tostring(err), vim.log.levels.ERROR)
+        print("❌ append_debug_message failed: " .. tostring(err))
         return
     else
-        vim.notify("✅ append_debug_message succeeded", vim.log.levels.INFO)
+        print("✅ append_debug_message succeeded")
     end
     
     -- Initialize backend if not available
