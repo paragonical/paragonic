@@ -24,7 +24,10 @@ end
 
 -- Send request via external Lua process
 function M.send_request(server_address, method, params)
+    print("🔧 RPC Bridge: send_request() called with method=" .. tostring(method))
+    
     if not is_neovim() then
+        print("❌ RPC Bridge: Not running in Neovim")
         return nil, "Not running in Neovim"
     end
     
@@ -125,16 +128,23 @@ print("DEBUG: Script completed successfully")
     vim.fn.writefile(vim.fn.split(script_content, "\n"), script_file)
     
     -- Execute the external script with increased timeout for AI operations (macOS compatible)
+    print("🔧 RPC Bridge: About to execute external script...")
     local timeout_cmd
     if vim.fn.executable("timeout") == 1 then
         timeout_cmd = "timeout 180 lua " .. script_file
+        print("🔧 RPC Bridge: Using timeout command")
     elseif vim.fn.executable("gtimeout") == 1 then
         timeout_cmd = "gtimeout 180 lua " .. script_file
+        print("🔧 RPC Bridge: Using gtimeout command")
     else
         -- macOS fallback: use background process with sleep and kill
         timeout_cmd = "lua " .. script_file .. " & sleep 180 && kill $! 2>/dev/null || true"
+        print("🔧 RPC Bridge: Using macOS workaround timeout")
     end
+    
+    print("🔧 RPC Bridge: About to execute: " .. timeout_cmd)
     local result = vim.fn.system(timeout_cmd)
+    print("🔧 RPC Bridge: system() call completed, result length=" .. tostring(result and #result or 0))
     
     -- Clean up script file
     vim.fn.delete(script_file)
