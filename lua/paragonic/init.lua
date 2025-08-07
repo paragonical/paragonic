@@ -292,14 +292,9 @@ function M.setup(opts)
         M._load_persistent_data()
     end, 500)  -- Wait 500ms after startup
     
-    -- Initialize backend asynchronously to avoid startup delay
-    vim.defer_fn(function()
-        -- Use pcall to prevent freezing if backend initialization fails
-        local success = pcall(M._initialize_backend)
-        if not success then
-            vim.notify("Paragonic backend initialization failed - will retry when needed", vim.log.levels.WARN)
-        end
-    end, 2000)  -- Wait 2 seconds after startup
+    -- Don't initialize backend during startup - let it initialize on first use
+    -- This prevents freezing during Neovim startup
+    -- Backend will be initialized when first needed (e.g., when opening chat)
     
     -- Add any autocommands here as needed
 end
@@ -307,9 +302,8 @@ end
 -- Get RPC client, initializing backend if needed
 function M._get_rpc_client()
     if not M._rpc_client then
-        -- Return nil immediately - let calling functions handle the case
-        -- Backend will be initialized asynchronously during startup
-        return nil
+        -- Initialize backend on first use to prevent startup freezing
+        M._initialize_backend()
     end
     return M._rpc_client
 end
@@ -1947,22 +1941,37 @@ function M._initialize_backend()
     
     -- Set a timeout for the connection attempt
     local connection_timeout = 5000 -- 5 seconds
-    local start_time = vim.loop.hrtime() / 1000000
+    local max_retries = 2
+    local retry_count = 0
     
-    -- Connect to the Rust backend with timeout
-    local success, err = M._rpc_client:connect()
-    if not success then
-        local end_time = vim.loop.hrtime() / 1000000
-        local duration = end_time - start_time
+    while retry_count <= max_retries do
+        local start_time = vim.loop.hrtime() / 1000000
         
-        if duration > connection_timeout then
-            vim.notify("Paragonic backend connection timed out after " .. string.format("%.1f", duration) .. "ms", vim.log.levels.ERROR)
+        -- Connect to the Rust backend with timeout
+        local success, err = M._rpc_client:connect()
+        if not success then
+            local end_time = vim.loop.hrtime() / 1000000
+            local duration = end_time - start_time
+            
+            retry_count = retry_count + 1
+            
+            if duration > connection_timeout then
+                vim.notify("Paragonic backend connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
+            else
+                vim.notify("Failed to connect to Paragonic backend: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
+            end
+            
+            if retry_count > max_retries then
+                vim.notify("Failed to connect to Paragonic backend after " .. (max_retries + 1) .. " attempts", vim.log.levels.ERROR)
+                M._rpc_client = nil
+                return
+            end
+            
+            -- Wait a bit before retrying
+            vim.wait(1000)
         else
-            vim.notify("Failed to connect to Paragonic backend: " .. (err or "unknown error"), vim.log.levels.ERROR)
+            break
         end
-        
-        M._rpc_client = nil
-        return
     end
     
     -- Test connection with hello call (also with timeout)
