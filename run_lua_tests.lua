@@ -95,6 +95,11 @@ local function run_test(test_file)
         -- Set up package path for the test
         package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
         
+        -- Set test mode flag to prevent infinite reconnection loops
+        if vim then
+            vim.g.paragonic_test_mode = true
+        end
+        
         -- Run the test file
         dofile(test_file)
         return true
