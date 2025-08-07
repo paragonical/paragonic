@@ -1966,11 +1966,20 @@ function M._initialize_backend()
     
     -- Create RPC client with timeout
     print("🔧 Step 1: About to require paragonic.rpc...")
-    local rpc = require("paragonic.rpc")
+    local success, rpc = pcall(require, "paragonic.rpc")
+    if not success then
+        print("❌ Failed to require paragonic.rpc: " .. tostring(rpc))
+        return false
+    end
     print("✅ paragonic.rpc module loaded successfully")
     
     print("🔧 Step 2: About to create RPC client with rpc.new()...")
-    M._rpc_client = rpc.new("127.0.0.1:3000")
+    local success2, client = pcall(rpc.new, rpc, "127.0.0.1:3000")
+    if not success2 then
+        print("❌ Failed to create RPC client: " .. tostring(client))
+        return false
+    end
+    M._rpc_client = client
     print("✅ RPC client created successfully")
     
     -- Set a timeout for the connection attempt
