@@ -2560,8 +2560,9 @@ function M.send_message_command()
     -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
     vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
     
-    -- Move cursor to line below the separator
-    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 3, 0})
+    -- Move cursor to the end of the buffer (safe positioning)
+    local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+    vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
 end
 
 -- Enhanced send message command with debug messages
@@ -2729,8 +2730,9 @@ function M.send_message_command_debug()
     -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
     vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
     
-    -- Move cursor to line below the separator
-    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 3, 0})
+    -- Move cursor to the end of the buffer (safe positioning)
+    local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+    vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
     
     -- Debug: Success
     M.append_debug_message(current_buf, "Message send process completed successfully", "success")
