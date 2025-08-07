@@ -1837,260 +1837,58 @@ end
 
 -- Persistent storage functionality
 
--- Ensure data directory exists with error handling
+-- Persistent storage functions - delegate to utils module
 function M._ensure_data_directory()
-    local success, dir = pcall(function()
-        return vim.fn.stdpath("data") .. "/paragonic"
-    end)
-    if not success then
-        return false
-    end
-    
-    local success2, is_dir = pcall(vim.fn.isdirectory, dir)
-    if not success2 or is_dir == 0 then
-        local success3 = pcall(vim.fn.mkdir, dir, "p")
-        return success3
-    end
-    
-    return true
+    return utils.ensure_data_directory()
 end
 
--- Save data to JSON file
 function M._save_to_json(data, file_path)
-    M._ensure_data_directory()
-    
-    local json_string = vim.json.encode(data)
-    if not json_string then
-        vim.notify("Failed to encode data to JSON", vim.log.levels.ERROR)
-        return false
-    end
-    
-    local success = pcall(vim.fn.writefile, {json_string}, file_path)
-    if not success then
-        vim.notify("Failed to write data to " .. file_path, vim.log.levels.ERROR)
-        return false
-    end
-    
-    return true
+    return utils.save_to_json(data, file_path)
 end
 
--- Load data from JSON file with better error handling
 function M._load_from_json(file_path)
-    -- Use pcall for all file operations to prevent blocking
-    local success, filereadable = pcall(vim.fn.filereadable, file_path)
-    if not success or filereadable == 0 then
-        return {}
-    end
-    
-    local success2, lines = pcall(vim.fn.readfile, file_path)
-    if not success2 or #lines == 0 then
-        return {}
-    end
-    
-    local json_string = table.concat(lines, "\n")
-    local success3, data = pcall(vim.json.decode, json_string)
-    
-    if not success3 or not data then
-        -- Don't show error notification during startup to avoid blocking
-        return {}
-    end
-    
-    return data
+    return utils.load_from_json(file_path)
 end
 
--- Save search history to disk
 function M._save_search_history()
-    return M._save_to_json(search_history, history_file)
+    return utils.save_search_history(search_history, history_file)
 end
 
--- Load search history from disk with error handling
 function M._load_search_history()
-    local data = M._load_from_json(history_file)
-    
-    -- Validate and clean data with error handling
-    local cleaned_data = {}
-    local success, result = pcall(function()
-        for _, entry in ipairs(data) do
-            if entry.query and entry.type and entry.results_count then
-                -- Ensure all required fields are present
-                entry.timestamp = entry.timestamp or os.time()
-                entry.date = entry.date or os.date("%Y-%m-%d %H:%M:%S", entry.timestamp)
-                table.insert(cleaned_data, entry)
-            end
-        end
-        return cleaned_data
-    end)
-    
-    if success then
-        return result
-    else
-        return {}
-    end
+    return utils.load_search_history(history_file)
 end
 
--- Save saved searches to disk
 function M._save_saved_searches()
-    return M._save_to_json(saved_searches, saved_searches_file)
+    return utils.save_saved_searches(saved_searches, saved_searches_file)
 end
 
--- Load saved searches from disk with error handling
 function M._load_saved_searches()
-    local data = M._load_from_json(saved_searches_file)
-    
-    -- Validate and clean data with error handling
-    local cleaned_data = {}
-    local success, result = pcall(function()
-        for _, saved in ipairs(data) do
-            if saved.name and saved.query and saved.type then
-                -- Ensure all required fields are present
-                saved.limit = saved.limit or 10
-                saved.threshold = saved.threshold or 0.0
-                saved.created_at = saved.created_at or os.time()
-                saved.created_date = saved.created_date or os.date("%Y-%m-%d %H:%M:%S", saved.created_at)
-                table.insert(cleaned_data, saved)
-            end
-        end
-        return cleaned_data
-    end)
-    
-    if success then
-        return result
-    else
-        return {}
-    end
+    return utils.load_saved_searches(saved_searches_file)
 end
 
 -- Load all persistent data with error handling
 function M._load_persistent_data()
-    -- Use pcall to prevent any errors from blocking startup
-    local success1, history = pcall(M._load_search_history)
-    if success1 then
-        search_history = history
-    else
-        search_history = {}
-    end
-    
-    local success2, searches = pcall(M._load_saved_searches)
-    if success2 then
-        saved_searches = searches
-    else
-        saved_searches = {}
-    end
-    
-    -- Use pcall for notification to prevent blocking
-    pcall(function()
-        vim.notify("Paragonic: Loaded " .. #search_history .. " history entries and " .. #saved_searches .. " saved searches", vim.log.levels.INFO)
-    end)
+    return utils.load_persistent_data(search_history, saved_searches)
 end
 
 -- Auto-save function
 function M._auto_save()
-    M._save_search_history()
-    M._save_saved_searches()
+    return utils.auto_save(search_history, saved_searches)
 end
 
 -- Export data to a file
 function M.export_data()
-    local export_path = vim.fn.input("Export to file: ")
-    if export_path == "" then
-        vim.notify("Export path is required", vim.log.levels.WARN)
-        return
-    end
-    
-    local export_data = {
-        search_history = search_history,
-        saved_searches = saved_searches,
-        export_date = os.date("%Y-%m-%d %H:%M:%S"),
-        version = "1.0"
-    }
-    
-    local success = M._save_to_json(export_data, export_path)
-    if success then
-        vim.notify("Paragonic: Data exported successfully to " .. export_path, vim.log.levels.INFO)
-    else
-        vim.notify("Failed to export data", vim.log.levels.ERROR)
-    end
+    return utils.export_data(search_history, saved_searches)
 end
 
 -- Import data from a file
 function M.import_data()
-    local import_path = vim.fn.input("Import from file: ")
-    if import_path == "" then
-        vim.notify("Import path is required", vim.log.levels.WARN)
-        return
-    end
-    
-    if vim.fn.filereadable(import_path) == 0 then
-        vim.notify("Import file does not exist", vim.log.levels.ERROR)
-        return
-    end
-    
-    local import_data = M._load_from_json(import_path)
-    if not import_data or not import_data.search_history or not import_data.saved_searches then
-        vim.notify("Invalid import file format", vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Validate and merge data
-    local imported_history = 0
-    local imported_saved = 0
-    
-    -- Import search history
-    for _, entry in ipairs(import_data.search_history) do
-        if entry.query and entry.type and entry.results_count then
-            table.insert(search_history, entry)
-            imported_history = imported_history + 1
-        end
-    end
-    
-    -- Import saved searches
-    for _, saved in ipairs(import_data.saved_searches) do
-        if saved.name and saved.query and saved.type then
-            -- Check for duplicates
-            local exists = false
-            for _, existing in ipairs(saved_searches) do
-                if existing.name == saved.name then
-                    exists = true
-                    break
-                end
-            end
-            
-            if not exists then
-                table.insert(saved_searches, saved)
-                imported_saved = imported_saved + 1
-            end
-        end
-    end
-    
-    -- Save to disk
-    M._auto_save()
-    
-    vim.notify(string.format("Paragonic: Imported %d history entries and %d saved searches", imported_history, imported_saved), vim.log.levels.INFO)
+    return utils.import_data(search_history, saved_searches)
 end
 
 -- Backup data
 function M.backup_data()
-    local backup_dir = vim.fn.stdpath("data") .. "/paragonic/backups"
-    if vim.fn.isdirectory(backup_dir) == 0 then
-        vim.fn.mkdir(backup_dir, "p")
-    end
-    
-    local timestamp = os.date("%Y%m%d_%H%M%S")
-    local backup_path = backup_dir .. "/backup_" .. timestamp .. ".json"
-    
-    local backup_data = {
-        search_history = search_history,
-        saved_searches = saved_searches,
-        backup_date = os.date("%Y-%m-%d %H:%M:%S"),
-        version = "1.0"
-    }
-    
-    local success = M._save_to_json(backup_data, backup_path)
-    if success then
-        vim.notify("Paragonic: Backup created successfully: " .. backup_path, vim.log.levels.INFO)
-    else
-        vim.notify("Failed to create backup", vim.log.levels.ERROR)
-    end
+    return utils.backup_data(search_history, saved_searches)
 end
 
 -- Agentic collaboration functionality
