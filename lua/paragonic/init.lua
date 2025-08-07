@@ -2543,7 +2543,7 @@ function M.send_message_command()
     
     -- Add closing lines
     table.insert(response_lines, "")
-    table.insert(response_lines, "---")
+    table.insert(response_lines, "⎯⎯⎯")
     
     -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
     vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
@@ -2697,7 +2697,7 @@ function M.send_message_command_debug()
     
     -- Add closing lines
     table.insert(response_lines, "")
-    table.insert(response_lines, "---")
+    table.insert(response_lines, "⎯⎯⎯")
     
     -- Debug: Inserting response
     M.append_debug_message(current_buf, "Inserting " .. #response_lines .. " lines into buffer", "debug")
