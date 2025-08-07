@@ -51,8 +51,9 @@ function M.setup(opts)
     
     -- Create commands
     vim.api.nvim_create_user_command("ParagonicChat", M.open_chat, {})
-    vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
-    vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
+vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
+vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
+vim.api.nvim_create_user_command("ParagonicDebug", M.open_debug_buffer, {})
     vim.api.nvim_create_user_command("ParagonicSend", function()
         print("WRAPPER: About to call send_message_command")
         M.send_message_command()
@@ -1769,40 +1770,90 @@ function M.send_message_enhanced(message, model)
     return nil, "Unexpected response format: " .. tostring(parsed_response)
 end
 
--- Append debug message to chat buffer
+-- Debug buffer management
+local debug_buffer = nil
+
+function M.get_or_create_debug_buffer()
+    -- Check if debug buffer already exists
+    if debug_buffer and vim.api.nvim_buf_is_valid(debug_buffer) then
+        return debug_buffer
+    end
+    
+    -- Look for existing debug buffer
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        local name = vim.api.nvim_buf_get_name(buf)
+        if name == "paragonic://debug" then
+            debug_buffer = buf
+            return debug_buffer
+        end
+    end
+    
+    -- Create new debug buffer
+    debug_buffer = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_name(debug_buffer, "paragonic://debug")
+    vim.api.nvim_buf_set_option(debug_buffer, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(debug_buffer, "swapfile", false)
+    vim.api.nvim_buf_set_option(debug_buffer, "modifiable", true)
+    vim.api.nvim_buf_set_option(debug_buffer, "filetype", "markdown")
+    
+    -- Add initial content
+    vim.api.nvim_buf_set_lines(debug_buffer, 0, -1, false, {
+        "# Paragonic Debug Log",
+        "",
+        "Debug messages and system information will appear here.",
+        "",
+        "---"
+    })
+    
+    return debug_buffer
+end
+
+function M.open_debug_buffer()
+    local debug_buf = M.get_or_create_debug_buffer()
+    
+    -- Open the buffer in a new window
+    vim.api.nvim_command("split")
+    vim.api.nvim_set_current_buf(debug_buf)
+end
+
+-- Append debug message to debug buffer instead of chat buffer
 function M.append_debug_message(buffer, message, level)
     print("🔧 append_debug_message() called with buffer=" .. tostring(buffer) .. ", message=" .. tostring(message))
     
-    if not buffer or not message then
-        print("❌ append_debug_message: Buffer and message are required")
-        return false, "Buffer and message are required"
+    if not message then
+        print("❌ append_debug_message: Message is required")
+        return false, "Message is required"
     end
     
-    -- Validate buffer exists
-    if not vim.api.nvim_buf_is_valid(buffer) then
-        print("❌ append_debug_message: Invalid buffer " .. tostring(buffer))
-        return false, "Invalid buffer"
+    -- Get or create debug buffer
+    local debug_buf = M.get_or_create_debug_buffer()
+    
+    -- Validate debug buffer exists
+    if not vim.api.nvim_buf_is_valid(debug_buf) then
+        print("❌ append_debug_message: Invalid debug buffer")
+        return false, "Invalid debug buffer"
     end
     
-    print("✅ Buffer is valid")
+    print("✅ Debug buffer is valid")
     
     -- Default level
     level = level or "info"
     
-    -- Format debug message
-    local formatted_message = "**DEBUG [" .. level:upper() .. "]:** " .. message
+    -- Format debug message with timestamp
+    local timestamp = os.date("%H:%M:%S")
+    local formatted_message = "**[" .. timestamp .. "] DEBUG [" .. level:upper() .. "]:** " .. message
     
-    print("🔧 About to get buffer lines...")
+    print("🔧 About to get debug buffer lines...")
     
-    -- Get current buffer lines
-    local current_lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    -- Get current debug buffer lines
+    local current_lines = vim.api.nvim_buf_get_lines(debug_buf, 0, -1, false)
     
-    print("✅ Got " .. #current_lines .. " lines from buffer")
+    print("✅ Got " .. #current_lines .. " lines from debug buffer")
     
-    print("🔧 About to set buffer lines...")
+    print("🔧 About to set debug buffer lines...")
     
-    -- Append debug message
-    vim.api.nvim_buf_set_lines(buffer, #current_lines, #current_lines, false, {
+    -- Append debug message to debug buffer
+    vim.api.nvim_buf_set_lines(debug_buf, #current_lines, #current_lines, false, {
         "",
         formatted_message
     })
@@ -2436,7 +2487,7 @@ function M.send_message_command()
     
     local response_lines = {
         "",
-        "**AI Response:**"
+        "🮮 **AI Response:**"
     }
     
     -- Add each line of the response
@@ -2563,7 +2614,7 @@ function M.send_message_command_debug()
     
     local response_lines = {
         "",
-        "**AI Response:**"
+        "🮮 **AI Response:**"
     }
     
     -- Add each line of the response
