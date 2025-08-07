@@ -54,6 +54,7 @@ function M.setup(opts)
 vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
 vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
 vim.api.nvim_create_user_command("ParagonicDebug", M.open_debug_buffer, {})
+vim.api.nvim_create_user_command("ParagonicMenu", M.show_paragonic_menu, {})
     vim.api.nvim_create_user_command("ParagonicSend", function()
         M.debug_print("WRAPPER: About to call send_message_command", "debug")
         M.send_message_command()
@@ -3082,8 +3083,112 @@ function M.show_result_details(result)
     vim.api.nvim_win_set_cursor(detail_win, {1, 0})
 end
 
+-- AstroNvim-style menu for Paragonic commands
+function M.show_paragonic_menu()
+    local menu_items = {
+        {key = "1", desc = "🔍 Basic Search", cmd = "ParagonicSearch"},
+        {key = "2", desc = "🔍 Filtered Search", cmd = "ParagonicSearchFiltered"},
+        {key = "3", desc = "🔍 Hybrid Search", cmd = "ParagonicSearchHybrid"},
+        {key = "4", desc = "💬 Open Chat", cmd = "ParagonicChat"},
+        {key = "5", desc = "📁 Open Projects", cmd = "ParagonicProjects"},
+        {key = "6", desc = "⚙️  Open Config", cmd = "ParagonicConfig"},
+        {key = "7", desc = "🐛 Open Debug", cmd = "ParagonicDebug"},
+        {key = "8", desc = "📚 Search History", cmd = "ParagonicSearchHistory"},
+        {key = "9", desc = "💾 Saved Searches", cmd = "ParagonicSavedSearches"},
+        {key = "0", desc = "💾 Save Current Search", cmd = "ParagonicSaveSearch"},
+        {key = "a", desc = "🤖 AI Agent Session", cmd = "ParagonicAgentSession"},
+        {key = "b", desc = "📤 Export Data", cmd = "ParagonicExportData"},
+        {key = "c", desc = "📥 Import Data", cmd = "ParagonicImportData"},
+        {key = "d", desc = "💾 Backup Data", cmd = "ParagonicBackupData"},
+        {key = "e", desc = "🔌 Force Reconnect", cmd = "ParagonicReconnect"},
+        {key = "q", desc = "❌ Quit", cmd = "quit"}
+    }
+    
+    -- Create menu content
+    local menu_lines = {
+        "╭─────────────────────────────────────────────────────────╮",
+        "│                    🚀 Paragonic Menu                    │",
+        "├─────────────────────────────────────────────────────────┤"
+    }
+    
+    for _, item in ipairs(menu_items) do
+        local line = string.format("│ %s. %-45s │", item.key, item.desc)
+        table.insert(menu_lines, line)
+    end
+    
+    table.insert(menu_lines, "╰─────────────────────────────────────────────────────────╯")
+    table.insert(menu_items, {key = "q", desc = "Quit", cmd = "quit"})
+    
+    -- Create menu buffer
+    local menu_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(menu_buf, "paragonic://menu")
+    vim.api.nvim_buf_set_option(menu_buf, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(menu_buf, "swapfile", false)
+    vim.api.nvim_buf_set_option(menu_buf, "modifiable", true)
+    vim.api.nvim_buf_set_option(menu_buf, "filetype", "paragonic-menu")
+    
+    -- Set menu content
+    vim.api.nvim_buf_set_lines(menu_buf, 0, -1, false, menu_lines)
+    
+    -- Create menu window
+    local width = 55
+    local height = #menu_lines
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+    
+    local menu_win = vim.api.nvim_open_win(menu_buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "none"
+    })
+    
+    -- Set window options
+    vim.api.nvim_win_set_option(menu_win, "wrap", false)
+    vim.api.nvim_win_set_option(menu_win, "cursorline", true)
+    
+    -- Set up key mappings for menu
+    local function handle_menu_selection(key)
+        for _, item in ipairs(menu_items) do
+            if item.key == key then
+                if item.cmd == "quit" then
+                    vim.api.nvim_win_close(menu_win, true)
+                    return
+                else
+                    vim.api.nvim_win_close(menu_win, true)
+                    vim.cmd(item.cmd)
+                    return
+                end
+            end
+        end
+    end
+    
+    -- Set up buffer-local key mappings
+    for _, item in ipairs(menu_items) do
+        vim.keymap.set("n", item.key, function() handle_menu_selection(item.key) end, 
+            {buffer = menu_buf, noremap = true, silent = true, desc = item.desc})
+    end
+    
+    -- Set up escape to close menu
+    vim.keymap.set("n", "<Esc>", function() vim.api.nvim_win_close(menu_win, true) end,
+        {buffer = menu_buf, noremap = true, silent = true, desc = "Close menu"})
+    
+    -- Set up q to close menu
+    vim.keymap.set("n", "q", function() vim.api.nvim_win_close(menu_win, true) end,
+        {buffer = menu_buf, noremap = true, silent = true, desc = "Close menu"})
+    
+    -- Set cursor to first menu item
+    vim.api.nvim_win_set_cursor(menu_win, {3, 0})
+end
+
 -- Set up keyboard mappings
 function M._setup_keymaps()
+    -- Main Paragonic menu (leader + P)
+    vim.keymap.set("n", "<leader>P", function() M.show_paragonic_menu() end, {desc = "Paragonic: Show Menu"})
+    
     -- Search keymaps (leader + ps for "paragonic search")
     vim.keymap.set("n", "<leader>ps", "<cmd>ParagonicSearch<CR>", {desc = "Paragonic: Basic Search"})
     vim.keymap.set("n", "<leader>pf", "<cmd>ParagonicSearchFiltered<CR>", {desc = "Paragonic: Filtered Search"})
@@ -3129,12 +3234,21 @@ function M._setup_keymaps()
         else
             vim.cmd('ParagonicSearchHybrid')
         end
-        end, {desc = "Paragonic: Hybrid Search Selected Text"})
+    end, {desc = "Paragonic: Hybrid Search Selected Text"})
+    
+    -- Chat and interface keymaps
+    vim.keymap.set("n", "<leader>pc", "<cmd>ParagonicChat<CR>", {desc = "Paragonic: Open Chat"})
+    vim.keymap.set("n", "<leader>pp", "<cmd>ParagonicProjects<CR>", {desc = "Paragonic: Open Projects"})
+    vim.keymap.set("n", "<leader>po", "<cmd>ParagonicConfig<CR>", {desc = "Paragonic: Open Config"})
+    vim.keymap.set("n", "<leader>pd", "<cmd>ParagonicDebug<CR>", {desc = "Paragonic: Open Debug"})
     
     -- Search history and saved searches keymaps
     vim.keymap.set("n", "<leader>ph", "<cmd>ParagonicSearchHistory<CR>", {desc = "Paragonic: Show Search History"})
     vim.keymap.set("n", "<leader>ps", "<cmd>ParagonicSavedSearches<CR>", {desc = "Paragonic: Show Saved Searches"})
     vim.keymap.set("n", "<leader>ps", "<cmd>ParagonicSaveSearch<CR>", {desc = "Paragonic: Save Current Search"})
+    
+    -- Note: Some keymaps are duplicated above. The menu provides a cleaner interface.
+    -- Use <leader>P to access all Paragonic commands through the menu.
 end
 
 -- Enhanced search command with better UX
