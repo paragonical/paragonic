@@ -1876,7 +1876,6 @@ function M.append_debug_message(buffer, message, level)
     
     -- Append debug message to debug buffer
     vim.api.nvim_buf_set_lines(debug_buf, #current_lines, #current_lines, false, {
-        "",
         formatted_message
     })
     
