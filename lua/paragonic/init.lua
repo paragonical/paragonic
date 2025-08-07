@@ -1954,33 +1954,42 @@ end
 
 -- Initialize Rust backend
 function M._initialize_backend()
+    print("🔧 _initialize_backend() called")
+    
     -- Only initialize once
     if M._rpc_client then
+        print("✅ RPC client already exists, returning true")
         return true
     end
     
-    vim.notify("🔧 Starting backend initialization...", vim.log.levels.INFO)
+    print("🔧 Starting backend initialization...")
     
     -- Create RPC client with timeout
-    vim.notify("🔧 Step 1: Creating RPC client...", vim.log.levels.INFO)
+    print("🔧 Step 1: About to require paragonic.rpc...")
     local rpc = require("paragonic.rpc")
+    print("✅ paragonic.rpc module loaded successfully")
+    
+    print("🔧 Step 2: About to create RPC client with rpc.new()...")
     M._rpc_client = rpc.new("127.0.0.1:3000")
-    vim.notify("✅ RPC client created", vim.log.levels.INFO)
+    print("✅ RPC client created successfully")
     
     -- Set a timeout for the connection attempt
     local connection_timeout = 5000 -- 5 seconds
     local max_retries = 2
     local retry_count = 0
     
-    vim.notify("🔧 Step 2: Attempting connection to backend...", vim.log.levels.INFO)
+    print("🔧 Step 3: About to start connection attempts...")
     
     while retry_count <= max_retries do
         local start_time = vim.loop.hrtime() / 1000000
         
-        vim.notify("🔧 Attempt " .. (retry_count + 1) .. "/" .. (max_retries + 1) .. ": Connecting to 127.0.0.1:3000...", vim.log.levels.INFO)
+        print("🔧 Attempt " .. (retry_count + 1) .. "/" .. (max_retries + 1) .. ": About to call connect()...")
         
         -- Connect to the Rust backend with timeout
+        print("🔧 Calling M._rpc_client:connect()...")
         local success, err = M._rpc_client:connect()
+        print("✅ connect() call completed, success=" .. tostring(success))
+        
         if not success then
             local end_time = vim.loop.hrtime() / 1000000
             local duration = end_time - start_time
@@ -1988,38 +1997,40 @@ function M._initialize_backend()
             retry_count = retry_count + 1
             
             if duration > connection_timeout then
-                vim.notify("❌ Connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
+                print("❌ Connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")")
             else
-                vim.notify("❌ Connection failed: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
+                print("❌ Connection failed: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")")
             end
             
             if retry_count > max_retries then
-                vim.notify("❌ Failed to connect after " .. (max_retries + 1) .. " attempts", vim.log.levels.ERROR)
+                print("❌ Failed to connect after " .. (max_retries + 1) .. " attempts")
                 M._rpc_client = nil
                 return false
             end
             
             -- Wait a bit before retrying
-            vim.notify("⏳ Waiting 1 second before retry...", vim.log.levels.INFO)
+            print("⏳ Waiting 1 second before retry...")
             vim.wait(1000)
         else
-            vim.notify("✅ Connection successful!", vim.log.levels.INFO)
+            print("✅ Connection successful!")
             break
         end
     end
     
     -- Test connection with hello call (also with timeout)
-    vim.notify("🔧 Step 3: Testing connection with hello call...", vim.log.levels.INFO)
+    print("🔧 Step 4: About to test connection with hello call...")
     local hello_start = vim.loop.hrtime() / 1000000
+    print("🔧 Calling M._rpc_client:hello()...")
     local response = M._rpc_client:hello()
+    print("✅ hello() call completed, response=" .. tostring(response ~= nil))
     local hello_end = vim.loop.hrtime() / 1000000
     local hello_duration = hello_end - hello_start
     
     if not response then
         if hello_duration > connection_timeout then
-            vim.notify("❌ Hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.ERROR)
+            print("❌ Hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms")
         else
-            vim.notify("❌ Hello call failed - no response", vim.log.levels.ERROR)
+            print("❌ Hello call failed - no response")
         end
         
         M._rpc_client:disconnect()
@@ -2027,7 +2038,7 @@ function M._initialize_backend()
         return false
     end
     
-    vim.notify("✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.INFO)
+    print("✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms")
     return true
 end
 
