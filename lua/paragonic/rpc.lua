@@ -74,8 +74,15 @@ function M:connect()
         if simple_rpc_ok then
             print("🔧 RPC: Using simple RPC client for Neovim")
             self.simple_rpc = simple_rpc.new(self.server_address)
-            self.connected = true
-            return true
+            -- Connect the simple RPC client
+            local success, err = self.simple_rpc:connect()
+            if success then
+                self.connected = true
+                return true
+            else
+                print("❌ RPC: Simple RPC client connection failed: " .. tostring(err))
+                return false, err
+            end
         else
             print("❌ RPC: Failed to load simple RPC client: " .. tostring(simple_rpc))
             -- Fallback to mock socket for testing

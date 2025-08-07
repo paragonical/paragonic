@@ -40,7 +40,7 @@ function M:connect()
     -- In a real implementation, we'd use vim.loop.tcp() or similar
     self.connected = true
     print("✅ Simple RPC: Connection marked as successful")
-    return true
+    return true, nil  -- Return success, no error
 end
 
 -- Check if connected

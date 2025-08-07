@@ -14,7 +14,11 @@ local function test_chat_interface_send_message()
     -- Load the paragonic module
     local paragonic = require("paragonic")
     
-    -- Get RPC client (should initialize backend)
+    -- Initialize backend to get RPC client
+    local success = paragonic._initialize_backend()
+    assert(success, "Backend initialization should succeed")
+    
+    -- Get RPC client (should be available after initialization)
     local rpc_client = paragonic._get_rpc_client()
     assert(rpc_client ~= nil, "Should have RPC client")
     assert(rpc_client:is_connected(), "RPC client should be connected")
@@ -34,6 +38,10 @@ local function test_chat_interface_list_models()
     
     -- Load the paragonic module
     local paragonic = require("paragonic")
+    
+    -- Initialize backend to get RPC client
+    local success = paragonic._initialize_backend()
+    assert(success, "Backend initialization should succeed")
     
     -- Get RPC client
     local rpc_client = paragonic._get_rpc_client()
