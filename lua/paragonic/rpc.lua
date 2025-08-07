@@ -199,7 +199,7 @@ function M:call(method, params)
         -- Use simple RPC client for Neovim
         print("🔧 RPC: Using simple RPC client for method: " .. method)
         return self.simple_rpc:call(method, params)
-    elseif self.socket and vim.uv and self.socket:is_active() then
+    elseif self.socket and vim.uv and self.connected then
         -- Use vim.uv TCP socket communication with synchronous wrapper
         print("🔧 RPC: Using vim.uv TCP socket for method: " .. method)
         
