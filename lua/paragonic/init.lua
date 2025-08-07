@@ -3115,34 +3115,31 @@ function M.setup_which_key()
         return
     end
     
-    -- Register Paragonic keymaps with which-key
+    -- Register Paragonic keymaps with which-key (new spec format)
     wk.register({
-        ["<leader>P"] = {
-            name = "🚀 Paragonic",
-            group = "paragonic",
-            icon = "🚀",
-        },
-        ["<leader>Ps"] = { "<cmd>ParagonicSearch<CR>", "🔍 Basic Search" },
-        ["<leader>Pf"] = { "<cmd>ParagonicSearchFiltered<CR>", "🔍 Filtered Search" },
-        ["<leader>Ph"] = { "<cmd>ParagonicSearchHybrid<CR>", "🔍 Hybrid Search" },
-        ["<leader>Pc"] = { "<cmd>ParagonicChat<CR>", "💬 Open Chat" },
-        ["<leader>Pp"] = { "<cmd>ParagonicProjects<CR>", "📁 Open Projects" },
-        ["<leader>Po"] = { "<cmd>ParagonicConfig<CR>", "⚙️  Open Config" },
-        ["<leader>Pd"] = { "<cmd>ParagonicDebug<CR>", "🐛 Open Debug" },
-        ["<leader>Ph"] = { "<cmd>ParagonicSearchHistory<CR>", "📚 Search History" },
-        ["<leader>Ps"] = { "<cmd>ParagonicSavedSearches<CR>", "💾 Saved Searches" },
-        ["<leader>Ps"] = { "<cmd>ParagonicSaveSearch<CR>", "💾 Save Current Search" },
-        ["<leader>Pa"] = { "<cmd>ParagonicAgentSession<CR>", "🤖 AI Agent Session" },
-        ["<leader>Pe"] = { "<cmd>ParagonicExportData<CR>", "📤 Export Data" },
-        ["<leader>Pi"] = { "<cmd>ParagonicImportData<CR>", "📥 Import Data" },
-        ["<leader>Pb"] = { "<cmd>ParagonicBackupData<CR>", "💾 Backup Data" },
-        ["<leader>Pr"] = { "<cmd>ParagonicReconnect<CR>", "🔌 Force Reconnect" },
+        { "<leader>P", group = "🚀 Paragonic", icon = "🚀" },
+        { "<leader>Ps", "<cmd>ParagonicSearch<CR>", desc = "🔍 Basic Search" },
+        { "<leader>Pf", "<cmd>ParagonicSearchFiltered<CR>", desc = "🔍 Filtered Search" },
+        { "<leader>Ph", "<cmd>ParagonicSearchHybrid<CR>", desc = "🔍 Hybrid Search" },
+        { "<leader>Pc", "<cmd>ParagonicChat<CR>", desc = "💬 Open Chat" },
+        { "<leader>Pp", "<cmd>ParagonicProjects<CR>", desc = "📁 Open Projects" },
+        { "<leader>Po", "<cmd>ParagonicConfig<CR>", desc = "⚙️  Open Config" },
+        { "<leader>Pd", "<cmd>ParagonicDebug<CR>", desc = "🐛 Open Debug" },
+        { "<leader>Ph", "<cmd>ParagonicSearchHistory<CR>", desc = "📚 Search History" },
+        { "<leader>Ps", "<cmd>ParagonicSavedSearches<CR>", desc = "💾 Saved Searches" },
+        { "<leader>Ps", "<cmd>ParagonicSaveSearch<CR>", desc = "💾 Save Current Search" },
+        { "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", desc = "🤖 AI Agent Session" },
+        { "<leader>Pe", "<cmd>ParagonicExportData<CR>", desc = "📤 Export Data" },
+        { "<leader>Pi", "<cmd>ParagonicImportData<CR>", desc = "📥 Import Data" },
+        { "<leader>Pb", "<cmd>ParagonicBackupData<CR>", desc = "💾 Backup Data" },
+        { "<leader>Pr", "<cmd>ParagonicReconnect<CR>", desc = "🔌 Force Reconnect" },
     })
     
-    -- Register visual mode keymaps for search with selection
+    -- Register visual mode keymaps for search with selection (new spec format)
     wk.register({
-        ["<leader>Ps"] = {
-            function()
+        {
+            mode = { "v" },
+            { "<leader>Ps", function()
                 local saved_reg = vim.fn.getreg('"')
                 vim.cmd('normal! y')
                 local selected_text = vim.fn.getreg('"')
@@ -3153,11 +3150,8 @@ function M.setup_which_key()
                 else
                     vim.cmd('ParagonicSearch')
                 end
-            end,
-            "🔍 Search Selected Text"
-        },
-        ["<leader>Pf"] = {
-            function()
+            end, desc = "🔍 Search Selected Text" },
+            { "<leader>Pf", function()
                 local saved_reg = vim.fn.getreg('"')
                 vim.cmd('normal! y')
                 local selected_text = vim.fn.getreg('"')
@@ -3168,11 +3162,8 @@ function M.setup_which_key()
                 else
                     vim.cmd('ParagonicSearchFiltered')
                 end
-            end,
-            "🔍 Filtered Search Selected Text"
-        },
-        ["<leader>Ph"] = {
-            function()
+            end, desc = "🔍 Filtered Search Selected Text" },
+            { "<leader>Ph", function()
                 local saved_reg = vim.fn.getreg('"')
                 vim.cmd('normal! y')
                 local selected_text = vim.fn.getreg('"')
@@ -3183,10 +3174,9 @@ function M.setup_which_key()
                 else
                     vim.cmd('ParagonicSearchHybrid')
                 end
-            end,
-            "🔍 Hybrid Search Selected Text"
+            end, desc = "🔍 Hybrid Search Selected Text" },
         },
-    }, { mode = "v" })
+    })
     
     M.debug_print("which-key integration setup completed", "info")
 end
