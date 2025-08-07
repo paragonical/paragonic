@@ -2506,12 +2506,12 @@ function M.send_message_command()
     
     local response_lines = {
         "",
-        "🮮 **AI Response:**"
+        "🮮"
     }
     
-    -- Add each line of the response
+    -- Add each line of the response with indentation
     for _, line in ipairs(response_content_lines) do
-        table.insert(response_lines, line)
+        table.insert(response_lines, "   " .. line)
     end
     
     -- Add closing lines
@@ -2633,12 +2633,12 @@ function M.send_message_command_debug()
     
     local response_lines = {
         "",
-        "🮮 **AI Response:**"
+        "🮮"
     }
     
-    -- Add each line of the response
+    -- Add each line of the response with indentation
     for _, line in ipairs(response_content_lines) do
-        table.insert(response_lines, line)
+        table.insert(response_lines, "   " .. line)
     end
     
     -- Add closing lines
