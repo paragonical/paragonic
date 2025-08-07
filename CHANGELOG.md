@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-08-07
+
+### Added
+- **🔌 Real Backend Integration**: Plugin now connects directly to Rust backend using vim.uv TCP sockets
+- **⚡ Direct TCP Communication**: Eliminated dependency on external tools (nc, curl) for backend communication
+- **🎯 Real AI Responses**: Plugin now returns actual AI responses from Ollama models instead of mock data
+- **🔄 Async-to-Sync Wrapper**: Proper handling of vim.uv async operations with synchronous RPC interface
+
+### Changed
+- **Default Backend Mode**: Plugin now uses real backend by default (no more mock responses)
+- **RPC Architecture**: Migrated from mock RPC client to real vim.uv TCP socket communication
+- **Connection Logic**: Updated to use vim.uv.new_tcp() for direct backend communication
+- **Error Handling**: Enhanced error handling for TCP connection failures and timeouts
+
+### Removed
+- **Toggle Commands**: Removed `:ParagonicUseRealBackend` and `:ParagonicUseMockBackend` commands
+- **Mock RPC Client**: Eliminated dependency on mock responses for testing
+- **External Tool Dependencies**: No longer requires nc, curl, or other external tools for communication
+
+### Technical Details
+- Implemented vim.uv.new_tcp() for direct TCP socket creation
+- Added synchronous wrapper using vim.wait() for async socket operations
+- Enhanced connection detection using self.connected flag instead of is_active()
+- Updated RPC client to use real backend by default (vim.g.paragonic_use_real_backend ~= false)
+- Improved timeout handling with vim.uv.now() for accurate timing
+
+### Testing
+- **Lua Unit Tests**: Updated to work with real backend integration
+- **Integration Tests**: Modified to handle real TCP connections instead of mock responses
+- **Test Suite Reorganization**: Completed major test cleanup with unit/integration/e2e structure
+- **Backend Integration**: All tests now pass with real backend communication
+
 ## [0.5.0] - 2025-12-06
 
 ### Added

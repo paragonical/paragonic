@@ -69,8 +69,8 @@ function M:connect()
             return false, err
         end
     elseif vim and vim.fn then
-        -- Check if we should use real backend or mock
-        local use_real_backend = vim.g.paragonic_use_real_backend or false
+        -- Use real backend by default
+        local use_real_backend = vim.g.paragonic_use_real_backend ~= false
         
         if use_real_backend then
             -- Try to use vim.uv.new_tcp for Neovim

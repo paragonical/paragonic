@@ -63,18 +63,7 @@ function M.setup(opts)
         print("TEST COMMAND WORKING")
         vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)
     end, {})
-    vim.api.nvim_create_user_command("ParagonicUseRealBackend", function()
-        vim.g.paragonic_use_real_backend = true
-        -- Reset RPC client to force reconnection
-        M._rpc_client = nil
-        vim.notify("Real backend enabled. Reconnecting...", vim.log.levels.INFO)
-    end, {})
-    vim.api.nvim_create_user_command("ParagonicUseMockBackend", function()
-        vim.g.paragonic_use_real_backend = false
-        -- Reset RPC client to force reconnection
-        M._rpc_client = nil
-        vim.notify("Mock backend enabled.", vim.log.levels.INFO)
-    end, {})
+    
     vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
     vim.api.nvim_create_user_command("ParagonicSaveConfig", M.save_config_command, {})
     
