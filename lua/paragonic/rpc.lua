@@ -69,7 +69,35 @@ function M:connect()
             return false, err
         end
     elseif vim and vim.fn then
-        -- Use simple RPC client for Neovim (no system() calls)
+        -- Check if we should use real backend or mock
+        local use_real_backend = vim.g.paragonic_use_real_backend or false
+        
+        if use_real_backend then
+            -- Try to use real TCP socket for Neovim
+            local socket_available = pcall(require, "socket")
+            local socket = socket_available and require("socket") or nil
+            
+            if socket and socket.tcp then
+                print("🔧 RPC: Using real TCP socket for Neovim")
+                self.socket = socket.tcp()
+                self.socket:settimeout(60)
+                
+                local success, err = self.socket:connect(host, tonumber(port))
+                if success then
+                    self.connected = true
+                    return true
+                else
+                    self.socket:close()
+                    self.socket = nil
+                    self.connected = false
+                    return false, err
+                end
+            else
+                print("❌ RPC: Socket library not available, falling back to mock")
+            end
+        end
+        
+        -- Use simple RPC client for Neovim (mock)
         local simple_rpc_ok, simple_rpc = pcall(require, "paragonic.rpc_simple")
         if simple_rpc_ok then
             print("🔧 RPC: Using simple RPC client for Neovim")
