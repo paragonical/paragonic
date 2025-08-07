@@ -2479,6 +2479,14 @@ function M.send_message_command()
         vim.cmd("redraw!")
     end)
     
+    -- Set up retry callback for RPC client
+    if M._rpc_client and M._rpc_client.set_retry_callback then
+        M._rpc_client:set_retry_callback(function(attempt, max_attempts)
+            -- Add retry notification to chat buffer
+            vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, {"🔄 Retry attempt " .. attempt .. "/" .. max_attempts})
+        end)
+    end
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
     
@@ -2492,6 +2500,12 @@ function M.send_message_command()
         -- Update the status message to show failure
         M.append_debug_message(current_buf, "Failed to send message: " .. (err or "unknown error"), "error")
         vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        
+        -- Add error message to chat buffer with error symbol
+        local error_lines = {
+            "🛔  " .. (err or "unknown error")
+        }
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
         return
     end
     
@@ -2618,6 +2632,14 @@ function M.send_message_command_debug()
         vim.cmd("redraw!")
     end)
     
+    -- Set up retry callback for RPC client
+    if M._rpc_client and M._rpc_client.set_retry_callback then
+        M._rpc_client:set_retry_callback(function(attempt, max_attempts)
+            -- Add retry notification to chat buffer
+            vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, {"🔄 Retry attempt " .. attempt .. "/" .. max_attempts})
+        end)
+    end
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
     
@@ -2630,6 +2652,12 @@ function M.send_message_command_debug()
     if not response then
         M.append_debug_message(current_buf, "Failed to send message: " .. tostring(err), "error")
         vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        
+        -- Add error message to chat buffer with error symbol
+        local error_lines = {
+            "🛔  " .. (err or "unknown error")
+        }
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
         return
     end
     

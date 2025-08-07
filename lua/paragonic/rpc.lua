@@ -40,13 +40,19 @@ function M.new(server_address)
         last_health_check = 0,
         health_check_interval = 300, -- Check connection health every 5 minutes (increased for testing)
         max_reconnect_attempts = 3,
-        reconnect_delay = 1 -- seconds
+        reconnect_delay = 1, -- seconds
+        retry_callback = nil -- Callback for retry notifications
     }
     
     -- Set metatable for object-oriented behavior
     setmetatable(client, { __index = M })
     
     return client
+end
+
+-- Set retry callback for notifications
+function M:set_retry_callback(callback)
+    self.retry_callback = callback
 end
 
 -- Check if connection is still healthy
@@ -94,6 +100,11 @@ function M:reconnect()
     -- Try to reconnect
     for attempt = 1, self.max_reconnect_attempts do
         debug_print("🔧 Reconnection attempt " .. attempt .. "/" .. self.max_reconnect_attempts, "info")
+        
+        -- Notify about retry attempt
+        if self.retry_callback then
+            self.retry_callback(attempt, self.max_reconnect_attempts)
+        end
         
         local success, err = self:connect()
         if success then
