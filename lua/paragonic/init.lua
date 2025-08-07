@@ -518,6 +518,7 @@ function M._get_rpc_client()
 end
 
 -- AI agent session functions - delegate to ai_agent module
+-- AI agent session functions - delegate to ai_agent module
 function M.start_ai_agent_session(agent_name, capabilities)
     return ai_agent.start_ai_agent_session(agent_name, capabilities)
 end
@@ -2087,27 +2088,9 @@ function M.read_mcp_resource(uri)
     return mcp.read_mcp_resource(uri)
 end
 
--- Validate resource content
+-- Validate resource content - delegate to mcp module
 function M.validate_resource_content(content)
-    if not content.uri then
-        return false, "Missing URI"
-    end
-    if not content.mime_type then
-        return false, "Missing MIME type"
-    end
-    if not content.text then
-        return false, "Missing text content"
-    end
-    
-    -- Validate JSON for JSON MIME types
-    if content.mime_type == "application/json" then
-        local success, _ = pcall(vim.json.decode, content.text)
-        if not success then
-            return false, "Invalid JSON content"
-        end
-    end
-    
-    return true, nil
+    return mcp.validate_resource_content(content)
 end
 
 -- MCP Progress tracking state
@@ -2116,70 +2099,25 @@ M.progress_state = {
     next_progress_id = 1
 }
 
--- Create a progress notification
+-- Progress notification functions - delegate to mcp module
 function M.create_progress_notification(progress_id, message, percentage, done)
-    return {
-        method = "notifications/progress",
-        params = {
-            id = progress_id,
-            message = message,
-            percentage = percentage or 0,
-            done = done or false
-        }
-    }
+    return mcp.create_progress_notification(progress_id, message, percentage, done)
 end
 
--- Start a progress operation
 function M.start_progress_operation(operation_name, initial_message)
-    local progress_id = "progress-" .. M.progress_state.next_progress_id
-    M.progress_state.next_progress_id = M.progress_state.next_progress_id + 1
-    
-    M.progress_state.active_operations[progress_id] = {
-        name = operation_name,
-        message = initial_message,
-        percentage = 0,
-        start_time = os.time()
-    }
-    
-    return progress_id, M.create_progress_notification(progress_id, initial_message, 0, false)
+    return mcp.start_progress_operation(operation_name, initial_message)
 end
 
--- Update progress
 function M.update_progress(progress_id, message, percentage)
-    local operation = M.progress_state.active_operations[progress_id]
-    if not operation then
-        return nil, "Progress operation not found: " .. progress_id
-    end
-    
-    operation.message = message or operation.message
-    operation.percentage = percentage or operation.percentage
-    
-    return M.create_progress_notification(progress_id, operation.message, operation.percentage, false)
+    return mcp.update_progress(progress_id, message, percentage)
 end
 
--- Complete progress operation
 function M.complete_progress_operation(progress_id, final_message)
-    local operation = M.progress_state.active_operations[progress_id]
-    if not operation then
-        return nil, "Progress operation not found: " .. progress_id
-    end
-    
-    local final_notification = M.create_progress_notification(progress_id, final_message or operation.message, 100, true)
-    M.progress_state.active_operations[progress_id] = nil
-    
-    return final_notification
+    return mcp.complete_progress_operation(progress_id, final_message)
 end
 
--- Format progress summary
 function M.format_progress_summary(progress_notifications)
-    local summary = {
-        total_notifications = #progress_notifications,
-        start_percentage = progress_notifications[1] and progress_notifications[1].params.percentage or 0,
-        end_percentage = progress_notifications[#progress_notifications] and progress_notifications[#progress_notifications].params.percentage or 0,
-        final_message = progress_notifications[#progress_notifications] and progress_notifications[#progress_notifications].params.message or "",
-        completed = progress_notifications[#progress_notifications] and progress_notifications[#progress_notifications].params.done or false
-    }
-    return summary
+    return mcp.format_progress_summary(progress_notifications)
 end
 
 -- Handle MCP tool calls with enhanced error handling and metadata
@@ -2721,60 +2659,9 @@ function M.get_autocommands_info()
     return mcp.get_autocommands_info()
 end
 
--- Sample resource content based on criteria
+-- Sample resource content - delegate to mcp module
 function M.sample_resource(uri, criteria)
-    if uri == "neovim://buffers" then
-        local buffers = M.get_buffers_info()
-        
-        -- Apply sampling criteria
-        if criteria and criteria.limit then
-            local sampled = {}
-            for i = 1, math.min(criteria.limit, #buffers) do
-                table.insert(sampled, buffers[i])
-            end
-            return sampled
-        end
-        
-        -- Apply filters
-        if criteria and criteria.filter then
-            local filtered = {}
-            for _, buffer in ipairs(buffers) do
-                local matches = true
-                
-                if criteria.filter.file_type and buffer.file_type ~= criteria.filter.file_type then
-                    matches = false
-                end
-                
-                if criteria.filter.name_pattern and not buffer.name:match(criteria.filter.name_pattern) then
-                    matches = false
-                end
-                
-                if matches then
-                    table.insert(filtered, buffer)
-                end
-            end
-            return filtered
-        end
-        
-        return buffers
-    elseif uri == "neovim://session" then
-        local session = M.get_session_info()
-        
-        -- Apply field selection
-        if criteria and criteria.fields then
-            local sampled = {}
-            for _, field in ipairs(criteria.fields) do
-                if session[field] then
-                    sampled[field] = session[field]
-                end
-            end
-            return sampled
-        end
-        
-        return session
-    else
-        return nil
-    end
+    return mcp.sample_resource(uri, criteria)
 end
 
 -- Define resource roots for context boundaries
