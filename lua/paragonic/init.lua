@@ -2120,40 +2120,10 @@ function M.format_progress_summary(progress_notifications)
     return mcp.format_progress_summary(progress_notifications)
 end
 
--- Handle MCP tool calls with enhanced error handling and metadata
+-- Handle MCP tool calls - delegate to mcp module
 function M.handle_tool_call(id, params)
-    local tool_name = params.name
-    local arguments = params.arguments or {}
-    
-    -- Validate required parameters
-    if not tool_name then
-        return {
-            id = id,
-            error = {
-                code = -32602,
-                message = "Tool name is required"
-            }
-        }
-    end
-    
-    -- Start progress for long-running operations
-    local progress_id = nil
-    local progress_notifications = {}
-    
-    if tool_name == "agent_edit_file" then
-        local file_path = arguments.file_path
-        local line_number = arguments.line_number or 1
-        local content = arguments.content or ""
-        
-        if not file_path then
-            return {
-                id = id,
-                error = {
-                    code = -32602,
-                    message = "file_path is required for agent_edit_file"
-                }
-            }
-        end
+    return mcp.handle_tool_call(id, params)
+end
         
         -- Start progress
         progress_id, start_notification = M.start_progress_operation("file_edit", "Editing file: " .. file_path)
@@ -2838,26 +2808,10 @@ function M.complete_operation(operation_id)
 end
 
 -- Enhanced tool call with cancellation support
+-- Handle MCP tool calls with cancellation - delegate to mcp module
 function M.handle_tool_call_with_cancellation(id, params)
-    local tool_name = params.name
-    local arguments = params.arguments or {}
-    
-    if not tool_name then
-        return {
-            id = id,
-            error = {
-                code = -32602,
-                message = "Tool name is required"
-            }
-        }
-    end
-    
-    -- Register operation for cancellation
-    local operation_id = M.register_cancellable_operation("tool_call", "Tool: " .. tool_name)
-    
-    if tool_name == "agent_edit_file" then
-        local file_path = arguments.file_path
-        local line_number = arguments.line_number or 1
+    return mcp.handle_tool_call_with_cancellation(id, params)
+end
         local content = arguments.content or ""
         
         if not file_path then
