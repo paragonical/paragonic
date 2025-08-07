@@ -293,6 +293,16 @@ function M.setup(opts)
         end
     end, {nargs = "*"})
     
+    -- Connection management commands
+    vim.api.nvim_create_user_command("ParagonicReconnect", function()
+        local success = M.force_reconnect()
+        if success then
+            vim.notify("Successfully reconnected to Paragonic backend", vim.log.levels.INFO)
+        else
+            vim.notify("Failed to reconnect to Paragonic backend", vim.log.levels.ERROR)
+        end
+    end, {})
+    
     -- Set up keyboard mappings immediately
     M._setup_keymaps()
     
@@ -315,6 +325,18 @@ function M._get_rpc_client()
         -- This prevents freezing during buffer operations
         return nil
     end
+    
+    -- Check if the client is still connected and try to reconnect if needed
+    if not M._rpc_client:is_connected() then
+        print("🔧 RPC client disconnected, attempting reconnection...")
+        local success = M._rpc_client:reconnect()
+        if not success then
+            print("❌ Reconnection failed, returning nil")
+            return nil
+        end
+        print("✅ RPC client reconnected successfully")
+    end
+    
     return M._rpc_client
 end
 
@@ -2050,6 +2072,35 @@ function M._initialize_backend()
     
     print("✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms")
     return true
+end
+
+-- Force reconnection to the backend (useful when server restarts)
+function M.force_reconnect()
+    print("🔧 force_reconnect() called")
+    
+    if not M._rpc_client then
+        print("🔧 No RPC client exists, initializing backend...")
+        return M._initialize_backend()
+    end
+    
+    print("🔧 Forcing reconnection of existing RPC client...")
+    
+    -- Disconnect current client
+    M._rpc_client:disconnect()
+    
+    -- Try to reconnect
+    local success = M._rpc_client:reconnect()
+    
+    if success then
+        print("✅ Force reconnection successful")
+        return true
+    else
+        print("❌ Force reconnection failed, reinitializing backend...")
+        
+        -- If reconnection fails, reinitialize the entire backend
+        M._rpc_client = nil
+        return M._initialize_backend()
+    end
 end
 
 -- Manually initialize backend when needed

@@ -19,13 +19,76 @@ function M.new(server_address)
     local client = {
         server_address = server_address,
         connected = false,
-        socket = nil
+        socket = nil,
+        last_health_check = 0,
+        health_check_interval = 30, -- Check connection health every 30 seconds
+        max_reconnect_attempts = 3,
+        reconnect_delay = 1 -- seconds
     }
     
     -- Set metatable for object-oriented behavior
     setmetatable(client, { __index = M })
     
     return client
+end
+
+-- Check if connection is still healthy
+function M:check_connection_health()
+    local current_time = os.time()
+    
+    -- Don't check too frequently
+    if current_time - self.last_health_check < self.health_check_interval then
+        return self.connected
+    end
+    
+    self.last_health_check = current_time
+    
+    -- Try a simple hello call to test connection
+    local success, result = pcall(function()
+        return self:hello()
+    end)
+    
+    if not success or not result then
+        print("🔧 RPC: Connection health check failed, marking as disconnected")
+        self.connected = false
+        return false
+    end
+    
+    return true
+end
+
+-- Attempt to reconnect to the server
+function M:reconnect()
+    print("🔧 RPC: Attempting to reconnect to server...")
+    
+    -- Clean up existing connection
+    if self.socket then
+        pcall(function() self.socket:close() end)
+        self.socket = nil
+    end
+    
+    self.connected = false
+    
+    -- Try to reconnect
+    for attempt = 1, self.max_reconnect_attempts do
+        print("🔧 RPC: Reconnection attempt " .. attempt .. "/" .. self.max_reconnect_attempts)
+        
+        local success, err = self:connect()
+        if success then
+            print("✅ RPC: Reconnection successful")
+            return true
+        else
+            print("❌ RPC: Reconnection attempt " .. attempt .. " failed: " .. tostring(err))
+            
+            if attempt < self.max_reconnect_attempts then
+                print("⏳ RPC: Waiting " .. self.reconnect_delay .. " seconds before next attempt...")
+                vim.wait(self.reconnect_delay * 1000)
+            end
+        end
+    end
+    
+    print("❌ RPC: Failed to reconnect after " .. self.max_reconnect_attempts .. " attempts")
+    return false
 end
 
 -- Connect to the RPC server
@@ -185,12 +248,22 @@ end
 
 -- Check if connected
 function M:is_connected()
+    -- First check the connection health
+    if not self:check_connection_health() then
+        -- Try to reconnect automatically
+        if self:reconnect() then
+            return true
+        else
+            return false
+        end
+    end
+    
     return self.connected
 end
 
--- Make a JSON-RPC call
+-- Make a JSON-RPC call with automatic reconnection
 function M:call(method, params)
-    -- Check if connected
+    -- Check if connected and try to reconnect if needed
     if not self:is_connected() then
         return nil, "Not connected to server"
     end
@@ -232,7 +305,14 @@ function M:call(method, params)
         -- Send the request
         local send_success, send_err = self.socket:write(message)
         if not send_success then
-            return nil, "Failed to send request: " .. tostring(send_err)
+            -- Connection might be broken, try to reconnect
+            print("🔧 RPC: Send failed, attempting reconnection...")
+            if self:reconnect() then
+                -- Retry the call after reconnection
+                return self:call(method, params)
+            else
+                return nil, "Failed to send request: " .. tostring(send_err)
+            end
         end
         
         -- Wait for response with timeout using vim.wait
@@ -247,7 +327,14 @@ function M:call(method, params)
         end
         
         if response_error then
-            return nil, response_error
+            -- Connection error, try to reconnect
+            print("🔧 RPC: Response error, attempting reconnection...")
+            if self:reconnect() then
+                -- Retry the call after reconnection
+                return self:call(method, params)
+            else
+                return nil, response_error
+            end
         end
         
         return response_data
@@ -267,13 +354,27 @@ function M:call(method, params)
         
         local send_success, send_err = self.socket:send(message)
         if not send_success then
-            return nil, "Failed to send request: " .. tostring(send_err)
+            -- Connection might be broken, try to reconnect
+            print("🔧 RPC: Send failed, attempting reconnection...")
+            if self:reconnect() then
+                -- Retry the call after reconnection
+                return self:call(method, params)
+            else
+                return nil, "Failed to send request: " .. tostring(send_err)
+            end
         end
         
         -- Receive response (line-delimited)
         local response, recv_err = self.socket:receive("*l")  -- Receive one line
         if not response then
-            return nil, "Failed to receive response: " .. tostring(recv_err)
+            -- Connection error, try to reconnect
+            print("🔧 RPC: Receive failed, attempting reconnection...")
+            if self:reconnect() then
+                -- Retry the call after reconnection
+                return self:call(method, params)
+            else
+                return nil, "Failed to receive response: " .. tostring(recv_err)
+            end
         end
         
         return response

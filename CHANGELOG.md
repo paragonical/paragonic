@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-08-07
+
+### Added
+- **🔄 Automatic Reconnection**: Plugin now automatically reconnects when the server restarts
+- **🔍 Connection Health Checking**: Periodic health checks to detect connection issues
+- **🛠️ Manual Reconnection**: `:ParagonicReconnect` command for manual reconnection
+- **⚡ Smart Connection Management**: Automatic reconnection attempts with retry logic
+- **🎯 Enhanced Error Handling**: RPC calls now detect failures and attempt reconnection
+
+### Changed
+- **Connection Resilience**: Client no longer gets confused when server restarts
+- **RPC Architecture**: Enhanced with connection health monitoring and automatic recovery
+- **Error Recovery**: Failed RPC calls now trigger automatic reconnection attempts
+
+### Technical Details
+- Added `check_connection_health()` for periodic connection testing
+- Implemented `reconnect()` with configurable retry attempts and delays
+- Enhanced `is_connected()` to automatically trigger reconnection when needed
+- Added `force_reconnect()` for manual reconnection scenarios
+- Updated `_get_rpc_client()` to check health and reconnect automatically
+- Implemented connection state management with health check intervals
+
 ## [0.6.0] - 2025-08-07
 
 ### Added
