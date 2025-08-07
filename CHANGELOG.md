@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **🐛 Separate Debug Buffer**: Debug messages now appear in a dedicated `paragonic://debug` buffer
 - **🮮 Diamond AI Responses**: AI responses now prefixed with diamond symbol (🮮) for better visual distinction
 - **📊 Timestamped Debug Logs**: Debug messages include timestamps for better tracking
+- **🔧 Debug Print Integration**: All internal print statements now write to debug buffer instead of terminal
 
 ### Changed
 - **Connection Resilience**: Client no longer gets confused when server restarts
@@ -33,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modified `append_debug_message()` to use dedicated debug buffer with timestamps
 - Updated AI response formatting to use diamond symbol (🮮) prefix
 - Added `:ParagonicDebug` command to open debug buffer
+- Added `debug_print()` function to replace all internal print statements
+- Replaced all print statements with debug buffer appends for cleaner terminal output
 
 ## [0.6.0] - 2025-08-07
 
