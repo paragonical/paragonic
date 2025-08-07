@@ -1934,20 +1934,28 @@ end
 function M._initialize_backend()
     -- Only initialize once
     if M._rpc_client then
-        return
+        return true
     end
     
+    vim.notify("🔧 Starting backend initialization...", vim.log.levels.INFO)
+    
     -- Create RPC client with timeout
+    vim.notify("🔧 Step 1: Creating RPC client...", vim.log.levels.INFO)
     local rpc = require("paragonic.rpc")
     M._rpc_client = rpc.new("127.0.0.1:3000")
+    vim.notify("✅ RPC client created", vim.log.levels.INFO)
     
     -- Set a timeout for the connection attempt
     local connection_timeout = 5000 -- 5 seconds
     local max_retries = 2
     local retry_count = 0
     
+    vim.notify("🔧 Step 2: Attempting connection to backend...", vim.log.levels.INFO)
+    
     while retry_count <= max_retries do
         local start_time = vim.loop.hrtime() / 1000000
+        
+        vim.notify("🔧 Attempt " .. (retry_count + 1) .. "/" .. (max_retries + 1) .. ": Connecting to 127.0.0.1:3000...", vim.log.levels.INFO)
         
         -- Connect to the Rust backend with timeout
         local success, err = M._rpc_client:connect()
@@ -1958,25 +1966,28 @@ function M._initialize_backend()
             retry_count = retry_count + 1
             
             if duration > connection_timeout then
-                vim.notify("Paragonic backend connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
+                vim.notify("❌ Connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
             else
-                vim.notify("Failed to connect to Paragonic backend: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
+                vim.notify("❌ Connection failed: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", vim.log.levels.WARN)
             end
             
             if retry_count > max_retries then
-                vim.notify("Failed to connect to Paragonic backend after " .. (max_retries + 1) .. " attempts", vim.log.levels.ERROR)
+                vim.notify("❌ Failed to connect after " .. (max_retries + 1) .. " attempts", vim.log.levels.ERROR)
                 M._rpc_client = nil
-                return
+                return false
             end
             
             -- Wait a bit before retrying
+            vim.notify("⏳ Waiting 1 second before retry...", vim.log.levels.INFO)
             vim.wait(1000)
         else
+            vim.notify("✅ Connection successful!", vim.log.levels.INFO)
             break
         end
     end
     
     -- Test connection with hello call (also with timeout)
+    vim.notify("🔧 Step 3: Testing connection with hello call...", vim.log.levels.INFO)
     local hello_start = vim.loop.hrtime() / 1000000
     local response = M._rpc_client:hello()
     local hello_end = vim.loop.hrtime() / 1000000
@@ -1984,17 +1995,18 @@ function M._initialize_backend()
     
     if not response then
         if hello_duration > connection_timeout then
-            vim.notify("Paragonic backend hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.ERROR)
+            vim.notify("❌ Hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.ERROR)
         else
-            vim.notify("Failed to communicate with Paragonic backend", vim.log.levels.ERROR)
+            vim.notify("❌ Hello call failed - no response", vim.log.levels.ERROR)
         end
         
         M._rpc_client:disconnect()
         M._rpc_client = nil
-        return
+        return false
     end
     
-    vim.notify("Paragonic backend connected successfully in " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.INFO)
+    vim.notify("✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms", vim.log.levels.INFO)
+    return true
 end
 
 -- Manually initialize backend when needed
@@ -2245,13 +2257,20 @@ function M.send_message_command()
     
     -- Initialize backend if not available
     if not M._rpc_client then
-        M.append_debug_message(current_buf, "Initializing backend...", "info")
+        M.append_debug_message(current_buf, "🔧 Backend not available, starting initialization...", "info")
+        M.append_debug_message(current_buf, "🔧 Step 1: Creating RPC client...", "debug")
+        
         local success = M._initialize_backend()
+        
         if not success then
-            M.append_debug_message(current_buf, "Failed to initialize backend", "error")
+            M.append_debug_message(current_buf, "❌ Backend initialization failed", "error")
             vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
             return
+        else
+            M.append_debug_message(current_buf, "✅ Backend initialization completed", "success")
         end
+    else
+        M.append_debug_message(current_buf, "✅ Backend already available", "info")
     end
     
     -- Start a progress indicator for long operations
@@ -2351,13 +2370,20 @@ function M.send_message_command_debug()
     
     -- Initialize backend if not available
     if not M._rpc_client then
-        M.append_debug_message(current_buf, "Initializing backend...", "info")
+        M.append_debug_message(current_buf, "🔧 Backend not available, starting initialization...", "info")
+        M.append_debug_message(current_buf, "🔧 Step 1: Creating RPC client...", "debug")
+        
         local success = M._initialize_backend()
+        
         if not success then
-            M.append_debug_message(current_buf, "Failed to initialize backend", "error")
+            M.append_debug_message(current_buf, "❌ Backend initialization failed", "error")
             vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
             return
+        else
+            M.append_debug_message(current_buf, "✅ Backend initialization completed", "success")
         end
+    else
+        M.append_debug_message(current_buf, "✅ Backend already available", "info")
     end
     
     -- Check RPC client
