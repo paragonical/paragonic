@@ -61,10 +61,12 @@ local function wrap_text(text, max_width, indent)
     -- Process each line as a potential paragraph
     for i, line in ipairs(text_lines) do
         if line:match("%S") then  -- Only process non-empty lines
+            -- Strip leading spaces from the line
+            local clean_line = line:match("^%s*(.+)$")
             local words = {}
             
-            -- Split line into words, preserving spaces
-            for word in line:gmatch("[%s]*[^%s]+") do
+            -- Split clean line into words
+            for word in clean_line:gmatch("[^%s]+") do
                 table.insert(words, word)
             end
             
@@ -122,10 +124,12 @@ local function wrap_text_with_diamond(text, max_width)
     -- Process each line as a potential paragraph
     for i, line in ipairs(text_lines) do
         if line:match("%S") then  -- Only process non-empty lines
+            -- Strip leading spaces from the line
+            local clean_line = line:match("^%s*(.+)$")
             local words = {}
             
-            -- Split line into words, preserving spaces
-            for word in line:gmatch("[%s]*[^%s]+") do
+            -- Split clean line into words
+            for word in clean_line:gmatch("[^%s]+") do
                 table.insert(words, word)
             end
             
