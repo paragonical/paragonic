@@ -3352,124 +3352,14 @@ end
 
 -- Agentic collaboration functionality
 
--- Get comprehensive session information for agent
+-- Agent session info getter - delegate to ai_agent module
 function M.get_agent_session_info()
-    local session_info = {
-        timestamp = os.time(),
-        current_directory = vim.fn.getcwd(),
-        current_file = vim.fn.expand("%:p"),
-        buffers = {},
-        windows = {},
-        mode = vim.api.nvim_get_mode(),
-        terminal_info = {
-            columns = vim.o.columns,
-            lines = vim.o.lines
-        }
-    }
-    
-    -- Get buffer information
-    local buffers = vim.api.nvim_list_bufs()
-    for _, buf in ipairs(buffers) do
-        local buf_name = vim.api.nvim_buf_get_name(buf)
-        local buftype = vim.api.nvim_buf_get_option(buf, "buftype")
-        local modifiable = vim.api.nvim_buf_get_option(buf, "modifiable")
-        local line_count = vim.api.nvim_buf_line_count(buf)
-        
-        -- Only include file buffers (not special buffers)
-        if buftype == "" and buf_name ~= "" then
-            table.insert(session_info.buffers, {
-                id = buf,
-                name = buf_name,
-                line_count = line_count,
-                modifiable = modifiable,
-                is_current = (buf == vim.api.nvim_get_current_buf())
-            })
-        end
-    end
-    
-    -- Get window information
-    local windows = vim.api.nvim_list_wins()
-    for _, win in ipairs(windows) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        local cursor = vim.api.nvim_win_get_cursor(win)
-        
-        table.insert(session_info.windows, {
-            id = win,
-            buffer_id = buf,
-            cursor_line = cursor[1],
-            cursor_column = cursor[2]
-        })
-    end
-    
-    return session_info
+    return ai_agent.get_agent_session_info()
 end
 
--- Edit a file in the current session
+-- Agent file editor - delegate to ai_agent module
 function M.agent_edit_file(args)
-    local file_path = args[1]
-    local line_number = tonumber(args[2]) or 1
-    local content = args[3] or ""
-    
-    if not file_path or file_path == "" then
-        vim.notify("File path is required", vim.log.levels.WARN)
-        return false
-    end
-    
-    -- Find buffer by file path
-    local target_buffer = nil
-    local buffers = vim.api.nvim_list_bufs()
-    
-    for _, buf in ipairs(buffers) do
-        local buf_name = vim.api.nvim_buf_get_name(buf)
-        if buf_name == file_path then
-            target_buffer = buf
-            break
-        end
-    end
-    
-    if not target_buffer then
-        vim.notify("File not found in current session: " .. file_path, vim.log.levels.WARN)
-        return false
-    end
-    
-    -- Check if buffer is modifiable
-    local modifiable = vim.api.nvim_buf_get_option(target_buffer, "modifiable")
-    if not modifiable then
-        vim.notify("File is not modifiable: " .. file_path, vim.log.levels.WARN)
-        return false
-    end
-    
-    -- Switch to the target buffer
-    vim.api.nvim_set_current_buf(target_buffer)
-    
-    -- Get current content
-    local current_lines = vim.api.nvim_buf_get_lines(target_buffer, 0, -1, false)
-    
-    -- Prepare new content
-    local new_lines = {}
-    if content ~= "" then
-        -- If content provided, replace the specified line
-        for i, line in ipairs(current_lines) do
-            if i == line_number then
-                table.insert(new_lines, content)
-            else
-                table.insert(new_lines, line)
-            end
-        end
-    else
-        -- If no content, just use current lines (for viewing)
-        new_lines = current_lines
-    end
-    
-    -- Update the buffer
-    if content ~= "" then
-        vim.api.nvim_buf_set_lines(target_buffer, 0, -1, false, new_lines)
-        vim.notify("Edited file: " .. file_path .. " at line " .. line_number, vim.log.levels.INFO)
-    else
-        vim.notify("Switched to file: " .. file_path, vim.log.levels.INFO)
-    end
-    
-    return true
+    return ai_agent.agent_edit_file(args)
 end
 
 -- Get file content from current session
@@ -3504,65 +3394,9 @@ function M.agent_get_file_content(file_path)
     }
 end
 
--- Create a new file in the current session
+-- Agent file creator - delegate to ai_agent module
 function M.agent_create_file(args)
-    local file_name = args[1]
-    local content = args[2] or ""
-    local open_in_window = args[3] == "true"
-    
-    if not file_name or file_name == "" then
-        vim.notify("File name is required", vim.log.levels.WARN)
-        return false
-    end
-    
-    -- Check if file already exists in session
-    local buffers = vim.api.nvim_list_bufs()
-    for _, buf in ipairs(buffers) do
-        local buf_name = vim.api.nvim_buf_get_name(buf)
-        if buf_name == file_name then
-            vim.notify("File already exists in session: " .. file_name, vim.log.levels.WARN)
-            return false
-        end
-    end
-    
-    -- Create new buffer
-    local new_buf = vim.api.nvim_create_buf(true, false)
-    if not new_buf then
-        vim.notify("Failed to create buffer", vim.log.levels.ERROR)
-        return false
-    end
-    
-    -- Set buffer name
-    vim.api.nvim_buf_set_name(new_buf, file_name)
-    
-    -- Set initial content if provided
-    if content ~= "" then
-        local lines = {}
-        for line in content:gmatch("[^\r\n]+") do
-            table.insert(lines, line)
-        end
-        vim.api.nvim_buf_set_lines(new_buf, 0, -1, false, lines)
-    end
-    
-    -- Open in window if requested
-    if open_in_window then
-        local config = {
-            relative = "editor",
-            width = 80,
-            height = 20,
-            row = 2,
-            col = 2,
-            style = "minimal",
-            border = "single"
-        }
-        vim.api.nvim_open_win(new_buf, true, config)
-    else
-        -- Switch to the new buffer
-        vim.api.nvim_set_current_buf(new_buf)
-    end
-    
-    vim.notify("Created file: " .. file_name, vim.log.levels.INFO)
-    return true, new_buf
+    return ai_agent.agent_create_file(args)
 end
 
 -- Create a file with a template
@@ -3601,63 +3435,9 @@ function M.agent_create_file_with_template(template_name, file_name)
     return M.agent_create_file({file_name, content})
 end
 
--- Save current file or specified file
+-- Agent file saver - delegate to ai_agent module
 function M.agent_save_file(args)
-    local file_path = args[1]
-    local force = args[2] == "true"
-    
-    local target_buffer = nil
-    
-    if file_path and file_path ~= "" then
-        -- Find buffer by file path
-        local buffers = vim.api.nvim_list_bufs()
-        for _, buf in ipairs(buffers) do
-            local buf_name = vim.api.nvim_buf_get_name(buf)
-            if buf_name == file_path then
-                target_buffer = buf
-                break
-            end
-        end
-        
-        if not target_buffer then
-            vim.notify("File not found in session: " .. file_path, vim.log.levels.WARN)
-            return false
-        end
-    else
-        -- Use current buffer
-        target_buffer = vim.api.nvim_get_current_buf()
-        file_path = vim.api.nvim_buf_get_name(target_buffer)
-    end
-    
-    -- Check if buffer is modified
-    local modified = vim.api.nvim_buf_get_option(target_buffer, "modified")
-    if not modified and not force then
-        vim.notify("File is not modified: " .. file_path, vim.log.levels.INFO)
-        return true
-    end
-    
-    -- Get buffer content
-    local lines = vim.api.nvim_buf_get_lines(target_buffer, 0, -1, false)
-    
-    -- Ensure directory exists
-    local dir_path = vim.fn.fnamemodify(file_path, ":h")
-    if dir_path ~= "." and vim.fn.isdirectory(dir_path) == 0 then
-        vim.fn.mkdir(dir_path, "p")
-    end
-    
-    -- Write file
-    local result = vim.fn.writefile(lines, file_path)
-    if result == 0 then
-        -- Mark buffer as not modified
-        vim.api.nvim_buf_call(target_buffer, function()
-            vim.cmd("set nomodified")
-        end)
-        vim.notify("Saved file: " .. file_path, vim.log.levels.INFO)
-        return true
-    else
-        vim.notify("Failed to save file: " .. file_path, vim.log.levels.ERROR)
-        return false
-    end
+    return ai_agent.agent_save_file(args)
 end
 
 -- Save all modified files
