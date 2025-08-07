@@ -5,43 +5,18 @@ Main plugin entry point
 
 local M = {}
 
--- Plugin configuration
-local config = {
-    ollama_host = "http://localhost:11434",
-    ollama_model = "llama3.2:3b",
-    database_path = nil, -- Will be set in setup() if vim is available
-    log_level = "info",
-}
-
--- Search history and saved searches
-local search_history = {}
-local saved_searches = {}
-local max_history_size = 50
-
--- AI-powered search enhancement
-local search_insights = {}
-local context_cache = {}
-local suggestion_cache = {}
-
--- AI agent collaboration state
-local ai_agent_sessions = {}
-local active_agent_id = nil
-local agent_collaboration_mode = false
-
--- Real-time event notification state
-local event_handlers = {
-    buffer_change = {},
-    cursor_movement = {},
-    window_change = {}
-}
-local event_registration_enabled = false
-local autocommand_group_id = nil
-
--- Persistent storage paths (will be set in setup() if vim is available)
-local data_dir = nil
-local history_file = nil
-local saved_searches_file = nil
-local insights_file = nil
+-- Load all modules
+local config = require("paragonic.config")
+local utils = require("paragonic.utils")
+local debug = require("paragonic.debug")
+local backend = require("paragonic.backend")
+local chat = require("paragonic.chat")
+local search = require("paragonic.search")
+local ai_agent = require("paragonic.ai_agent")
+local mcp = require("paragonic.mcp")
+local events = require("paragonic.events")
+local ui = require("paragonic.ui")
+local keymaps = require("paragonic.keymaps")
 
 -- Word wrapping helper function
 local function wrap_text(text, max_width, indent)
@@ -240,29 +215,15 @@ end
 function M.setup(opts)
     -- Check if we're in Neovim environment
     if not vim then
-        M.debug_print("Not in Neovim environment, skipping setup", "warning")
+        debug.debug_print("Not in Neovim environment, skipping setup", "warning")
         return
-    end
-    
-    -- Initialize paths if not already set
-    if not data_dir then
-        data_dir = vim.fn.stdpath("data") .. "/paragonic"
-        history_file = data_dir .. "/search_history.json"
-        saved_searches_file = data_dir .. "/saved_searches.json"
-        insights_file = data_dir .. "/search_insights.json"
     end
     
     -- Set debug buffer flag for RPC module
     vim.g.paragonic_debug_buffer = true
     
-    -- Set database path if not already set
-    if not config.database_path then
-        config.database_path = vim.fn.stdpath("data") .. "/paragonic/db"
-    end
-    
-    -- Merge options with defaults
-    local new_config = vim.tbl_deep_extend("force", config, opts or {})
-    config = vim.tbl_deep_extend("force", config, new_config)
+    -- Setup configuration
+    config.setup(opts)
     
     -- Create commands
     vim.api.nvim_create_user_command("ParagonicChat", M.open_chat, {})
@@ -556,425 +517,44 @@ function M._get_rpc_client()
     return M._rpc_client
 end
 
--- Start AI agent collaboration session
+-- AI agent session functions - delegate to ai_agent module
 function M.start_ai_agent_session(agent_name, capabilities)
-    if agent_collaboration_mode then
-        vim.notify("AI agent collaboration already active. Stop current session first.", vim.log.levels.WARN)
-        return false
-    end
-    
-    local session_id = vim.fn.strftime("%Y%m%d_%H%M%S") .. "_" .. (agent_name or "ai_agent")
-    
-    local session = {
-        id = session_id,
-        name = agent_name or "AI Agent",
-        capabilities = capabilities or {},
-        start_time = os.time(),
-        context = {
-            current_file = vim.fn.expand("%"),
-            current_directory = vim.fn.getcwd(),
-            buffers = vim.api.nvim_list_bufs(),
-            mode = vim.fn.mode()
-        },
-        interactions = {}
-    }
-    
-    ai_agent_sessions[session_id] = session
-    active_agent_id = session_id
-    agent_collaboration_mode = true
-    
-    vim.notify("Started AI agent collaboration session: " .. session_id, vim.log.levels.INFO)
-    return session_id
+    return ai_agent.start_ai_agent_session(agent_name, capabilities)
 end
 
--- Stop AI agent collaboration session
 function M.stop_ai_agent_session()
-    if not agent_collaboration_mode or not active_agent_id then
-        vim.notify("No active AI agent collaboration session to stop.", vim.log.levels.WARN)
-        return false
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if session then
-        session.end_time = os.time()
-        session.duration = session.end_time - session.start_time
-        session.final_context = {
-            current_file = vim.fn.expand("%"),
-            current_directory = vim.fn.getcwd(),
-            buffers = vim.api.nvim_list_bufs(),
-            mode = vim.fn.mode()
-        }
-        
-        vim.notify("Stopped AI agent collaboration session: " .. active_agent_id .. " (Duration: " .. session.duration .. "s)", vim.log.levels.INFO)
-    end
-    
-    agent_collaboration_mode = false
-    active_agent_id = nil
-    
-    return true
+    return ai_agent.stop_ai_agent_session()
 end
 
--- Send message from AI agent to Neovim
+-- AI agent message functions - delegate to ai_agent module
 function M.send_ai_agent_message(message, message_type)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent collaboration session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Create message object
-    local message_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = message_type or "message",
-        content = message,
-        from_agent = true,
-        status = "sent"
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, message_obj)
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    -- Notify user of AI message
-    vim.notify("🤖 AI Agent: " .. message, vim.log.levels.INFO)
-    
-    return true, message_obj.id
+    return ai_agent.send_ai_agent_message(message, message_type)
 end
 
--- Receive message from Neovim to AI agent
 function M.receive_ai_agent_message(message, message_type)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent collaboration session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Create message object
-    local message_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = message_type or "message",
-        content = message,
-        from_agent = false,
-        status = "received"
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, message_obj)
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    -- Log the received message
-    vim.notify("📥 Neovim: " .. message, vim.log.levels.INFO)
-    
-    return true, message_obj.id
+    return ai_agent.receive_ai_agent_message(message, message_type)
 end
 
--- Execute Neovim command from AI agent
+-- AI agent command function - delegate to ai_agent module
 function M.execute_ai_agent_command(command, description)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent collaboration session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    if not command or command == "" then
-        return false, "Command is required"
-    end
-    
-    -- Create action object
-    local action_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = "command",
-        content = command,
-        description = description or "AI agent command execution",
-        from_agent = true,
-        status = "executing"
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, action_obj)
-    
-    -- Execute the command
-    local success, result = pcall(vim.cmd, command)
-    
-    -- Update action status
-    if success then
-        action_obj.status = "completed"
-        action_obj.result = "Command executed successfully"
-    else
-        action_obj.status = "failed"
-        action_obj.result = "Command failed: " .. tostring(result)
-    end
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    -- Notify user of AI command execution
-    local status_icon = success and "✅" or "❌"
-    vim.notify(status_icon .. " AI Agent Command: " .. command, vim.log.levels.INFO)
-    
-    return success, action_obj.id, action_obj.result
+    return ai_agent.execute_ai_agent_command(command, description)
 end
 
--- Get buffer content from AI agent
+-- AI agent buffer content function - delegate to ai_agent module
 function M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent collaboration session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Use current buffer if not specified
-    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
-    
-    -- Validate buffer exists
-    if not vim.api.nvim_buf_is_valid(buffer_id) then
-        return false, "Invalid buffer ID: " .. tostring(buffer_id)
-    end
-    
-    -- Get buffer name
-    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
-    
-    -- Get buffer content
-    local lines = vim.api.nvim_buf_get_lines(buffer_id, 0, -1, false)
-    
-    -- Apply line range if specified
-    if start_line and end_line then
-        start_line = math.max(0, start_line - 1) -- Convert to 0-based
-        end_line = math.min(#lines, end_line) -- Convert to 0-based
-        lines = vim.list_slice(lines, start_line + 1, end_line)
-    end
-    
-    -- Create action object
-    local action_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = "buffer_read",
-        content = "Get buffer content",
-        description = string.format("Read buffer %d (%s)", buffer_id, buffer_name),
-        from_agent = true,
-        status = "completed",
-        result = {
-            buffer_id = buffer_id,
-            buffer_name = buffer_name,
-            line_count = #lines,
-            content = lines,
-            start_line = start_line and (start_line + 1) or 1,
-            end_line = end_line or #lines
-        }
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, action_obj)
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    -- Notify user of AI buffer read
-    vim.notify("📖 AI Agent: Read buffer " .. buffer_id .. " (" .. #lines .. " lines)", vim.log.levels.INFO)
-    
-    return true, action_obj.id, action_obj.result
+    return ai_agent.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
 end
 
--- Set buffer content from AI agent
+-- AI agent buffer content setter - delegate to ai_agent module
 function M.set_ai_agent_buffer_content(buffer_id, lines, start_line, end_line)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent collaboration session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Use current buffer if not specified
-    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
-    
-    -- Validate buffer exists
-    if not vim.api.nvim_buf_is_valid(buffer_id) then
-        return false, "Invalid buffer ID: " .. tostring(buffer_id)
-    end
-    
-    -- Validate lines input
-    if not lines or type(lines) ~= "table" then
-        return false, "Lines must be a table of strings"
-    end
-    
-    -- Get buffer name
-    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
-    
-    -- Determine line range
-    local start_idx = 0
-    local end_idx = -1
-    
-    if start_line and end_line then
-        start_idx = math.max(0, start_line - 1) -- Convert to 0-based
-        end_idx = start_idx + #lines - 1 -- Set end to accommodate new content
-    end
-    
-    -- Create action object
-    local action_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = "buffer_write",
-        content = "Set buffer content",
-        description = string.format("Write to buffer %d (%s)", buffer_id, buffer_name),
-        from_agent = true,
-        status = "executing"
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, action_obj)
-    
-    -- Set buffer content
-    local success, result = pcall(vim.api.nvim_buf_set_lines, buffer_id, start_idx, end_idx, false, lines)
-    
-    -- Update action status
-    if success then
-        action_obj.status = "completed"
-        action_obj.result = {
-            buffer_id = buffer_id,
-            buffer_name = buffer_name,
-            lines_written = #lines,
-            start_line = start_idx + 1,
-            end_line = end_idx + 1,
-            message = "Buffer content updated successfully"
-        }
-    else
-        action_obj.status = "failed"
-        action_obj.result = {
-            buffer_id = buffer_id,
-            buffer_name = buffer_name,
-            error = tostring(result),
-            message = "Failed to update buffer content"
-        }
-    end
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    -- Notify user of AI buffer write
-    local status_icon = success and "✏️" or "❌"
-    vim.notify(status_icon .. " AI Agent: Write to buffer " .. buffer_id .. " (" .. #lines .. " lines)", vim.log.levels.INFO)
-    
-    return success, action_obj.id, action_obj.result
+    return ai_agent.set_ai_agent_buffer_content(buffer_id, lines, start_line, end_line)
 end
 
 -- AI Agent Action Functions for Enhanced Collaboration
 
--- Switch to a specific buffer
+-- AI agent buffer switch function - delegate to ai_agent module
 function M.ai_agent_switch_buffer(buffer_id)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent collaboration session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Use current buffer if not specified
-    buffer_id = buffer_id or vim.api.nvim_get_current_buf()
-    
-    -- Validate buffer exists
-    if not vim.api.nvim_buf_is_valid(buffer_id) then
-        return false, "Invalid buffer ID: " .. tostring(buffer_id)
-    end
-    
-    -- Get buffer name
-    local buffer_name = vim.api.nvim_buf_get_name(buffer_id)
-    
-    -- Create action object
-    local action_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = "switch_buffer",
-        content = "Switch to buffer",
-        description = string.format("Switch to buffer %d (%s)", buffer_id, buffer_name),
-        from_agent = true,
-        status = "executing"
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, action_obj)
-    
-    -- Switch to the buffer
-    local success, result = pcall(vim.api.nvim_set_current_buf, buffer_id)
-    
-    -- Update action status
-    if success then
-        action_obj.status = "completed"
-        action_obj.result = {
-            buffer_id = buffer_id,
-            buffer_name = buffer_name,
-            message = "Successfully switched to buffer"
-        }
-    else
-        action_obj.status = "failed"
-        action_obj.result = {
-            buffer_id = buffer_id,
-            buffer_name = buffer_name,
-            error = tostring(result),
-            message = "Failed to switch to buffer"
-        }
-    end
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    -- Notify user of AI buffer switch
-    local status_icon = success and "🔄" or "❌"
-    vim.notify(status_icon .. " AI Agent: Switch to buffer " .. buffer_id, vim.log.levels.INFO)
-    
-    return success, action_obj.id, action_obj.result
+    return ai_agent.ai_agent_switch_buffer(buffer_id)
 end
 
 -- Set cursor position in current buffer
