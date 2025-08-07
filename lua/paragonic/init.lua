@@ -2528,11 +2528,11 @@ function M.send_message_command()
     table.insert(response_lines, "")
     table.insert(response_lines, "---")
     
-    -- Insert response after the current line
-    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, response_lines)
+    -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
     
     -- Move cursor to end of response
-    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 1, 0})
+    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 2, 0})
 end
 
 -- Enhanced send message command with debug messages
@@ -2668,11 +2668,11 @@ function M.send_message_command_debug()
     -- Debug: Inserting response
     M.append_debug_message(current_buf, "Inserting " .. #response_lines .. " lines into buffer", "debug")
     
-    -- Insert response after the current line
-    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, response_lines)
+    -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
     
     -- Move cursor to end of response
-    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 1, 0})
+    vim.api.nvim_win_set_cursor(0, {line_num + #response_lines + 2, 0})
     
     -- Debug: Success
     M.append_debug_message(current_buf, "Message send process completed successfully", "success")
