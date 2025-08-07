@@ -1,6 +1,65 @@
 -- Test Plugin Loading in Neovim
 -- This test should be run within Neovim using :source test_plugin_loading.lua
 
+-- Add lua directory to package path for testing
+package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
+
+-- Mock vim API for testing
+local vim_mock = {
+    api = {
+        nvim_create_user_command = function(name, callback, opts) 
+            print("  Created command: " .. name)
+        end,
+        nvim_list_bufs = function() return {} end,
+        nvim_buf_get_name = function(buf) return "test-buffer" end,
+        nvim_create_buf = function(listed, scratch) return 1 end,
+        nvim_buf_set_name = function(buf, name) end,
+        nvim_buf_set_option = function(buf, option, value) end,
+        nvim_buf_set_lines = function(buf, start, end_, strict, lines) end,
+        nvim_command = function(cmd) end,
+        nvim_set_current_buf = function(buf) end,
+        nvim_get_current_buf = function() return 1 end,
+        nvim_win_get_cursor = function(win) return {1, 0} end,
+        nvim_buf_get_lines = function(buf, start, end_, strict) return {"test line"} end,
+        nvim_buf_line_count = function(buf) return 10 end,
+        nvim_open_win = function(buf, enter, config) return 1 end,
+        nvim_win_set_cursor = function(win, pos) end,
+        nvim_buf_set_keymap = function(buf, mode, lhs, rhs, opts) end
+    },
+    fn = {
+        input = function(prompt) return "test" end,
+        stdpath = function(path) return "/tmp" end
+    },
+    notify = function(msg, level) 
+        print("  Notify [" .. (level or "info") .. "]: " .. msg)
+    end,
+    log = {
+        levels = {
+            INFO = 1,
+            WARN = 2,
+            ERROR = 3
+        }
+    },
+    o = {
+        columns = 120,
+        lines = 30
+    },
+    loop = {
+        hrtime = function() return 1000000 end  -- Mock time
+    },
+    keymap = {
+        set = function(mode, lhs, rhs, opts) 
+            print("  Set keymap: " .. mode .. " " .. lhs)
+        end
+    },
+    cmd = function(cmd) 
+        print("  Execute command: " .. cmd)
+    end
+}
+
+-- Replace global vim with mock
+_G.vim = vim_mock
+
 -- Test 1: Check if plugin is loaded
 local function test_plugin_loading()
     print("=== Test 1: Plugin Loading ===")

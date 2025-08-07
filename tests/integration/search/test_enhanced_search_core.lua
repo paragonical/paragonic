@@ -52,9 +52,9 @@ local function test_enhanced_search_functions()
     -- Create a simple test module
     local M = {}
     
-    -- Enhanced search function with better UX
+    -- Enhanced search function with better UX (test version)
     function M.quick_search()
-        local query = vim.fn.input("🔍 Search: ")
+        local query = "test query"  -- Mock input for testing
         if query == "" then
             return
         end
@@ -63,28 +63,28 @@ local function test_enhanced_search_functions()
         return {query = query, type = "basic"}
     end
     
-    -- Enhanced filtered search with content type selection
+    -- Enhanced filtered search with content type selection (test version)
     function M.quick_filtered_search()
-        local query = vim.fn.input("🔍 Search: ")
+        local query = "test query"  -- Mock input for testing
         if query == "" then
             return
         end
         
-        local content_type = vim.fn.input("📁 Content Type (project/task/note/code/document): ")
+        local content_type = "project"  -- Mock input for testing
         
         print("  ✓ Quick filtered search with query: " .. query .. ", type: " .. content_type)
         return {query = query, type = "filtered", content_type = content_type}
     end
     
-    -- Enhanced hybrid search with options
+    -- Enhanced hybrid search with options (test version)
     function M.quick_hybrid_search()
-        local query = vim.fn.input("🔍 Search: ")
+        local query = "test query"  -- Mock input for testing
         if query == "" then
             return
         end
         
-        local content_type = vim.fn.input("📁 Content Type (optional): ")
-        local include_text_filtering = vim.fn.input("🔤 Include text filtering? (y/n, default y): "):lower() ~= "n"
+        local content_type = "project"  -- Mock input for testing
+        local include_text_filtering = true  -- Mock input for testing
         
         print("  ✓ Quick hybrid search with query: " .. query .. ", type: " .. content_type .. ", filtering: " .. tostring(include_text_filtering))
         return {query = query, type = "hybrid", content_type = content_type, text_filtering = include_text_filtering}

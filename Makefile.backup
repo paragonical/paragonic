@@ -106,11 +106,16 @@ test-integration: test-integration-chat test-integration-search test-integration
 test-e2e-plugin:
 	@echo "=== Running E2E Tests: Plugin ==="
 	@echo "Testing plugin loading in Neovim..."
+	@$(NEOVIM_LUA) $(E2E_DIR)/test_plugin_loading.lua
+	@echo "Testing real filesystem operations..."
+	@$(NEOVIM_LUA) $(E2E_DIR)/test_real_filesystem_operations_nvim.lua
 	@echo "✓ Plugin E2E tests completed"
 
 test-e2e-startup:
 	@echo "=== Running E2E Tests: Startup ==="
 	@echo "Testing AstroNvim startup..."
+	@$(NEOVIM_LUA) $(E2E_DIR)/test_astronvim_startup.lua
+	@echo "✓ Startup E2E tests completed"
 
 test-e2e: test-e2e-plugin test-e2e-startup
 	@echo ""
