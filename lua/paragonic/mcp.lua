@@ -72,7 +72,7 @@ function M.initialize_mcp_server()
                         description = "Content to insert at the specified line"
                     }
                 },
-                required = ["file_path", "line_number"]
+                required = {"file_path", "line_number"}
             }
         }
     }

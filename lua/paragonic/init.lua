@@ -624,18 +624,6 @@ end
 function M.setup_all_event_autocommands()
     return events.setup_all_event_autocommands()
 end
-    
-    -- Setup all autocommand types
-    local success1, _ = M.setup_buffer_change_autocommands()
-    local success2, _ = M.setup_cursor_movement_autocommands()
-    local success3, _ = M.setup_window_change_autocommands()
-    
-    if success1 and success2 and success3 then
-        return true, "All event autocommands setup successfully"
-    else
-        return false, "Failed to setup some autocommands"
-    end
-end
 
 -- AI Agent Session Integration Functions (TDD Implementation)
 
