@@ -2057,262 +2057,34 @@ M.mcp_server = {
 }
 
 -- Initialize MCP server
+-- Initialize MCP server - delegate to mcp module
 function M.initialize_mcp_server()
-    local initialize_result = {
-        protocol_version = M.mcp_server.protocol_version,
-        capabilities = M.mcp_server.capabilities,
-        server_info = M.mcp_server.server_info
-    }
-    
-    vim.notify("MCP Server initialized with protocol version: " .. initialize_result.protocol_version, vim.log.levels.INFO)
-    return initialize_result
+    return mcp.initialize_mcp_server()
 end
 
--- List MCP Resources
+-- List MCP resources - delegate to mcp module
 function M.list_mcp_resources()
-    return {
-        {
-            uri = "neovim://session",
-            name = "Neovim Session",
-            description = "Current Neovim session information",
-            mime_type = "application/json"
-        },
-        {
-            uri = "neovim://buffers",
-            name = "Neovim Buffers", 
-            description = "List of all buffers in the session",
-            mime_type = "application/json"
-        },
-        {
-            uri = "neovim://windows",
-            name = "Neovim Windows",
-            description = "List of all windows in the session", 
-            mime_type = "application/json"
-        },
-        {
-            uri = "neovim://marks",
-            name = "Neovim Marks",
-            description = "List of all marks in the session",
-            mime_type = "application/json"
-        },
-        {
-            uri = "neovim://registers",
-            name = "Neovim Registers",
-            description = "List of all registers and their content",
-            mime_type = "application/json"
-        },
-        {
-            uri = "neovim://macros",
-            name = "Neovim Macros",
-            description = "List of all recorded macros",
-            mime_type = "application/json"
-        },
-        {
-            uri = "neovim://plugins",
-            name = "Neovim Plugins",
-            description = "List of all loaded plugins",
-            mime_type = "application/json"
-        }
-    }
+    return mcp.list_mcp_resources()
 end
 
--- List MCP Tools
+-- List MCP tools - delegate to mcp module
 function M.list_mcp_tools()
-    return {
-        {
-            name = "agent_edit_file",
-            description = "Edit a file in the current Neovim session",
-            input_schema = {
-                type = "object",
-                properties = {
-                    file_path = {type = "string"},
-                    line_number = {type = "integer"},
-                    content = {type = "string"}
-                },
-                required = {"file_path"}
-            }
-        },
-        {
-            name = "agent_create_file", 
-            description = "Create a new file in the current Neovim session",
-            input_schema = {
-                type = "object",
-                properties = {
-                    file_name = {type = "string"},
-                    content = {type = "string"},
-                    open_in_window = {type = "boolean"}
-                },
-                required = {"file_name"}
-            }
-        },
-        {
-            name = "agent_save_file",
-            description = "Save a file to disk",
-            input_schema = {
-                type = "object", 
-                properties = {
-                    file_path = {type = "string"},
-                    force = {type = "boolean"}
-                }
-            }
-        }
-    }
+    return mcp.list_mcp_tools()
 end
 
--- Handle MCP messages
+-- Handle MCP messages - delegate to mcp module
 function M.handle_mcp_message(message)
-    local id = message.id
-    local method = message.method
-    local params = message.params or {}
-    
-    if method == "initialize" then
-        return {
-            id = id,
-            result = M.initialize_mcp_server()
-        }
-    elseif method == "resources/list" then
-        return {
-            id = id,
-            result = {
-                resources = M.list_mcp_resources()
-            }
-        }
-    elseif method == "tools/list" then
-        return {
-            id = id,
-            result = {
-                tools = M.list_mcp_tools()
-            }
-        }
-    elseif method == "tools/call" then
-        return M.handle_tool_call(id, params)
-    elseif method == "resources/read" then
-        return M.handle_resource_read(id, params)
-    else
-        return {
-            id = id,
-            error = {
-                code = -32601,
-                message = "Method not found: " .. method
-            }
-        }
-    end
+    return mcp.handle_mcp_message(message)
 end
 
--- Handle MCP resource reading
+-- Handle MCP resource reading - delegate to mcp module
 function M.handle_resource_read(id, params)
-    local uri = params.uri
-    if not uri then
-        return {
-            id = id,
-            error = {
-                code = -32602,
-                message = "URI is required for resources/read"
-            }
-        }
-    end
-    
-    local result = M.read_mcp_resource(uri)
-    if result.error then
-        return {
-            id = id,
-            error = result.error
-        }
-    else
-        return {
-            id = id,
-            result = result
-        }
-    end
+    return mcp.handle_resource_read(id, params)
 end
 
--- Read MCP resource content
+-- Read MCP resource content - delegate to mcp module
 function M.read_mcp_resource(uri)
-    if uri == "neovim://session" then
-        local session_info = M.get_agent_session_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(session_info)
-                }
-            }
-        }
-    elseif uri == "neovim://buffers" then
-        local session_info = M.get_agent_session_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(session_info.buffers)
-                }
-            }
-        }
-    elseif uri == "neovim://windows" then
-        local session_info = M.get_agent_session_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(session_info.windows)
-                }
-            }
-        }
-    elseif uri == "neovim://marks" then
-        local marks_info = M.get_marks_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(marks_info)
-                }
-            }
-        }
-    elseif uri == "neovim://registers" then
-        local registers_info = M.get_registers_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(registers_info)
-                }
-            }
-        }
-    elseif uri == "neovim://macros" then
-        local macros_info = M.get_macros_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(macros_info)
-                }
-            }
-        }
-    elseif uri == "neovim://plugins" then
-        local plugins_info = M.get_plugins_info()
-        return {
-            contents = {
-                {
-                    uri = uri,
-                    mime_type = "application/json",
-                    text = vim.json.encode(plugins_info)
-                }
-            }
-        }
-    else
-        return {
-            error = {
-                code = -32602,
-                message = "Resource not found: " .. uri
-            }
-        }
-    end
+    return mcp.read_mcp_resource(uri)
 end
 
 -- Validate resource content
