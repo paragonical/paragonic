@@ -68,7 +68,7 @@ port = port or "3000"
 
 -- Connect to server
 local tcp = socket.tcp()
-tcp:settimeout(5)  -- Shorter timeout
+tcp:settimeout(30)  -- Increased timeout for AI operations
 local success, err = tcp:connect(host, tonumber(port))
 
 if not success then
@@ -89,9 +89,9 @@ local request_json = json.encode(request)
 print("DEBUG: Sending request:", request_json)
 tcp:send(request_json .. "\n")
 
--- Receive response with shorter timeout
+-- Receive response with increased timeout for AI operations
 print("DEBUG: Waiting for response...")
-tcp:settimeout(5)  -- 5 second timeout for receive
+tcp:settimeout(120)  -- 2 minute timeout for AI operations
 
 -- Try to receive response line by line
 local response, err = tcp:receive("*l")  -- Receive line by line
@@ -124,15 +124,15 @@ print("DEBUG: Script completed successfully")
     local script_file = temp_file .. "_script.lua"
     vim.fn.writefile(vim.fn.split(script_content, "\n"), script_file)
     
-    -- Execute the external script with timeout (macOS compatible)
+    -- Execute the external script with increased timeout for AI operations (macOS compatible)
     local timeout_cmd
     if vim.fn.executable("timeout") == 1 then
-        timeout_cmd = "timeout 10 lua " .. script_file
+        timeout_cmd = "timeout 180 lua " .. script_file
     elseif vim.fn.executable("gtimeout") == 1 then
-        timeout_cmd = "gtimeout 10 lua " .. script_file
+        timeout_cmd = "gtimeout 180 lua " .. script_file
     else
         -- macOS fallback: use background process with sleep and kill
-        timeout_cmd = "lua " .. script_file .. " & sleep 10 && kill $! 2>/dev/null || true"
+        timeout_cmd = "lua " .. script_file .. " & sleep 180 && kill $! 2>/dev/null || true"
     end
     local result = vim.fn.system(timeout_cmd)
     

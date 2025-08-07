@@ -2219,8 +2219,28 @@ function M.send_message_command()
     -- Add immediate visual feedback that the chat is being sent
     M.append_debug_message(current_buf, "Sending message to AI...", "info")
     
+    -- Start a progress indicator for long operations
+    local progress_timer = nil
+    local progress_count = 0
+    local function update_progress()
+        progress_count = progress_count + 1
+        local dots = string.rep(".", progress_count % 4)
+        M.append_debug_message(current_buf, "Waiting for AI response" .. dots, "info")
+    end
+    
+    -- Start progress updates every 5 seconds
+    progress_timer = vim.loop.new_timer()
+    progress_timer:start(5000, 5000, vim.schedule_wrap(update_progress))
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
+    
+    -- Stop progress updates
+    if progress_timer then
+        progress_timer:stop()
+        progress_timer:close()
+    end
+    
     if not response then
         -- Update the status message to show failure
         M.append_debug_message(current_buf, "Failed to send message: " .. (err or "unknown error"), "error")
@@ -2307,8 +2327,27 @@ function M.send_message_command_debug()
     -- Debug: Sending message
     M.append_debug_message(current_buf, "Sending message: " .. message:sub(1, 50) .. "...", "debug")
     
+    -- Start a progress indicator for long operations
+    local progress_timer = nil
+    local progress_count = 0
+    local function update_progress()
+        progress_count = progress_count + 1
+        local dots = string.rep(".", progress_count % 4)
+        M.append_debug_message(current_buf, "⏳ Waiting for AI response" .. dots, "debug")
+    end
+    
+    -- Start progress updates every 3 seconds for debug mode
+    progress_timer = vim.loop.new_timer()
+    progress_timer:start(3000, 3000, vim.schedule_wrap(update_progress))
+    
     -- Send the message using enhanced function
     local response, err = M.send_message_enhanced(message, "llama2")
+    
+    -- Stop progress updates
+    if progress_timer then
+        progress_timer:stop()
+        progress_timer:close()
+    end
     
     if not response then
         M.append_debug_message(current_buf, "Failed to send message: " .. tostring(err), "error")
