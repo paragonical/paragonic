@@ -2609,15 +2609,9 @@ function M.read_mcp_resource(uri)
 end
 
 -- Integrate with MCP message handler
-local old_handle_mcp_message = M.handle_mcp_message
+-- MCP message handler - delegate to mcp module
 function M.handle_mcp_message(message)
-    if message.method and message.method:match("^config/") then
-        return M.handle_configuration_method(message.method, message.params or {})
-    end
-    if old_handle_mcp_message then
-        return old_handle_mcp_message(message)
-    end
-    return { error = { code = -32601, message = "Unknown MCP method: " .. tostring(message.method) } }
+    return mcp.handle_mcp_message(message)
 end
 
 -- System info functions - delegate to mcp module
@@ -2634,81 +2628,15 @@ function M.sample_resource(uri, criteria)
     return mcp.sample_resource(uri, criteria)
 end
 
--- Define resource roots for context boundaries
+-- Define resource roots - delegate to mcp module
 function M.define_resource_roots(uri, options)
-    if uri == "neovim://buffers" then
-        local roots = {}
-        
-        if options and options.buffer_ids then
-            for _, buf_id in ipairs(options.buffer_ids) do
-                local buf_name = vim.api.nvim_buf_get_name(buf_id)
-                if buf_name and buf_name ~= "" then
-                    table.insert(roots, {
-                        uri = "file://" .. buf_name,
-                        name = vim.fn.fnamemodify(buf_name, ":t"),
-                        description = "Buffer " .. buf_id .. ": " .. buf_name
-                    })
-                end
-            end
-        end
-        
-        if options and options.file_patterns then
-            local buffers = vim.api.nvim_list_bufs()
-            for _, buf_id in ipairs(buffers) do
-                local buf_name = vim.api.nvim_buf_get_name(buf_id)
-                if buf_name and buf_name ~= "" then
-                    for _, pattern in ipairs(options.file_patterns) do
-                        if buf_name:match(pattern) then
-                            table.insert(roots, {
-                                uri = "file://" .. buf_name,
-                                name = vim.fn.fnamemodify(buf_name, ":t"),
-                                description = "Pattern match: " .. buf_name
-                            })
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        
-        return roots
-    elseif uri == "neovim://session" then
-        local roots = {}
-        
-        if options and options.current_only then
-            local cwd = vim.fn.getcwd()
-            table.insert(roots, {
-                uri = "file://" .. cwd,
-                name = "Current Directory",
-                description = "Current working directory: " .. cwd
-            })
-        end
-        
-        return roots
-    else
-        return {}
-    end
+    return mcp.define_resource_roots(uri, options)
 end
 
--- Handle MCP sampling requests from external agents
+-- Handle MCP sampling requests - delegate to mcp module
 function M.handle_sampling_request(request)
-    local uri = request.uri
-    local criteria = request.criteria or {}
-    
-    local sampled_data = M.sample_resource(uri, criteria)
-    
-    if sampled_data then
-        return {
-            id = request.id,
-            result = {
-                content = {
-                    {
-                        type = "text",
-                        text = vim.json.encode(sampled_data)
-                    }
-                },
-                metadata = {
-                    uri = uri,
+    return mcp.handle_sampling_request(request)
+end
                     criteria = criteria,
                     sample_size = type(sampled_data) == "table" and #sampled_data or 1,
                     timestamp = os.time()
@@ -2748,20 +2676,9 @@ function M.handle_roots_request(request)
 end
 
 -- Extend MCP message handler for sampling and roots
-local old_handle_mcp_message = M.handle_mcp_message
+-- MCP message handler with sampling and roots - delegate to mcp module
 function M.handle_mcp_message(message)
-    if message.method == "sampling/request" then
-        return M.handle_sampling_request(message)
-    elseif message.method == "roots/list" then
-        return M.handle_roots_request(message)
-    elseif message.method == "cancel" or message.method == "cancel/list" then
-        return M.handle_cancellation_message(message)
-    end
-    
-    if old_handle_mcp_message then
-        return old_handle_mcp_message(message)
-    end
-    return { error = { code = -32601, message = "Unknown MCP method: " .. tostring(message.method) } }
+    return mcp.handle_mcp_message(message)
 end
 
 -- MCP Cancellation state management
@@ -2977,17 +2894,9 @@ function M.handle_cancellation_message(message)
     end
 end
 
--- Extend MCP message handler for cancellation
-local old_handle_mcp_message = M.handle_mcp_message
+-- MCP message handler with cancellation - delegate to mcp module
 function M.handle_mcp_message(message)
-    if message.method == "cancel" or message.method == "cancel/list" then
-        return M.handle_cancellation_message(message)
-    end
-    
-    if old_handle_mcp_message then
-        return old_handle_mcp_message(message)
-    end
-    return { error = { code = -32601, message = "Unknown MCP method: " .. tostring(message.method) } }
+    return mcp.handle_mcp_message(message)
 end
 
 return M 
