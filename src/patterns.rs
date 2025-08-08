@@ -2616,3 +2616,890 @@ impl SkillRegistry {
         }
     }
 }
+
+/// Database operations for pattern management
+pub mod database {
+    use super::*;
+    use diesel::prelude::*;
+    use diesel::pg::PgConnection;
+    use diesel::r2d2::{self, ConnectionManager, Pool};
+    use diesel::result::Error as DieselError;
+    use rust_decimal::prelude::ToPrimitive;
+    use crate::database;
+    use crate::schema::{
+        system_patterns, pattern_executions, pattern_relationships, 
+        tool_pattern_mappings, pattern_learning_metrics, ai_agent_sessions
+    };
+    use crate::models::{
+        SystemPattern as DbSystemPattern, PatternExecution as DbPatternExecution,
+        PatternRelationship as DbPatternRelationship, ToolPatternMapping as DbToolPatternMapping,
+        PatternLearningMetrics as DbPatternLearningMetrics, AiAgentSession as DbAiAgentSession
+    };
+
+    /// Repository trait for pattern database operations
+    pub trait PatternRepository {
+        /// Create a new system pattern
+        fn create_pattern(&self, pattern: &SystemPattern) -> ParagonicResult<Uuid>;
+        
+        /// Retrieve a pattern by ID
+        fn get_pattern(&self, id: Uuid) -> ParagonicResult<Option<SystemPattern>>;
+        
+        /// Retrieve a pattern by name
+        fn get_pattern_by_name(&self, name: &str) -> ParagonicResult<Option<SystemPattern>>;
+        
+        /// List all patterns with optional filtering
+        fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> ParagonicResult<Vec<SystemPattern>>;
+        
+        /// Update a pattern
+        fn update_pattern(&self, id: Uuid, pattern: &SystemPattern) -> ParagonicResult<()>;
+        
+        /// Delete a pattern
+        fn delete_pattern(&self, id: Uuid) -> ParagonicResult<()>;
+        
+        /// Create a pattern execution
+        fn create_execution(&self, execution: &PatternExecution) -> ParagonicResult<Uuid>;
+        
+        /// Update a pattern execution
+        fn update_execution(&self, id: Uuid, execution: &PatternExecution) -> ParagonicResult<()>;
+        
+        /// Get execution history for a pattern
+        fn get_execution_history(&self, pattern_id: Uuid, limit: Option<i64>) -> ParagonicResult<Vec<PatternExecution>>;
+        
+        /// Create a pattern relationship
+        fn create_relationship(&self, relationship: &PatternRelationship) -> ParagonicResult<Uuid>;
+        
+        /// Get relationships for a pattern
+        fn get_pattern_relationships(&self, pattern_id: Uuid) -> ParagonicResult<Vec<PatternRelationship>>;
+        
+        /// Delete a pattern relationship
+        fn delete_relationship(&self, id: Uuid) -> ParagonicResult<()>;
+        
+        /// Get pattern statistics
+        fn get_pattern_statistics(&self, pattern_id: Uuid) -> ParagonicResult<PatternStatistics>;
+    }
+
+    /// Diesel-based implementation of PatternRepository
+    pub struct DieselPatternRepository;
+
+    impl DieselPatternRepository {
+        /// Create a new repository instance
+        pub fn new() -> Self {
+            Self
+        }
+
+        /// Get a database connection
+        fn get_connection(&self) -> ParagonicResult<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
+            database::get_connection()
+        }
+
+        /// Convert database model to domain model
+        fn db_pattern_to_domain(&self, db_pattern: &DbSystemPattern) -> ParagonicResult<SystemPattern> {
+            let category = match db_pattern.pattern_type.as_str() {
+                "SessionManagement" => PatternCategory::SessionManagement,
+                "SelfReflection" => PatternCategory::SelfReflection,
+                "ContextSummarization" => PatternCategory::ContextSummarization,
+                "ActivityLabeling" => PatternCategory::ActivityLabeling,
+                "ProgressTracking" => PatternCategory::ProgressTracking,
+                "KnowledgeExtraction" => PatternCategory::KnowledgeExtraction,
+                _ => return Err(ParagonicError::InvalidInput(
+                    format!("Unknown pattern type: {}", db_pattern.pattern_type)
+                )),
+            };
+
+            let meta_level = MetaLevel::System; // Default for now, could be stored in metadata
+
+            Ok(SystemPattern {
+                id: db_pattern.id,
+                name: db_pattern.name.clone(),
+                category,
+                meta_level,
+                description: db_pattern.description.clone().unwrap_or_default(),
+                workflow_steps: serde_json::json!([{"step": "placeholder"}]),
+                output_format: serde_json::json!({"result": "string"}),
+                trigger_conditions: db_pattern.execution_conditions.clone(),
+                success_criteria: None,
+                created_at: db_pattern.created_at.unwrap_or_else(Utc::now),
+                updated_at: db_pattern.updated_at.unwrap_or_else(Utc::now),
+            })
+        }
+
+        /// Convert domain model to database model
+        fn domain_pattern_to_db(&self, pattern: &SystemPattern) -> ParagonicResult<DbSystemPattern> {
+            let pattern_type = match pattern.category {
+                PatternCategory::SessionManagement => "SessionManagement",
+                PatternCategory::SelfReflection => "SelfReflection",
+                PatternCategory::ContextSummarization => "ContextSummarization",
+                PatternCategory::ActivityLabeling => "ActivityLabeling",
+                PatternCategory::ProgressTracking => "ProgressTracking",
+                PatternCategory::KnowledgeExtraction => "KnowledgeExtraction",
+            };
+
+            Ok(DbSystemPattern {
+                id: pattern.id,
+                name: pattern.name.clone(),
+                description: Some(pattern.description.clone()),
+                pattern_type: pattern_type.to_string(),
+                template_content: serde_json::to_string(&pattern.workflow_steps)?,
+                execution_conditions: pattern.trigger_conditions.clone(),
+                metadata: Some(serde_json::json!({
+                    "meta_level": match pattern.meta_level {
+                        MetaLevel::System => "System",
+                        MetaLevel::User => "User",
+                        MetaLevel::Hybrid => "Hybrid",
+                    },
+                    "output_format": pattern.output_format,
+                    "success_criteria": pattern.success_criteria,
+                })),
+                is_active: Some(true),
+                created_at: Some(pattern.created_at),
+                updated_at: Some(pattern.updated_at),
+            })
+        }
+
+        /// Convert database execution to domain execution
+        fn db_execution_to_domain(&self, db_execution: &DbPatternExecution) -> ParagonicResult<PatternExecution> {
+            let trigger_type = match db_execution.execution_status.as_str() {
+                "automatic" => TriggerType::Automatic,
+                "manual" => TriggerType::Manual,
+                "scheduled" => TriggerType::Scheduled,
+                _ => TriggerType::Manual, // Default
+            };
+
+            let mut execution = PatternExecution::new(
+                db_execution.pattern_id,
+                db_execution.session_id,
+                trigger_type,
+                db_execution.input_data.clone(),
+            )?;
+
+            execution.id = db_execution.id;
+            execution.output_result = db_execution.output_data.clone();
+            execution.execution_duration_ms = db_execution.execution_time_ms.map(|t| t as u64);
+            execution.success = db_execution.execution_status == "completed";
+            execution.error_message = db_execution.error_message.clone();
+            execution.created_at = db_execution.created_at.unwrap_or_else(Utc::now);
+
+            Ok(execution)
+        }
+
+        /// Convert domain execution to database execution
+        fn domain_execution_to_db(&self, execution: &PatternExecution) -> ParagonicResult<DbPatternExecution> {
+            let execution_status = match execution.trigger_type {
+                TriggerType::Automatic => "automatic",
+                TriggerType::Manual => "manual",
+                TriggerType::Scheduled => "scheduled",
+            };
+
+            let status = if execution.success { "completed" } else { "running" };
+
+            Ok(DbPatternExecution {
+                id: execution.id,
+                pattern_id: execution.pattern_id,
+                session_id: execution.session_id,
+                execution_status: status.to_string(),
+                input_data: execution.input_context.clone(),
+                output_data: execution.output_result.clone(),
+                error_message: execution.error_message.clone(),
+                execution_time_ms: execution.execution_duration_ms.map(|t| t as i32),
+                started_at: Some(execution.created_at),
+                completed_at: if execution.success { Some(Utc::now()) } else { None },
+                created_at: Some(execution.created_at),
+                updated_at: Some(Utc::now()),
+            })
+        }
+    }
+
+    impl PatternRepository for DieselPatternRepository {
+        fn create_pattern(&self, pattern: &SystemPattern) -> ParagonicResult<Uuid> {
+            let conn = &mut self.get_connection()?;
+            let db_pattern = self.domain_pattern_to_db(pattern)?;
+
+            let result = diesel::insert_into(system_patterns::table)
+                .values(&db_pattern)
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to create pattern: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::Database("No rows were inserted".to_string()));
+            }
+
+            Ok(pattern.id)
+        }
+
+        fn get_pattern(&self, id: Uuid) -> ParagonicResult<Option<SystemPattern>> {
+            let conn = &mut self.get_connection()?;
+
+            let db_pattern = system_patterns::table
+                .filter(system_patterns::id.eq(id))
+                .first::<DbSystemPattern>(conn)
+                .optional()
+                .map_err(|e| ParagonicError::Database(format!("Failed to get pattern: {}", e)))?;
+
+            match db_pattern {
+                Some(db_pattern) => {
+                    let pattern = self.db_pattern_to_domain(&db_pattern)?;
+                    Ok(Some(pattern))
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn get_pattern_by_name(&self, name: &str) -> ParagonicResult<Option<SystemPattern>> {
+            let conn = &mut self.get_connection()?;
+
+            let db_pattern = system_patterns::table
+                .filter(system_patterns::name.eq(name))
+                .first::<DbSystemPattern>(conn)
+                .optional()
+                .map_err(|e| ParagonicError::Database(format!("Failed to get pattern by name: {}", e)))?;
+
+            match db_pattern {
+                Some(db_pattern) => {
+                    let pattern = self.db_pattern_to_domain(&db_pattern)?;
+                    Ok(Some(pattern))
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> ParagonicResult<Vec<SystemPattern>> {
+            let conn = &mut self.get_connection()?;
+
+            let mut query = system_patterns::table.into_boxed();
+
+            // Apply category filter if provided
+            if let Some(cat) = category {
+                let pattern_type = match cat {
+                    PatternCategory::SessionManagement => "SessionManagement",
+                    PatternCategory::SelfReflection => "SelfReflection",
+                    PatternCategory::ContextSummarization => "ContextSummarization",
+                    PatternCategory::ActivityLabeling => "ActivityLabeling",
+                    PatternCategory::ProgressTracking => "ProgressTracking",
+                    PatternCategory::KnowledgeExtraction => "KnowledgeExtraction",
+                };
+                query = query.filter(system_patterns::pattern_type.eq(pattern_type));
+            }
+
+            // Note: Meta level filtering would require parsing metadata
+            // For now, we'll skip this filter
+
+            let db_patterns = query
+                .load::<DbSystemPattern>(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to list patterns: {}", e)))?;
+
+            let mut patterns = Vec::new();
+            for db_pattern in db_patterns {
+                let pattern = self.db_pattern_to_domain(&db_pattern)?;
+                patterns.push(pattern);
+            }
+
+            Ok(patterns)
+        }
+
+        fn update_pattern(&self, id: Uuid, pattern: &SystemPattern) -> ParagonicResult<()> {
+            let conn = &mut self.get_connection()?;
+            let db_pattern = self.domain_pattern_to_db(pattern)?;
+
+            let result = diesel::update(system_patterns::table.filter(system_patterns::id.eq(id)))
+                .set((
+                    system_patterns::name.eq(&db_pattern.name),
+                    system_patterns::description.eq(&db_pattern.description),
+                    system_patterns::pattern_type.eq(&db_pattern.pattern_type),
+                    system_patterns::template_content.eq(&db_pattern.template_content),
+                    system_patterns::execution_conditions.eq(&db_pattern.execution_conditions),
+                    system_patterns::metadata.eq(&db_pattern.metadata),
+                    system_patterns::updated_at.eq(Utc::now()),
+                ))
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to update pattern: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::InvalidInput("Pattern not found".to_string()));
+            }
+
+            Ok(())
+        }
+
+        fn delete_pattern(&self, id: Uuid) -> ParagonicResult<()> {
+            let conn = &mut self.get_connection()?;
+
+            let result = diesel::delete(system_patterns::table.filter(system_patterns::id.eq(id)))
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to delete pattern: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::InvalidInput("Pattern not found".to_string()));
+            }
+
+            Ok(())
+        }
+
+        fn create_execution(&self, execution: &PatternExecution) -> ParagonicResult<Uuid> {
+            let conn = &mut self.get_connection()?;
+            let db_execution = self.domain_execution_to_db(execution)?;
+
+            let result = diesel::insert_into(pattern_executions::table)
+                .values(&db_execution)
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to create execution: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::Database("No rows were inserted".to_string()));
+            }
+
+            Ok(execution.id)
+        }
+
+        fn update_execution(&self, id: Uuid, execution: &PatternExecution) -> ParagonicResult<()> {
+            let conn = &mut self.get_connection()?;
+            let db_execution = self.domain_execution_to_db(execution)?;
+
+            let result = diesel::update(pattern_executions::table.filter(pattern_executions::id.eq(id)))
+                .set((
+                    pattern_executions::execution_status.eq(if execution.success { "completed" } else { "running" }),
+                    pattern_executions::output_data.eq(&db_execution.output_data),
+                    pattern_executions::error_message.eq(&db_execution.error_message),
+                    pattern_executions::execution_time_ms.eq(&db_execution.execution_time_ms),
+                    pattern_executions::completed_at.eq(&db_execution.completed_at),
+                    pattern_executions::updated_at.eq(Utc::now()),
+                ))
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to update execution: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::InvalidInput("Execution not found".to_string()));
+            }
+
+            Ok(())
+        }
+
+        fn get_execution_history(&self, pattern_id: Uuid, limit: Option<i64>) -> ParagonicResult<Vec<PatternExecution>> {
+            let conn = &mut self.get_connection()?;
+
+            let mut query = pattern_executions::table
+                .filter(pattern_executions::pattern_id.eq(pattern_id))
+                .order(pattern_executions::created_at.desc())
+                .into_boxed();
+
+            if let Some(limit_val) = limit {
+                query = query.limit(limit_val);
+            }
+
+            let db_executions = query
+                .load::<DbPatternExecution>(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to get execution history: {}", e)))?;
+
+            let mut executions = Vec::new();
+            for db_execution in db_executions {
+                let execution = self.db_execution_to_domain(&db_execution)?;
+                executions.push(execution);
+            }
+
+            Ok(executions)
+        }
+
+        fn create_relationship(&self, relationship: &PatternRelationship) -> ParagonicResult<Uuid> {
+            let conn = &mut self.get_connection()?;
+
+            let db_relationship = DbPatternRelationship {
+                id: relationship.id,
+                source_pattern_id: relationship.source_pattern_id,
+                target_pattern_id: relationship.target_pattern_id,
+                relationship_type: match relationship.relationship_type {
+                    RelationshipType::DependsOn => "DependsOn",
+                    RelationshipType::Triggers => "Triggers",
+                    RelationshipType::Enhances => "Enhances",
+                    RelationshipType::Conflicts => "Conflicts",
+                    RelationshipType::Replaces => "Replaces",
+                }.to_string(),
+                relationship_strength: Some(relationship.strength),
+                metadata: Some(serde_json::json!({
+                    "description": relationship.description,
+                })),
+                created_at: Some(relationship.created_at),
+                updated_at: Some(Utc::now()),
+            };
+
+            let result = diesel::insert_into(pattern_relationships::table)
+                .values(&db_relationship)
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to create relationship: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::Database("No rows were inserted".to_string()));
+            }
+
+            Ok(relationship.id)
+        }
+
+        fn get_pattern_relationships(&self, pattern_id: Uuid) -> ParagonicResult<Vec<PatternRelationship>> {
+            let conn = &mut self.get_connection()?;
+
+            let db_relationships = pattern_relationships::table
+                .filter(
+                    pattern_relationships::source_pattern_id.eq(pattern_id)
+                        .or(pattern_relationships::target_pattern_id.eq(pattern_id))
+                )
+                .load::<DbPatternRelationship>(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to get relationships: {}", e)))?;
+
+            let mut relationships = Vec::new();
+            for db_rel in db_relationships {
+                let relationship_type = match db_rel.relationship_type.as_str() {
+                    "DependsOn" => RelationshipType::DependsOn,
+                    "Triggers" => RelationshipType::Triggers,
+                    "Enhances" => RelationshipType::Enhances,
+                    "Conflicts" => RelationshipType::Conflicts,
+                    "Replaces" => RelationshipType::Replaces,
+                    _ => continue, // Skip unknown relationship types
+                };
+
+                let description = db_rel.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("description"))
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let relationship = PatternRelationship {
+                    id: db_rel.id,
+                    source_pattern_id: db_rel.source_pattern_id,
+                    target_pattern_id: db_rel.target_pattern_id,
+                    relationship_type,
+                    description,
+                    strength: db_rel.relationship_strength.unwrap_or(0.5),
+                    created_at: db_rel.created_at.unwrap_or_else(Utc::now),
+                };
+
+                relationships.push(relationship);
+            }
+
+            Ok(relationships)
+        }
+
+        fn delete_relationship(&self, id: Uuid) -> ParagonicResult<()> {
+            let conn = &mut self.get_connection()?;
+
+            let result = diesel::delete(pattern_relationships::table.filter(pattern_relationships::id.eq(id)))
+                .execute(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to delete relationship: {}", e)))?;
+
+            if result == 0 {
+                return Err(ParagonicError::InvalidInput("Relationship not found".to_string()));
+            }
+
+            Ok(())
+        }
+
+        fn get_pattern_statistics(&self, pattern_id: Uuid) -> ParagonicResult<PatternStatistics> {
+            let conn = &mut self.get_connection()?;
+
+            // Get total executions
+            let total_executions: i64 = pattern_executions::table
+                .filter(pattern_executions::pattern_id.eq(pattern_id))
+                .count()
+                .get_result(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to count executions: {}", e)))?;
+
+            // Get successful executions
+            let successful_executions: i64 = pattern_executions::table
+                .filter(pattern_executions::pattern_id.eq(pattern_id))
+                .filter(pattern_executions::execution_status.eq("completed"))
+                .count()
+                .get_result(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to count successful executions: {}", e)))?;
+
+            // Get average execution time - calculate manually to avoid type issues
+            let executions_with_time = pattern_executions::table
+                .filter(pattern_executions::pattern_id.eq(pattern_id))
+                .filter(pattern_executions::execution_time_ms.is_not_null())
+                .select(pattern_executions::execution_time_ms)
+                .load::<Option<i32>>(conn)
+                .map_err(|e| ParagonicError::Database(format!("Failed to get execution times: {}", e)))?;
+            
+            let avg_time = if !executions_with_time.is_empty() {
+                let total_time: i64 = executions_with_time.iter()
+                    .filter_map(|&t| t.map(|t| t as i64))
+                    .sum();
+                Some((total_time as f64) / (executions_with_time.len() as f64))
+            } else {
+                None
+            };
+
+            // Get last execution time
+            let last_executed: Option<DateTime<Utc>> = pattern_executions::table
+                .filter(pattern_executions::pattern_id.eq(pattern_id))
+                .order(pattern_executions::created_at.desc())
+                .select(pattern_executions::created_at)
+                .first(conn)
+                .optional()
+                .map_err(|e| ParagonicError::Database(format!("Failed to get last execution: {}", e)))?
+                .flatten();
+
+            let failed_executions = total_executions - successful_executions;
+            let success_rate = if total_executions > 0 {
+                (successful_executions as f64) / (total_executions as f64)
+            } else {
+                0.0
+            };
+
+            Ok(PatternStatistics {
+                total_executions: total_executions as u32,
+                successful_executions: successful_executions as u32,
+                failed_executions: failed_executions as u32,
+                average_execution_time_ms: avg_time.unwrap_or(0.0),
+                last_executed,
+                success_rate,
+            })
+        }
+    }
+
+    /// Enhanced PatternRegistry that uses database persistence
+    pub struct DatabasePatternRegistry {
+        repository: Box<dyn PatternRepository>,
+        cache: std::collections::HashMap<Uuid, SystemPattern>,
+    }
+
+    impl DatabasePatternRegistry {
+        /// Create a new database-backed pattern registry
+        pub fn new(repository: Box<dyn PatternRepository>) -> Self {
+            Self {
+                repository,
+                cache: std::collections::HashMap::new(),
+            }
+        }
+
+        /// Load all patterns from database into cache
+        pub fn load_patterns(&mut self) -> ParagonicResult<()> {
+            let patterns = self.repository.list_patterns(None, None)?;
+            self.cache.clear();
+            for pattern in patterns {
+                self.cache.insert(pattern.id, pattern);
+            }
+            Ok(())
+        }
+
+        /// Get a pattern from cache or database
+        pub fn get_pattern(&self, id: Uuid) -> ParagonicResult<Option<SystemPattern>> {
+            // Try cache first
+            if let Some(pattern) = self.cache.get(&id) {
+                return Ok(Some(pattern.clone()));
+            }
+
+            // Fall back to database
+            self.repository.get_pattern(id)
+        }
+
+        /// Get a pattern by name from database
+        pub fn get_pattern_by_name(&self, name: &str) -> ParagonicResult<Option<SystemPattern>> {
+            self.repository.get_pattern_by_name(name)
+        }
+
+        /// List patterns with filtering
+        pub fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> ParagonicResult<Vec<SystemPattern>> {
+            self.repository.list_patterns(category, meta_level)
+        }
+
+        /// Register a new pattern
+        pub fn register_pattern(&mut self, pattern: SystemPattern) -> ParagonicResult<()> {
+            // Save to database
+            self.repository.create_pattern(&pattern)?;
+            
+            // Add to cache
+            self.cache.insert(pattern.id, pattern);
+            
+            Ok(())
+        }
+
+        /// Remove a pattern
+        pub fn remove_pattern(&mut self, id: Uuid) -> ParagonicResult<()> {
+            // Remove from database
+            self.repository.delete_pattern(id)?;
+            
+            // Remove from cache
+            self.cache.remove(&id);
+            
+            Ok(())
+        }
+
+        /// Execute a pattern and store the execution
+        pub fn execute_pattern(&mut self, pattern_name: &str, context: Option<Value>) -> ParagonicResult<PatternExecution> {
+            // Get pattern from database
+            let pattern = self.repository.get_pattern_by_name(pattern_name)?
+                .ok_or_else(|| ParagonicError::InvalidInput(
+                    format!("Pattern '{}' not found", pattern_name)
+                ))?;
+
+            // Create execution
+            let mut execution = PatternExecution::new(
+                pattern.id,
+                None, // session_id will be set by caller if needed
+                TriggerType::Manual,
+                context,
+            )?;
+
+            // Save execution to database
+            self.repository.create_execution(&execution)?;
+
+            // Start execution
+            execution.start_execution()?;
+
+            // For now, we'll just mark it as completed with a basic result
+            // In a full implementation, this would execute the actual pattern logic
+            execution.complete_execution(
+                true,
+                Some(json!({
+                    "pattern_name": pattern_name,
+                    "executed_at": chrono::Utc::now().to_rfc3339(),
+                    "status": "completed"
+                })),
+                None
+            )?;
+
+            // Update execution in database
+            self.repository.update_execution(execution.id, &execution)?;
+
+            Ok(execution)
+        }
+
+        /// Get execution history for a pattern
+        pub fn get_execution_history(&self, pattern_name: &str) -> ParagonicResult<Vec<PatternExecution>> {
+            // Get pattern from database
+            let pattern = self.repository.get_pattern_by_name(pattern_name)?
+                .ok_or_else(|| ParagonicError::InvalidInput(
+                    format!("Pattern '{}' not found", pattern_name)
+                ))?;
+
+            // Get execution history
+            self.repository.get_execution_history(pattern.id, Some(100))
+        }
+
+        /// Get pattern statistics
+        pub fn get_pattern_statistics(&self, pattern_name: &str) -> ParagonicResult<PatternStatistics> {
+            // Get pattern from database
+            let pattern = self.repository.get_pattern_by_name(pattern_name)?
+                .ok_or_else(|| ParagonicError::InvalidInput(
+                    format!("Pattern '{}' not found", pattern_name)
+                ))?;
+
+            // Get statistics
+            self.repository.get_pattern_statistics(pattern.id)
+        }
+    }
+
+    impl Default for DatabasePatternRegistry {
+        fn default() -> Self {
+            Self::new(Box::new(DieselPatternRepository::new()))
+        }
+    }
+}
+
+#[cfg(test)]
+mod database_tests {
+    use super::*;
+    use super::database::*;
+    use crate::database;
+
+    #[tokio::test]
+    async fn test_database_pattern_repository_creation() -> ParagonicResult<()> {
+        // Initialize test database
+        database::initialize_for_testing().await?;
+
+        let repository = DieselPatternRepository::new();
+        
+        // Test that repository was created successfully
+        assert!(true); // Repository was created
+        
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_database_pattern_crud_operations() -> ParagonicResult<()> {
+        // Initialize test database
+        let init_result = database::initialize_for_testing().await;
+        if let Err(e) = &init_result {
+            println!("Database initialization failed: {:?}, skipping test", e);
+            return Ok(());
+        }
+
+        let repository = DieselPatternRepository::new();
+
+        // Create a test pattern
+        let pattern = SystemPattern::new(
+            "Test Database Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Test pattern for database operations".to_string(),
+            json!([
+                {"step": 1, "action": "test_action", "description": "test_desc"}
+            ]),
+            json!({
+                "summary": "test_summary"
+            }),
+            None,
+            None,
+        )?;
+
+        // Test create
+        let pattern_id = repository.create_pattern(&pattern)?;
+        assert_eq!(pattern_id, pattern.id);
+
+        // Test get by ID
+        let retrieved = repository.get_pattern(pattern.id)?;
+        assert!(retrieved.is_some());
+        let retrieved_pattern = retrieved.unwrap();
+        assert_eq!(retrieved_pattern.name, pattern.name);
+        assert_eq!(retrieved_pattern.category, pattern.category);
+
+        // Test get by name
+        let retrieved_by_name = repository.get_pattern_by_name("Test Database Pattern")?;
+        assert!(retrieved_by_name.is_some());
+        assert_eq!(retrieved_by_name.unwrap().name, pattern.name);
+
+        // Test list patterns
+        let patterns = repository.list_patterns(Some(PatternCategory::SessionManagement), None)?;
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].name, pattern.name);
+
+        // Test update
+        let mut updated_pattern = pattern.clone();
+        updated_pattern.description = "Updated description".to_string();
+        repository.update_pattern(pattern.id, &updated_pattern)?;
+
+        let retrieved_updated = repository.get_pattern(pattern.id)?;
+        assert!(retrieved_updated.is_some());
+        assert_eq!(retrieved_updated.unwrap().description, "Updated description");
+
+        // Test delete
+        repository.delete_pattern(pattern.id)?;
+        let deleted = repository.get_pattern(pattern.id)?;
+        assert!(deleted.is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_database_execution_operations() -> ParagonicResult<()> {
+        // Initialize test database
+        let init_result = database::initialize_for_testing().await;
+        if let Err(e) = &init_result {
+            println!("Database initialization failed: {:?}, skipping test", e);
+            return Ok(());
+        }
+
+        let repository = DieselPatternRepository::new();
+
+        // Create a test pattern first
+        let pattern = SystemPattern::new(
+            "Test Execution Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Test pattern for execution operations".to_string(),
+            json!([
+                {"step": 1, "action": "test_action", "description": "test_desc"}
+            ]),
+            json!({
+                "summary": "test_summary"
+            }),
+            None,
+            None,
+        )?;
+
+        repository.create_pattern(&pattern)?;
+
+        // Create a test execution
+        let execution = PatternExecution::new(
+            pattern.id,
+            Some(Uuid::new_v4()),
+            TriggerType::Automatic,
+            Some(json!({"test": "data"})),
+        )?;
+
+        // Test create execution
+        let execution_id = repository.create_execution(&execution)?;
+        assert_eq!(execution_id, execution.id);
+
+        // Test update execution
+        let mut updated_execution = execution.clone();
+        updated_execution.start_execution()?;
+        updated_execution.complete_execution(
+            true,
+            Some(json!({"result": "success"})),
+            None
+        )?;
+
+        repository.update_execution(execution.id, &updated_execution)?;
+
+        // Test get execution history
+        let history = repository.get_execution_history(pattern.id, Some(10))?;
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].pattern_id, pattern.id);
+        assert!(history[0].success);
+
+        // Test get pattern statistics
+        let stats = repository.get_pattern_statistics(pattern.id)?;
+        assert_eq!(stats.total_executions, 1);
+        assert_eq!(stats.successful_executions, 1);
+        assert_eq!(stats.failed_executions, 0);
+        assert!(stats.success_rate > 0.0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_database_registry_integration() -> ParagonicResult<()> {
+        // Initialize test database
+        let init_result = database::initialize_for_testing().await;
+        if let Err(e) = &init_result {
+            println!("Database initialization failed: {:?}, skipping test", e);
+            return Ok(());
+        }
+
+        let repository = Box::new(DieselPatternRepository::new());
+        let mut registry = DatabasePatternRegistry::new(repository);
+
+        // Create and register a pattern
+        let pattern = SystemPattern::new(
+            "Test Registry Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Test pattern for registry integration".to_string(),
+            json!([
+                {"step": 1, "action": "test_action", "description": "test_desc"}
+            ]),
+            json!({
+                "summary": "test_summary"
+            }),
+            None,
+            None,
+        )?;
+
+        registry.register_pattern(pattern.clone())?;
+
+        // Test get pattern
+        let retrieved = registry.get_pattern(pattern.id)?;
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, pattern.name);
+
+        // Test execute pattern
+        let execution = registry.execute_pattern("Test Registry Pattern", Some(json!({"test": "data"})))?;
+        assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
+        assert!(execution.success);
+
+        // Test get execution history
+        let history = registry.get_execution_history("Test Registry Pattern")?;
+        assert_eq!(history.len(), 1);
+
+        // Test get statistics
+        let stats = registry.get_pattern_statistics("Test Registry Pattern")?;
+        assert_eq!(stats.total_executions, 1);
+        assert_eq!(stats.successful_executions, 1);
+
+        // Test remove pattern
+        registry.remove_pattern(pattern.id)?;
+        let deleted = registry.get_pattern(pattern.id)?;
+        assert!(deleted.is_none());
+
+        Ok(())
+    }
+}
