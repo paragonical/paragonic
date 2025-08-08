@@ -248,6 +248,34 @@ impl PatternExecution {
         
         Ok(())
     }
+
+    /// Updates execution with intermediate results
+    pub fn update_execution(&mut self, output_result: Option<Value>, error_message: Option<String>) -> ParagonicResult<()> {
+        // Check if execution has been started
+        if self.execution_duration_ms.is_none() {
+            return Err(ParagonicError::InvalidInput(
+                "Cannot update execution that has not been started".to_string()
+            ));
+        }
+        
+        // Check if execution is already completed
+        if self.success {
+            return Err(ParagonicError::InvalidInput(
+                "Cannot update execution that is already completed".to_string()
+            ));
+        }
+        
+        // Update execution with new results
+        if let Some(result) = output_result {
+            self.output_result = Some(result);
+        }
+        
+        if let Some(error) = error_message {
+            self.error_message = Some(error);
+        }
+        
+        Ok(())
+    }
 }
 
 /// Represents a pattern template
@@ -933,6 +961,89 @@ mod tests {
                 assert_eq!(msg, "Execution is already completed");
             }
             _ => panic!("Expected InvalidInput error for already completed execution"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_execution_update_execution() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Start execution
+        execution.start_execution().unwrap();
+
+        // Update with intermediate results
+        let result = execution.update_execution(
+            Some(json!({"progress": "50%", "step": "processing"})),
+            None
+        );
+        assert!(result.is_ok());
+        assert!(execution.output_result.is_some());
+        assert_eq!(execution.output_result.as_ref().unwrap(), &json!({"progress": "50%", "step": "processing"}));
+        assert!(execution.error_message.is_none());
+
+        // Update with error message
+        let result = execution.update_execution(
+            None,
+            Some("Warning: Slow processing detected".to_string())
+        );
+        assert!(result.is_ok());
+        assert!(execution.error_message.is_some());
+        assert_eq!(execution.error_message.as_ref().unwrap(), "Warning: Slow processing detected");
+    }
+
+    #[test]
+    fn test_pattern_execution_update_execution_not_started() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Try to update execution without starting it first
+        let result = execution.update_execution(
+            Some(json!({"progress": "50%"})),
+            None
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Cannot update execution that has not been started");
+            }
+            _ => panic!("Expected InvalidInput error for not started execution"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_execution_update_execution_already_completed() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Start execution
+        execution.start_execution().unwrap();
+        // Complete execution
+        execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
+
+        // Try to update completed execution
+        let result = execution.update_execution(
+            Some(json!({"progress": "100%"})),
+            None
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Cannot update execution that is already completed");
+            }
+            _ => panic!("Expected InvalidInput error for completed execution"),
         }
     }
 
