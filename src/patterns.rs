@@ -167,6 +167,11 @@ impl PatternRegistry {
     pub fn get_pattern(&self, id: Uuid) -> Option<&SystemPattern> {
         self.patterns.iter().find(|p| p.id == id)
     }
+
+    /// Retrieves a system pattern by its name
+    pub fn get_pattern_by_name(&self, name: &str) -> Option<&SystemPattern> {
+        self.patterns.iter().find(|p| p.name == name)
+    }
 }
 
 impl Default for PatternRegistry {
@@ -342,5 +347,30 @@ mod tests {
             }
             _ => panic!("Expected InvalidInput error for duplicate pattern"),
         }
+    }
+
+    #[test]
+    fn test_pattern_registry_get_pattern_by_name() {
+        let mut registry = PatternRegistry::new();
+        let pattern = SystemPattern::new(
+            "Test Pattern Name".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Test pattern description".to_string(),
+            json!([{"step": 1, "action": "test_action", "description": "test_desc"}]),
+            json!({"summary": "test_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern.clone()).unwrap();
+        
+        let retrieved = registry.get_pattern_by_name("Test Pattern Name");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, "Test Pattern Name");
+        assert_eq!(retrieved.unwrap().description, "Test pattern description");
+        
+        let not_found = registry.get_pattern_by_name("Non-existent Pattern");
+        assert!(not_found.is_none());
     }
 }
