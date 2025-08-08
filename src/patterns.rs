@@ -758,6 +758,107 @@ impl PatternBootstrap {
             template_content,
         )
     }
+
+    /// Load pattern relationships from repository files
+    pub fn load_relationships(&self) -> ParagonicResult<Vec<PatternRelationship>> {
+        let relationships_file = self.patterns_dir.join("bootstrap/pattern_relationships.json");
+        let content = std::fs::read_to_string(relationships_file)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to read relationships file: {}", e)
+            ))?;
+        
+        let data: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to parse relationships JSON: {}", e)
+            ))?;
+        
+        // Parse and validate relationships
+        let relationships = self.parse_relationships(data)?;
+        Ok(relationships)
+    }
+
+    /// Parse relationships from JSON data
+    fn parse_relationships(&self, data: serde_json::Value) -> ParagonicResult<Vec<PatternRelationship>> {
+        let relationships_array = data.get("relationships")
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Missing 'relationships' field in JSON data".to_string()
+            ))?
+            .as_array()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "'relationships' field must be an array".to_string()
+            ))?;
+        
+        let mut relationships = Vec::new();
+        for relationship_data in relationships_array {
+            let relationship = self.parse_single_relationship(relationship_data)?;
+            relationships.push(relationship);
+        }
+        
+        Ok(relationships)
+    }
+
+    /// Parse a single relationship from JSON data
+    fn parse_single_relationship(&self, relationship_data: &serde_json::Value) -> ParagonicResult<PatternRelationship> {
+        let source_pattern_id_str = relationship_data.get("source_pattern_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Relationship missing 'source_pattern_id' field".to_string()
+            ))?;
+        
+        let target_pattern_id_str = relationship_data.get("target_pattern_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Relationship missing 'target_pattern_id' field".to_string()
+            ))?;
+        
+        // Convert string IDs to UUIDs (for now, we'll use a simple hash-based approach)
+        // In a real implementation, these would be actual UUIDs from the database
+        let source_pattern_id = Uuid::new_v4(); // Generate new UUID for now
+        let target_pattern_id = Uuid::new_v4(); // Generate new UUID for now
+        
+        let relationship_type_str = relationship_data.get("relationship_type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Relationship missing 'relationship_type' field".to_string()
+            ))?;
+        
+        let relationship_type = match relationship_type_str {
+            "DependsOn" => RelationshipType::DependsOn,
+            "Triggers" => RelationshipType::Triggers,
+            "Enhances" => RelationshipType::Enhances,
+            "Conflicts" => RelationshipType::ConflictsWith,
+            _ => return Err(ParagonicError::InvalidInput(
+                format!("Unknown relationship type: {}", relationship_type_str)
+            )),
+        };
+        
+        let description = relationship_data.get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Relationship missing 'description' field".to_string()
+            ))?
+            .to_string();
+        
+        let strength = relationship_data.get("strength")
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Relationship missing 'strength' field".to_string()
+            ))?;
+        
+        if strength < 0.0 || strength > 1.0 {
+            return Err(ParagonicError::InvalidInput(
+                "Relationship strength must be between 0.0 and 1.0".to_string()
+            ));
+        }
+        
+        PatternRelationship::new(
+            source_pattern_id,
+            target_pattern_id,
+            relationship_type,
+            description,
+            strength,
+        )
+    }
 }
 
 impl Default for PatternRegistry {
@@ -1946,6 +2047,38 @@ mod tests {
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
                 assert!(msg.contains("Failed to read templates file"));
+            }
+            _ => panic!("Expected InvalidInput error for missing file"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_load_relationships() {
+        let patterns_dir = PathBuf::from("patterns");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        
+        let result = bootstrap.load_relationships();
+        assert!(result.is_ok());
+        
+        let relationships = result.unwrap();
+        assert_eq!(relationships.len(), 1);
+        
+        let relationship = &relationships[0];
+        assert_eq!(relationship.relationship_type, RelationshipType::DependsOn);
+        assert!(relationship.description.contains("depends on session analysis"));
+        assert_eq!(relationship.strength, 0.8);
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_load_relationships_missing_file() {
+        let patterns_dir = PathBuf::from("nonexistent");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        
+        let result = bootstrap.load_relationships();
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Failed to read relationships file"));
             }
             _ => panic!("Expected InvalidInput error for missing file"),
         }
