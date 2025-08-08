@@ -318,5 +318,9 @@ mod optimization_engine_tests;
 mod iragl_search_engine_tests;
 mod rpc_integration_tests;
 mod integration_tests;
+#[cfg(test)]
+mod pattern_database_tests;
+#[cfg(test)]
+mod pattern_database_operations_tests;
 
  

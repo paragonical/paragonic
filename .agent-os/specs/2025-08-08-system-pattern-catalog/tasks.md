@@ -18,15 +18,15 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 1.8 Implement pattern relationship structures
   - [x] 1.9 Verify all tests pass
 
-- [ ] 2. **Database Schema and Migration**
-  - [ ] 2.1 Write tests for database schema validation
-  - [ ] 2.2 Create migration for system_patterns table
-  - [ ] 2.3 Create migration for pattern_executions table
-  - [ ] 2.4 Create migration for pattern_relationships table
-  - [ ] 2.5 Create migration for tool_pattern_mappings table
-  - [ ] 2.6 Create migration for pattern_learning_metrics table
-  - [ ] 2.7 Update ai_agent_sessions table with pattern fields
-  - [ ] 2.8 Write tests for database operations
+- [x] 2. **Database Schema and Migration**
+  - [x] 2.1 Write tests for database schema validation
+  - [x] 2.2 Create migration for system_patterns table
+  - [x] 2.3 Create migration for pattern_executions table
+  - [x] 2.4 Create migration for pattern_relationships table
+  - [x] 2.5 Create migration for tool_pattern_mappings table
+  - [x] 2.6 Create migration for pattern_learning_metrics table
+  - [x] 2.7 Update ai_agent_sessions table with pattern fields
+  - [x] 2.8 Write tests for database operations
   - [ ] 2.9 Implement database models and operations
   - [ ] 2.10 Verify all tests pass
 
