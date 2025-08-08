@@ -23,6 +23,14 @@ pub enum MetaLevel {
     Hybrid,
 }
 
+/// Types of pattern triggers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TriggerType {
+    Automatic,
+    Manual,
+    Scheduled,
+}
+
 /// Represents a system pattern that can be executed by AI agents
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemPattern {
@@ -85,6 +93,50 @@ impl SystemPattern {
     }
 }
 
+/// Represents a pattern execution instance
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternExecution {
+    pub id: Uuid,
+    pub pattern_id: Uuid,
+    pub session_id: Option<Uuid>,
+    pub trigger_type: TriggerType,
+    pub input_context: Option<Value>,
+    pub output_result: Option<Value>,
+    pub execution_duration_ms: Option<u64>,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl PatternExecution {
+    /// Creates a new PatternExecution with validation
+    pub fn new(
+        pattern_id: Uuid,
+        session_id: Option<Uuid>,
+        trigger_type: TriggerType,
+        input_context: Option<Value>,
+    ) -> ParagonicResult<Self> {
+        // Validate that pattern_id is not null
+        if pattern_id.is_nil() {
+            return Err(ParagonicError::InvalidInput("Pattern ID cannot be null".to_string()));
+        }
+        
+        let now = Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            pattern_id,
+            session_id,
+            trigger_type,
+            input_context,
+            output_result: None,
+            execution_duration_ms: None,
+            success: false,
+            error_message: None,
+            created_at: now,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +192,45 @@ mod tests {
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
                 assert_eq!(msg, "Pattern name cannot be empty");
+            }
+            _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_execution_creation_with_valid_data() {
+        let pattern_id = Uuid::new_v4();
+        let session_id = Uuid::new_v4();
+        let execution = PatternExecution::new(
+            pattern_id,
+            Some(session_id),
+            TriggerType::Automatic,
+            Some(json!({"session_duration": 3600})),
+        ).unwrap();
+        
+        assert_eq!(execution.pattern_id, pattern_id);
+        assert_eq!(execution.session_id, Some(session_id));
+        assert_eq!(execution.trigger_type, TriggerType::Automatic);
+        assert!(execution.input_context.is_some());
+        assert!(execution.output_result.is_none());
+        assert!(execution.execution_duration_ms.is_none());
+        assert!(!execution.success);
+        assert!(execution.error_message.is_none());
+    }
+
+    #[test]
+    fn test_pattern_execution_creation_with_null_pattern_id() {
+        let result = PatternExecution::new(
+            Uuid::nil(),
+            None,
+            TriggerType::Manual,
+            None,
+        );
+        
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Pattern ID cannot be null");
             }
             _ => panic!("Expected InvalidInput error"),
         }
