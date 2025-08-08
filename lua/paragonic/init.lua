@@ -716,100 +716,13 @@ function M.send_message_command_debug()
     return chat.send_message_command_debug()
 end
 
--- Create project command
+-- Command functions - delegate to ui module
 function M.create_project_command()
-    local current_buf = vim.api.nvim_get_current_buf()
-    local buf_name = vim.api.nvim_buf_get_name(current_buf)
-    
-    -- Only work in projects buffer
-    if buf_name ~= "paragonic://projects" then
-        vim.notify("This command only works in the projects buffer", vim.log.levels.WARN)
-        return
-    end
-    
-    -- Get project name from user input
-    local project_name = vim.fn.input("Project name: ")
-    if project_name == "" then
-        vim.notify("Project name cannot be empty", vim.log.levels.WARN)
-        return
-    end
-    
-    -- Get project description from user input
-    local project_description = vim.fn.input("Project description: ")
-    
-    -- Create the project
-    local response, err = M.create_project(project_name, project_description)
-    if not response then
-        vim.notify("Failed to create project: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Add the new project to the buffer
-    local project_lines = {
-        "",
-        "## " .. project_name,
-        project_description ~= "" and project_description or "No description provided",
-        "",
-        "---"
-    }
-    
-    -- Insert project at the end of the buffer
-    local last_line = vim.api.nvim_buf_line_count(current_buf)
-    vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, project_lines)
-    
-    vim.notify("Project '" .. project_name .. "' created successfully", vim.log.levels.INFO)
+    return ui.create_project_command()
 end
 
--- Save configuration command
 function M.save_config_command()
-    local current_buf = vim.api.nvim_get_current_buf()
-    local buf_name = vim.api.nvim_buf_get_name(current_buf)
-    
-    -- Only work in config buffer
-    if buf_name ~= "paragonic://config" then
-        vim.notify("This command only works in the config buffer", vim.log.levels.WARN)
-        return
-    end
-    
-    -- Get all lines from the buffer
-    local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
-    
-    -- Parse configuration from buffer content
-    local config_data = {}
-    
-    for _, line in ipairs(lines) do
-        -- Parse Ollama settings
-        if line:match("^%- Host: (.+)$") then
-            config_data.ollama_host = line:match("^%- Host: (.+)$")
-        elseif line:match("^%- Model: (.+)$") then
-            config_data.ollama_model = line:match("^%- Model: (.+)$")
-        elseif line:match("^%- Path: (.+)$") then
-            config_data.database_path = line:match("^%- Path: (.+)$")
-        elseif line:match("^%- Level: (.+)$") then
-            config_data.log_level = line:match("^%- Level: (.+)$")
-        end
-    end
-    
-    -- Save the configuration
-    local response, err = M.save_config(config_data)
-    if not response then
-        vim.notify("Failed to save configuration: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Add confirmation message to buffer
-    local confirmation_lines = {
-        "",
-        "**Configuration saved successfully!**",
-        "",
-        "---"
-    }
-    
-    -- Insert confirmation at the end of the buffer
-    local last_line = vim.api.nvim_buf_line_count(current_buf)
-    vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, confirmation_lines)
-    
-    vim.notify("Configuration saved successfully", vim.log.levels.INFO)
+    return ui.save_config_command()
 end
 
 -- Search functionality - delegate to search module
@@ -843,28 +756,9 @@ function M.display_search_results(results, title)
     return search.display_search_results(results, title)
 end
 
--- Handle search result selection
+-- Handle search result selection - delegate to search module
 function M.select_search_result(buf)
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor_pos[1]
-    
-    -- Get the results data
-    local success, results = pcall(vim.api.nvim_buf_get_var, buf, "paragonic_search_results")
-    if not success or not results or not results.results then
-        vim.notify("No search results available", vim.log.levels.WARN)
-        return
-    end
-    
-    -- Calculate which result was selected (accounting for header lines)
-    local result_index = line_num - 4 -- Subtract header lines
-    if result_index >= 1 and result_index <= #results.results then
-        local selected_result = results.results[result_index]
-        
-        -- Display detailed information about the selected result
-        M.show_result_details(selected_result)
-    else
-        vim.notify("Invalid selection", vim.log.levels.WARN)
-    end
+    return search.select_search_result(buf)
 end
 
 -- Show detailed information about a search result - delegate to search module
@@ -881,74 +775,17 @@ function M._setup_keymaps()
     return keymaps.setup_keymaps()
 end
 
--- Enhanced search command with better UX
+-- Quick search functions - delegate to search module
 function M.quick_search()
-    local query = vim.fn.input("🔍 Search: ")
-    if query == "" then
-        return
-    end
-    
-    -- Perform search
-    local results, err = M.search_embeddings(query, 10)
-    if not results then
-        vim.notify("Search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Add to search history
-    M.add_to_search_history(query, "basic", results.results and #results.results or 0)
-    
-    -- Display results in a floating window
-    M.display_search_results(results, "Quick Search: " .. query)
+    return search.quick_search()
 end
 
--- Enhanced filtered search with content type selection
 function M.quick_filtered_search()
-    local query = vim.fn.input("🔍 Search: ")
-    if query == "" then
-        return
-    end
-    
-    -- Content type selection
-    local content_types = {"project", "task", "note", "code", "document"}
-    local content_type = vim.fn.input("📁 Content Type (project/task/note/code/document): ")
-    
-    -- Perform filtered search
-    local results, err = M.find_similar_content(query, content_type ~= "" and content_type or nil, 10, 0.0)
-    if not results then
-        vim.notify("Filtered search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Add to search history
-    M.add_to_search_history(query, "filtered", results.results and #results.results or 0)
-    
-    -- Display results in a floating window
-    M.display_search_results(results, "Filtered Search: " .. query)
+    return search.quick_filtered_search()
 end
 
--- Enhanced hybrid search with options
 function M.quick_hybrid_search()
-    local query = vim.fn.input("🔍 Search: ")
-    if query == "" then
-        return
-    end
-    
-    local content_type = vim.fn.input("📁 Content Type (optional): ")
-    local include_text_filtering = vim.fn.input("🔤 Include text filtering? (y/n, default y): "):lower() ~= "n"
-    
-    -- Perform hybrid search
-    local results, err = M.hybrid_search(query, content_type ~= "" and content_type or nil, 10, 0.0, include_text_filtering)
-    if not results then
-        vim.notify("Hybrid search failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Add to search history
-    M.add_to_search_history(query, "hybrid", results.results and #results.results or 0)
-    
-    -- Display results in a floating window
-    M.display_search_results(results, "Hybrid Search: " .. query)
+    return search.quick_hybrid_search()
 end
 
 -- Search history and saved searches functionality
@@ -992,108 +829,25 @@ function M.show_saved_searches()
     return search.show_saved_searches()
 end
 
--- Repeat search from history
+-- Search history interaction functions - delegate to search module
 function M.repeat_search_from_history(buf)
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor_pos[1]
-    
-    -- Calculate which entry was selected (accounting for header lines)
-    local entry_index = line_num - 4 -- Subtract header lines
-    if entry_index >= 1 and entry_index <= #search_history then
-        local entry = search_history[entry_index]
-        
-        -- Execute the search
-        local results, err
-        if entry.type == "basic" then
-            results, err = M.search_embeddings(entry.query, 10)
-        elseif entry.type == "filtered" then
-            results, err = M.find_similar_content(entry.query, nil, 10, 0.0)
-        elseif entry.type == "hybrid" then
-            results, err = M.hybrid_search(entry.query, nil, 10, 0.0, true)
-        end
-        
-        if results then
-            -- Add to history again
-            M.add_to_search_history(entry.query, entry.type, results.results and #results.results or 0)
-            
-            -- Display results
-            M.display_search_results(results, "History Search: " .. entry.query)
-        else
-            vim.notify("Failed to repeat search: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        end
-    else
-        vim.notify("Invalid selection", vim.log.levels.WARN)
-    end
+    return search.repeat_search_from_history(buf)
 end
 
--- Delete from search history
 function M.delete_from_search_history(buf)
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor_pos[1]
-    
-    -- Calculate which entry was selected (accounting for header lines)
-    local entry_index = line_num - 4 -- Subtract header lines
-    if entry_index >= 1 and entry_index <= #search_history then
-        local entry = search_history[entry_index]
-        table.remove(search_history, entry_index)
-        
-        -- Refresh the display
-        vim.api.nvim_command("close")
-        M.show_search_history()
-    else
-        vim.notify("Invalid selection", vim.log.levels.WARN)
-    end
+    return search.delete_from_search_history(buf)
 end
 
--- Execute saved search from list
 function M.execute_saved_search_from_list(buf)
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor_pos[1]
-    
-    -- Calculate which entry was selected (accounting for header lines)
-    local entry_index = math.floor((line_num - 4) / 3) + 1 -- Each entry takes 3 lines
-    if entry_index >= 1 and entry_index <= #saved_searches then
-        local saved = saved_searches[entry_index]
-        M.execute_saved_search(saved.name)
-    else
-        vim.notify("Invalid selection", vim.log.levels.WARN)
-    end
+    return search.execute_saved_search_from_list(buf)
 end
 
--- Delete saved search from list
 function M.delete_saved_search_from_list(buf)
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor_pos[1]
-    
-    -- Calculate which entry was selected (accounting for header lines)
-    local entry_index = math.floor((line_num - 4) / 3) + 1 -- Each entry takes 3 lines
-    if entry_index >= 1 and entry_index <= #saved_searches then
-        local saved = saved_searches[entry_index]
-        M.delete_saved_search(saved.name)
-        
-        -- Refresh the display
-        vim.api.nvim_command("close")
-        M.show_saved_searches()
-    else
-        vim.notify("Invalid selection", vim.log.levels.WARN)
-    end
+    return search.delete_saved_search_from_list(buf)
 end
 
--- Save current search
 function M.save_current_search()
-    local name = vim.fn.input("💾 Save search as: ")
-    if name == "" then
-        vim.notify("Search name is required", vim.log.levels.WARN)
-        return
-    end
-    
-    -- For now, save the last search from history
-    if #search_history > 0 then
-        local last_search = search_history[1]
-        M.save_search(name, last_search.query, last_search.type, nil, 10, 0.0)
-    else
-        vim.notify("No recent searches to save", vim.log.levels.WARN)
-    end
+    return search.save_current_search()
 end
 
 -- Persistent storage functionality
