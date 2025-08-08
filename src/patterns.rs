@@ -300,6 +300,20 @@ impl PatternRegistry {
         self.relationships.push(relationship);
         Ok(())
     }
+
+    /// Removes a relationship by its ID
+    pub fn remove_relationship(&mut self, id: Uuid) -> ParagonicResult<()> {
+        let initial_len = self.relationships.len();
+        self.relationships.retain(|r| r.id != id);
+        
+        if self.relationships.len() == initial_len {
+            return Err(ParagonicError::InvalidInput(
+                format!("Relationship with id '{}' not found", id)
+            ));
+        }
+        
+        Ok(())
+    }
 }
 
 impl Default for PatternRegistry {
@@ -567,6 +581,69 @@ mod tests {
                 assert!(msg.contains("does not exist"));
             }
             _ => panic!("Expected InvalidInput error for non-existent pattern"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_registry_remove_relationship() {
+        let mut registry = PatternRegistry::new();
+        
+        // Create two patterns first
+        let pattern1 = SystemPattern::new(
+            "Source Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Source pattern for relationship".to_string(),
+            json!([{"step": 1, "action": "source_action", "description": "source_desc"}]),
+            json!({"summary": "source_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern2 = SystemPattern::new(
+            "Target Pattern".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::User,
+            "Target pattern for relationship".to_string(),
+            json!([{"step": 1, "action": "target_action", "description": "target_desc"}]),
+            json!({"summary": "target_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1.clone()).unwrap();
+        registry.register_pattern(pattern2.clone()).unwrap();
+        
+        // Create and add relationship
+        let relationship = PatternRelationship::new(
+            pattern1.id,
+            pattern2.id,
+            RelationshipType::DependsOn,
+            "Source depends on target".to_string(),
+            0.8,
+        ).unwrap();
+        
+        registry.add_relationship(relationship.clone()).unwrap();
+        assert_eq!(registry.relationships.len(), 1);
+        
+        // Remove the relationship
+        let result = registry.remove_relationship(relationship.id);
+        assert!(result.is_ok());
+        assert_eq!(registry.relationships.len(), 0);
+    }
+
+    #[test]
+    fn test_pattern_registry_remove_nonexistent_relationship() {
+        let mut registry = PatternRegistry::new();
+        let nonexistent_id = Uuid::new_v4();
+        
+        let result = registry.remove_relationship(nonexistent_id);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("not found"));
+            }
+            _ => panic!("Expected InvalidInput error for non-existent relationship"),
         }
     }
 
