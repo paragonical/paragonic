@@ -3,6 +3,7 @@ use serde_json::Value;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::error::{ParagonicError, ParagonicResult};
+use tera::{Tera, Context};
 
 /// Categories for system patterns
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -197,6 +198,46 @@ impl PatternExecution {
             success: false,
             error_message: None,
             created_at: now,
+        })
+    }
+}
+
+/// Represents a pattern template
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternTemplate {
+    pub id: Uuid,
+    pub name: String,
+    pub description: String,
+    pub template_content: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl PatternTemplate {
+    /// Creates a new PatternTemplate with validation
+    pub fn new(
+        name: String,
+        description: String,
+        template_content: String,
+    ) -> ParagonicResult<Self> {
+        if name.trim().is_empty() {
+            return Err(ParagonicError::InvalidInput("Pattern template name cannot be empty".to_string()));
+        }
+        if description.trim().is_empty() {
+            return Err(ParagonicError::InvalidInput("Pattern template description cannot be empty".to_string()));
+        }
+        if template_content.trim().is_empty() {
+            return Err(ParagonicError::InvalidInput("Pattern template content cannot be empty".to_string()));
+        }
+
+        let now = Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            name,
+            description,
+            template_content,
+            created_at: now,
+            updated_at: now,
         })
     }
 }
@@ -499,6 +540,70 @@ mod tests {
                 assert_eq!(msg, "Description cannot be empty");
             }
             _ => panic!("Expected InvalidInput error for empty description"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_template_creation_with_valid_data() {
+        let template = PatternTemplate::new(
+            "Test Template".to_string(),
+            "This is a test template for pattern execution".to_string(),
+            "{{ pattern_name }} - {{ session_id }}".to_string(),
+        ).unwrap();
+
+        assert_eq!(template.name, "Test Template");
+        assert_eq!(template.description, "This is a test template for pattern execution");
+        assert!(!template.template_content.is_empty());
+    }
+
+    #[test]
+    fn test_pattern_template_creation_with_empty_name() {
+        let result = PatternTemplate::new(
+            "".to_string(),
+            "Description".to_string(),
+            "Content".to_string(),
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Pattern template name cannot be empty");
+            }
+            _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_template_creation_with_empty_description() {
+        let result = PatternTemplate::new(
+            "Name".to_string(),
+            "".to_string(),
+            "Content".to_string(),
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Pattern template description cannot be empty");
+            }
+            _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_template_creation_with_empty_content() {
+        let result = PatternTemplate::new(
+            "Name".to_string(),
+            "Description".to_string(),
+            "".to_string(),
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Pattern template content cannot be empty");
+            }
+            _ => panic!("Expected InvalidInput error"),
         }
     }
 
