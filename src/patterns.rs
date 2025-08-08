@@ -31,6 +31,70 @@ pub enum TriggerType {
     Scheduled,
 }
 
+/// Types of pattern relationships
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum RelationshipType {
+    DependsOn,
+    Triggers,
+    Enhances,
+    ConflictsWith,
+    SimilarTo,
+}
+
+/// Represents a relationship between two system patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternRelationship {
+    pub id: Uuid,
+    pub source_pattern_id: Uuid,
+    pub target_pattern_id: Uuid,
+    pub relationship_type: RelationshipType,
+    pub description: String,
+    pub strength: f64, // 0.0 to 1.0
+    pub created_at: DateTime<Utc>,
+}
+
+impl PatternRelationship {
+    /// Creates a new pattern relationship
+    pub fn new(
+        source_pattern_id: Uuid,
+        target_pattern_id: Uuid,
+        relationship_type: RelationshipType,
+        description: String,
+        strength: f64,
+    ) -> ParagonicResult<Self> {
+        // Validate that source and target are different
+        if source_pattern_id == target_pattern_id {
+            return Err(ParagonicError::InvalidInput(
+                "Source and target pattern IDs must be different".to_string()
+            ));
+        }
+        
+        // Validate strength is between 0.0 and 1.0
+        if strength < 0.0 || strength > 1.0 {
+            return Err(ParagonicError::InvalidInput(
+                "Strength must be between 0.0 and 1.0".to_string()
+            ));
+        }
+        
+        // Validate description is not empty
+        if description.trim().is_empty() {
+            return Err(ParagonicError::InvalidInput(
+                "Description cannot be empty".to_string()
+            ));
+        }
+        
+        Ok(Self {
+            id: Uuid::new_v4(),
+            source_pattern_id,
+            target_pattern_id,
+            relationship_type,
+            description,
+            strength,
+            created_at: Utc::now(),
+        })
+    }
+}
+
 /// Represents a system pattern that can be executed by AI agents
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemPattern {
@@ -309,6 +373,87 @@ mod tests {
                 assert_eq!(msg, "Pattern ID cannot be null");
             }
             _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_relationship_creation_with_valid_data() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let relationship = PatternRelationship::new(
+            source_id,
+            target_id,
+            RelationshipType::DependsOn,
+            "Test relationship description".to_string(),
+            0.8,
+        ).unwrap();
+        
+        assert_eq!(relationship.source_pattern_id, source_id);
+        assert_eq!(relationship.target_pattern_id, target_id);
+        assert_eq!(relationship.relationship_type, RelationshipType::DependsOn);
+        assert!(!relationship.description.is_empty());
+        assert!(relationship.strength >= 0.0 && relationship.strength <= 1.0);
+    }
+
+    #[test]
+    fn test_pattern_relationship_creation_with_same_ids() {
+        let source_id = Uuid::new_v4();
+        let result = PatternRelationship::new(
+            source_id,
+            source_id,
+            RelationshipType::DependsOn,
+            "Self-dependency is not allowed".to_string(),
+            0.5,
+        );
+        
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Source and target pattern IDs must be different");
+            }
+            _ => panic!("Expected InvalidInput error for same IDs"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_relationship_creation_with_invalid_strength() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let result = PatternRelationship::new(
+            source_id,
+            target_id,
+            RelationshipType::DependsOn,
+            "Invalid strength".to_string(),
+            1.5,
+        );
+        
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Strength must be between 0.0 and 1.0");
+            }
+            _ => panic!("Expected InvalidInput error for invalid strength"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_relationship_creation_with_empty_description() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let result = PatternRelationship::new(
+            source_id,
+            target_id,
+            RelationshipType::DependsOn,
+            "".to_string(),
+            0.7,
+        );
+        
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Description cannot be empty");
+            }
+            _ => panic!("Expected InvalidInput error for empty description"),
         }
     }
 
