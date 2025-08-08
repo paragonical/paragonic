@@ -456,68 +456,14 @@ function M.register_session_aware_handler(event_type, handler)
     return events.register_session_aware_handler(event_type, handler)
 end
 
--- Track event in session
+-- Track event in session - delegate to ai_agent module
 function M.track_event_in_session(event_type, event_data)
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Create event tracking object
-    local event_obj = {
-        id = #session.interactions + 1,
-        timestamp = os.time(),
-        type = "event",
-        event_type = event_type,
-        event_data = event_data,
-        from_agent = false,
-        status = "tracked"
-    }
-    
-    -- Add to session interactions
-    table.insert(session.interactions, event_obj)
-    
-    -- Update session context
-    session.context = {
-        current_file = vim.fn.expand("%"),
-        current_directory = vim.fn.getcwd(),
-        buffer_count = #vim.api.nvim_list_bufs(),
-        mode = vim.fn.mode()
-    }
-    
-    return true, "Event tracked in session successfully"
+    return ai_agent.track_event_in_session(event_type, event_data)
 end
 
--- Get session event history
+-- Get session event history - delegate to ai_agent module
 function M.get_session_event_history()
-    if not agent_collaboration_mode or not active_agent_id then
-        return false, "No active AI agent session"
-    end
-    
-    local session = ai_agent_sessions[active_agent_id]
-    if not session then
-        return false, "Session data not found"
-    end
-    
-    -- Filter interactions to only include events
-    local event_history = {}
-    for _, interaction in ipairs(session.interactions) do
-        if interaction.type == "event" then
-            table.insert(event_history, {
-                id = interaction.id,
-                timestamp = interaction.timestamp,
-                event_type = interaction.event_type,
-                event_data = interaction.event_data,
-                status = interaction.status
-            })
-        end
-    end
-    
-    return true, event_history
+    return ai_agent.get_session_event_history()
 end
 
 -- AI agent session status getter - delegate to ai_agent module
@@ -782,45 +728,46 @@ function M._load_from_json(file_path)
     return utils.load_from_json(file_path)
 end
 
+-- Persistent storage functions - delegate to utils module
 function M._save_search_history()
-    return utils.save_search_history(search_history, history_file)
+    return utils.save_search_history()
 end
 
 function M._load_search_history()
-    return utils.load_search_history(history_file)
+    return utils.load_search_history()
 end
 
 function M._save_saved_searches()
-    return utils.save_saved_searches(saved_searches, saved_searches_file)
+    return utils.save_saved_searches()
 end
 
 function M._load_saved_searches()
-    return utils.load_saved_searches(saved_searches_file)
+    return utils.load_saved_searches()
 end
 
 -- Load all persistent data with error handling
 function M._load_persistent_data()
-    return utils.load_persistent_data(search_history, saved_searches)
+    return utils.load_persistent_data()
 end
 
 -- Auto-save function
 function M._auto_save()
-    return utils.auto_save(search_history, saved_searches)
+    return utils.auto_save()
 end
 
 -- Export data to a file
 function M.export_data()
-    return utils.export_data(search_history, saved_searches)
+    return utils.export_data()
 end
 
 -- Import data from a file
 function M.import_data()
-    return utils.import_data(search_history, saved_searches)
+    return utils.import_data()
 end
 
 -- Backup data
 function M.backup_data()
-    return utils.backup_data(search_history, saved_searches)
+    return utils.backup_data()
 end
 
 -- Agentic collaboration functionality
@@ -835,36 +782,9 @@ function M.agent_edit_file(args)
     return ai_agent.agent_edit_file(args)
 end
 
--- Get file content from current session
+-- Get file content from current session - delegate to ai_agent module
 function M.agent_get_file_content(file_path)
-    if not file_path or file_path == "" then
-        return nil, "File path is required"
-    end
-    
-    -- Find buffer by file path
-    local target_buffer = nil
-    local buffers = vim.api.nvim_list_bufs()
-    
-    for _, buf in ipairs(buffers) do
-        local buf_name = vim.api.nvim_buf_get_name(buf)
-        if buf_name == file_path then
-            target_buffer = buf
-            break
-        end
-    end
-    
-    if not target_buffer then
-        return nil, "File not found in current session: " .. file_path
-    end
-    
-    -- Get file content
-    local lines = vim.api.nvim_buf_get_lines(target_buffer, 0, -1, false)
-    return {
-        file_path = file_path,
-        buffer_id = target_buffer,
-        line_count = #lines,
-        content = lines
-    }
+    return ai_agent.agent_get_file_content(file_path)
 end
 
 -- Agent file creator - delegate to ai_agent module
@@ -872,40 +792,9 @@ function M.agent_create_file(args)
     return ai_agent.agent_create_file(args)
 end
 
--- Create a file with a template
+-- Create a file with a template - delegate to ai_agent module
 function M.agent_create_file_with_template(template_name, file_name)
-    local templates = {
-        lua = {
-            header = "--[[",
-            footer = "--]]",
-            content = "local M = {}\n\nreturn M"
-        },
-        rust = {
-            header = "//",
-            footer = "",
-            content = "fn main() {\n    println!(\"Hello, world!\");\n}"
-        },
-        markdown = {
-            header = "#",
-            footer = "",
-            content = "# Title\n\nContent goes here."
-        }
-    }
-    
-    local template = templates[template_name]
-    if not template then
-        return false, "Unknown template: " .. template_name
-    end
-    
-    local content = template.content
-    if template.header ~= "" then
-        content = template.header .. " " .. file_name .. "\n" .. content
-    end
-    if template.footer ~= "" then
-        content = content .. "\n" .. template.footer
-    end
-    
-    return M.agent_create_file({file_name, content})
+    return ai_agent.agent_create_file_with_template(template_name, file_name)
 end
 
 -- Agent file saver - delegate to ai_agent module
@@ -913,54 +802,14 @@ function M.agent_save_file(args)
     return ai_agent.agent_save_file(args)
 end
 
--- Save all modified files
+-- Save all modified files - delegate to ai_agent module
 function M.agent_save_all_files()
-    local buffers = vim.api.nvim_list_bufs()
-    local saved_count = 0
-    local failed_count = 0
-    
-    for _, buf in ipairs(buffers) do
-        local buf_name = vim.api.nvim_buf_get_name(buf)
-        local modified = vim.api.nvim_buf_get_option(buf, "modified")
-        
-        if buf_name ~= "" and modified then
-            local success = M.agent_save_file({buf_name})
-            if success then
-                saved_count = saved_count + 1
-            else
-                failed_count = failed_count + 1
-            end
-        end
-    end
-    
-    if saved_count > 0 then
-        vim.notify("Saved " .. saved_count .. " files", vim.log.levels.INFO)
-    end
-    if failed_count > 0 then
-        vim.notify("Failed to save " .. failed_count .. " files", vim.log.levels.WARN)
-    end
-    
-    return saved_count, failed_count
+    return ai_agent.agent_save_all_files()
 end
 
--- Save file with backup
+-- Save file with backup - delegate to ai_agent module
 function M.agent_save_with_backup(args)
-    local file_path = args[1]
-    local create_backup = args[2] == "true"
-    
-    if create_backup and file_path then
-        local backup_path = file_path .. ".backup"
-        local success = M.agent_save_file({file_path})
-        if success then
-            -- Create backup by copying the file
-            local lines = vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false)
-            vim.fn.writefile(lines, backup_path)
-            vim.notify("Created backup: " .. backup_path, vim.log.levels.INFO)
-        end
-        return success
-    else
-        return M.agent_save_file(args)
-    end
+    return ai_agent.agent_save_with_backup(args)
 end
 
 -- MCP Server functionality
