@@ -572,6 +572,118 @@ impl PatternBootstrap {
     pub fn new(patterns_dir: PathBuf) -> Self {
         Self { patterns_dir }
     }
+
+    /// Load core patterns from repository files
+    pub fn load_core_patterns(&self) -> ParagonicResult<Vec<SystemPattern>> {
+        let core_patterns_file = self.patterns_dir.join("bootstrap/core_patterns.json");
+        let content = std::fs::read_to_string(core_patterns_file)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to read core patterns file: {}", e)
+            ))?;
+        
+        let data: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to parse core patterns JSON: {}", e)
+            ))?;
+        
+        // Parse and validate patterns
+        let patterns = self.parse_patterns(data)?;
+        Ok(patterns)
+    }
+
+    /// Parse patterns from JSON data
+    fn parse_patterns(&self, data: serde_json::Value) -> ParagonicResult<Vec<SystemPattern>> {
+        let patterns_array = data.get("patterns")
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Missing 'patterns' field in JSON data".to_string()
+            ))?
+            .as_array()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "'patterns' field must be an array".to_string()
+            ))?;
+        
+        let mut patterns = Vec::new();
+        for pattern_data in patterns_array {
+            let pattern = self.parse_single_pattern(pattern_data)?;
+            patterns.push(pattern);
+        }
+        
+        Ok(patterns)
+    }
+
+    /// Parse a single pattern from JSON data
+    fn parse_single_pattern(&self, pattern_data: &serde_json::Value) -> ParagonicResult<SystemPattern> {
+        let name = pattern_data.get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Pattern missing 'name' field".to_string()
+            ))?
+            .to_string();
+        
+        let category_str = pattern_data.get("category")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Pattern missing 'category' field".to_string()
+            ))?;
+        
+        let category = match category_str {
+            "SessionManagement" => PatternCategory::SessionManagement,
+            "SelfReflection" => PatternCategory::SelfReflection,
+            "ContextSummarization" => PatternCategory::ContextSummarization,
+            "ActivityLabeling" => PatternCategory::ActivityLabeling,
+            "ProgressTracking" => PatternCategory::ProgressTracking,
+            "KnowledgeExtraction" => PatternCategory::KnowledgeExtraction,
+            _ => return Err(ParagonicError::InvalidInput(
+                format!("Invalid category: {}", category_str)
+            )),
+        };
+        
+        let meta_level_str = pattern_data.get("meta_level")
+            .and_then(|v| v.as_str())
+            .unwrap_or("System");
+        
+        let meta_level = match meta_level_str {
+            "System" => MetaLevel::System,
+            "User" => MetaLevel::User,
+            "Hybrid" => MetaLevel::Hybrid,
+            _ => return Err(ParagonicError::InvalidInput(
+                format!("Invalid meta_level: {}", meta_level_str)
+            )),
+        };
+        
+        let description = pattern_data.get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Pattern missing 'description' field".to_string()
+            ))?
+            .to_string();
+        
+        let workflow_steps = pattern_data.get("workflow_steps")
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Pattern missing 'workflow_steps' field".to_string()
+            ))?
+            .clone();
+        
+        let output_format = pattern_data.get("output_format")
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Pattern missing 'output_format' field".to_string()
+            ))?
+            .clone();
+        
+        let trigger_conditions = pattern_data.get("trigger_conditions").cloned();
+        let success_criteria = pattern_data.get("success_criteria").cloned();
+        
+        SystemPattern::new(
+            name,
+            category,
+            meta_level,
+            description,
+            workflow_steps,
+            output_format,
+            trigger_conditions,
+            success_criteria,
+        )
+    }
 }
 
 impl Default for PatternRegistry {
@@ -1697,5 +1809,38 @@ mod tests {
         let bootstrap = PatternBootstrap::new(patterns_dir.clone());
         
         assert_eq!(bootstrap.patterns_dir, patterns_dir);
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_load_core_patterns() {
+        let patterns_dir = PathBuf::from("patterns");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        
+        let result = bootstrap.load_core_patterns();
+        assert!(result.is_ok());
+        
+        let patterns = result.unwrap();
+        assert_eq!(patterns.len(), 1);
+        
+        let pattern = &patterns[0];
+        assert_eq!(pattern.name, "Session Summary Generation");
+        assert_eq!(pattern.category, PatternCategory::SessionManagement);
+        assert_eq!(pattern.meta_level, MetaLevel::System);
+        assert!(pattern.description.contains("comprehensive summary"));
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_load_core_patterns_missing_file() {
+        let patterns_dir = PathBuf::from("nonexistent");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        
+        let result = bootstrap.load_core_patterns();
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Failed to read core patterns file"));
+            }
+            _ => panic!("Expected InvalidInput error for missing file"),
+        }
     }
 }
