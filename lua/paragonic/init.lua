@@ -19,14 +19,19 @@ local ui = require("paragonic.ui")
 local keymaps = require("paragonic.keymaps")
 local text = require("paragonic.text")
 
--- Text processing functions - delegate to text module
-local function wrap_text(text, max_width, indent)
-    return text.wrap_text(text, max_width, indent)
-end
-
-local function wrap_text_with_diamond(text, max_width)
-    return text.wrap_text_with_diamond(text, max_width)
-end
+-- Expose modules directly for clean API
+M.backend = backend
+M.chat = chat
+M.search = search
+M.ai_agent = ai_agent
+M.mcp = mcp
+M.events = events
+M.ui = ui
+M.keymaps = keymaps
+M.text = text
+M.debug = debug
+M.utils = utils
+M.config = config
 
 -- Initialize the plugin
 function M.setup(opts)
@@ -45,62 +50,62 @@ function M.setup(opts)
     -- Define all user commands in a table for clean iteration
     local commands = {
         -- Core interface commands
-        {name = "ParagonicChat", func = M.open_chat, opts = {}},
-        {name = "ParagonicProjects", func = M.open_projects, opts = {}},
-        {name = "ParagonicConfig", func = M.open_config, opts = {}},
-        {name = "ParagonicDebug", func = M.open_debug_buffer, opts = {}},
+        {name = "ParagonicChat", func = M.chat.open_chat, opts = {}},
+        {name = "ParagonicProjects", func = M.ui.open_projects, opts = {}},
+        {name = "ParagonicConfig", func = M.ui.open_config, opts = {}},
+        {name = "ParagonicDebug", func = M.debug.open_debug_buffer, opts = {}},
         
-        -- Chat commands
+                -- Chat commands
         {name = "ParagonicSend", func = function()
-            M.debug_print("WRAPPER: About to call send_message_command", "debug")
-            M.send_message_command()
-            M.debug_print("WRAPPER: send_message_command completed", "debug")
+        M.debug.debug_print("WRAPPER: About to call send_message_command", "debug")
+        M.chat.send_message_command()
+        M.debug.debug_print("WRAPPER: send_message_command completed", "debug")
         end, opts = {}},
-        {name = "ParagonicSendDebug", func = M.send_message_command_debug, opts = {}},
-        {name = "ParagonicTest", func = function()
-            M.debug_print("TEST COMMAND WORKING", "debug")
-            vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)
+        {name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {}},
+                {name = "ParagonicTest", func = function()
+        M.debug.debug_print("TEST COMMAND WORKING", "debug")
+        vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)
         end, opts = {}},
-        
+    
         -- Project and config commands
-        {name = "ParagonicCreateProject", func = M.create_project_command, opts = {}},
-        {name = "ParagonicSaveConfig", func = M.save_config_command, opts = {}},
-        
-        -- Search commands
-        {name = "ParagonicSearch", func = M.search_command, opts = {nargs = "*"}},
-        {name = "ParagonicSearchFiltered", func = M.search_filtered_command, opts = {nargs = "*"}},
-        {name = "ParagonicSearchHybrid", func = M.search_hybrid_command, opts = {nargs = "*"}},
-        
-        -- Search history and saved searches commands
-        {name = "ParagonicSearchHistory", func = M.show_search_history, opts = {}},
-        {name = "ParagonicSavedSearches", func = M.show_saved_searches, opts = {}},
-        {name = "ParagonicSaveSearch", func = M.save_current_search, opts = {}},
-        
-        -- Persistent storage commands
-        {name = "ParagonicExportData", func = M.export_data, opts = {}},
-        {name = "ParagonicImportData", func = M.import_data, opts = {}},
-        {name = "ParagonicBackupData", func = M.backup_data, opts = {}},
+        {name = "ParagonicCreateProject", func = M.ui.create_project_command, opts = {}},
+        {name = "ParagonicSaveConfig", func = M.ui.save_config_command, opts = {}},
+    
+    -- Search commands
+        {name = "ParagonicSearch", func = M.search.search_command, opts = {nargs = "*"}},
+        {name = "ParagonicSearchFiltered", func = M.search.search_filtered_command, opts = {nargs = "*"}},
+        {name = "ParagonicSearchHybrid", func = M.search.search_hybrid_command, opts = {nargs = "*"}},
+    
+    -- Search history and saved searches commands
+        {name = "ParagonicSearchHistory", func = M.search.show_search_history, opts = {}},
+        {name = "ParagonicSavedSearches", func = M.search.show_saved_searches, opts = {}},
+        {name = "ParagonicSaveSearch", func = M.search.save_current_search, opts = {}},
+    
+    -- Persistent storage commands
+        {name = "ParagonicExportData", func = M.utils.export_data, opts = {}},
+        {name = "ParagonicImportData", func = M.utils.import_data, opts = {}},
+        {name = "ParagonicBackupData", func = M.utils.backup_data, opts = {}},
         
         -- Agentic collaboration commands
-        {name = "ParagonicAgentSession", func = M.get_agent_session_info, opts = {}},
-        {name = "ParagonicAgentEdit", func = M.agent_edit_file, opts = {nargs = "*"}},
-        {name = "ParagonicAgentCreate", func = M.agent_create_file, opts = {nargs = "*"}},
-        {name = "ParagonicAgentSave", func = M.agent_save_file, opts = {}},
+        {name = "ParagonicAgentSession", func = M.ai_agent.get_agent_session_info, opts = {}},
+        {name = "ParagonicAgentEdit", func = M.ai_agent.agent_edit_file, opts = {nargs = "*"}},
+        {name = "ParagonicAgentCreate", func = M.ai_agent.agent_create_file, opts = {nargs = "*"}},
+        {name = "ParagonicAgentSave", func = M.ai_agent.agent_save_file, opts = {}},
         
         -- MCP commands
-        {name = "ParagonicMCPInit", func = M.initialize_mcp_server, opts = {}},
+        {name = "ParagonicMCPInit", func = M.mcp.initialize_mcp_server, opts = {}},
         {name = "ParagonicMCPResources", func = function() 
-            local resources = M.list_mcp_resources()
-            M.display_mcp_resources(resources)
+            local resources = M.mcp.list_mcp_resources()
+            M.mcp.display_mcp_resources(resources)
         end, opts = {}},
         {name = "ParagonicMCPTools", func = function()
-            local tools = M.list_mcp_tools()
-            M.display_mcp_tools(tools)
+            local tools = M.mcp.list_mcp_tools()
+            M.mcp.display_mcp_tools(tools)
         end, opts = {}},
         {name = "ParagonicMCPReadResource", func = function(args)
             local uri = args[1] or "neovim://session"
-            local result = M.read_mcp_resource(uri)
-            M.display_resource_content(uri, result)
+            local result = M.mcp.read_mcp_resource(uri)
+            M.mcp.display_resource_content(uri, result)
         end, opts = {nargs = "?"}},
         
         -- MCP Client commands (sampling and roots)
@@ -108,32 +113,32 @@ function M.setup(opts)
             local uri = args[1] or "neovim://buffers"
             local limit = tonumber(args[2]) or 5
             local criteria = {limit = limit}
-            local result = M.sample_resource(uri, criteria)
-            M.display_sampled_content(uri, result, criteria)
+            local result = M.mcp.sample_resource(uri, criteria)
+            M.mcp.display_sampled_content(uri, result, criteria)
         end, opts = {nargs = "*"}},
         {name = "ParagonicMCPRoots", func = function(args)
             local uri = args[1] or "neovim://buffers"
-            local roots = M.define_resource_roots(uri, {})
-            M.display_resource_roots(uri, roots)
+            local roots = M.mcp.define_resource_roots(uri, {})
+            M.mcp.display_resource_roots(uri, roots)
         end, opts = {nargs = "?"}},
         
         -- AI Agent collaboration commands
         {name = "ParagonicAIAgentStart", func = function(args)
             local agent_name = args[1] or "AI Agent"
-            local session_id = M.start_ai_agent_session(agent_name)
+            local session_id = M.ai_agent.start_ai_agent_session(agent_name)
             if session_id then
                 vim.notify("AI agent session started: " .. session_id, vim.log.levels.INFO)
             end
         end, opts = {nargs = "?"}},
         {name = "ParagonicAIAgentStop", func = function()
-            local success = M.stop_ai_agent_session()
+            local success = M.ai_agent.stop_ai_agent_session()
             if success then
                 vim.notify("AI agent session stopped successfully", vim.log.levels.INFO)
             end
         end, opts = {}},
         {name = "ParagonicAIAgentStatus", func = function()
-            local status = M.get_ai_agent_session_status()
-            M.display_ai_agent_status(status)
+            local status = M.ai_agent.get_ai_agent_session_status()
+            M.mcp.display_ai_agent_status(status)
         end, opts = {}},
         {name = "ParagonicAIAgentMessage", func = function(args)
             if #args == 0 then
@@ -141,7 +146,7 @@ function M.setup(opts)
                 return
             end
             local message = table.concat(args, " ")
-            local success, message_id = M.send_ai_agent_message(message)
+            local success, message_id = M.ai_agent.send_ai_agent_message(message)
             if success then
                 vim.notify("AI agent message sent (ID: " .. message_id .. ")", vim.log.levels.INFO)
             else
@@ -154,7 +159,7 @@ function M.setup(opts)
                 return
             end
             local message = table.concat(args, " ")
-            local success, message_id = M.receive_ai_agent_message(message)
+            local success, message_id = M.ai_agent.receive_ai_agent_message(message)
             if success then
                 vim.notify("Neovim message received (ID: " .. message_id .. ")", vim.log.levels.INFO)
             else
@@ -167,7 +172,7 @@ function M.setup(opts)
                 return
             end
             local command = table.concat(args, " ")
-            local success, action_id, result = M.execute_ai_agent_command(command)
+            local success, action_id, result = M.ai_agent.execute_ai_agent_command(command)
             if success then
                 vim.notify("AI agent command executed (ID: " .. action_id .. ")", vim.log.levels.INFO)
             else
@@ -179,7 +184,7 @@ function M.setup(opts)
             local start_line = tonumber(args[2])
             local end_line = tonumber(args[3])
             
-            local success, action_id, result = M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
+            local success, action_id, result = M.ai_agent.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
             if success then
                 vim.notify("AI agent buffer read (ID: " .. action_id .. ", " .. result.line_count .. " lines)", vim.log.levels.INFO)
             else
@@ -198,7 +203,7 @@ function M.setup(opts)
                 table.insert(lines, args[i])
             end
             
-            local success, action_id, result = M.set_ai_agent_buffer_content(buffer_id, lines)
+            local success, action_id, result = M.ai_agent.set_ai_agent_buffer_content(buffer_id, lines)
             if success then
                 vim.notify("AI agent buffer write (ID: " .. action_id .. ", " .. result.lines_written .. " lines)", vim.log.levels.INFO)
             else
@@ -209,7 +214,7 @@ function M.setup(opts)
         -- Enhanced AI Agent Action Commands
         {name = "ParagonicAIAgentSwitchBuffer", func = function(args)
             local buffer_id = tonumber(args[1])
-            local success, action_id, result = M.ai_agent_switch_buffer(buffer_id)
+            local success, action_id, result = M.ai_agent.ai_agent_switch_buffer(buffer_id)
             if success then
                 vim.notify("AI agent switched to buffer " .. result.buffer_id, vim.log.levels.INFO)
             else
@@ -219,7 +224,7 @@ function M.setup(opts)
         {name = "ParagonicAIAgentSetCursor", func = function(args)
             local line = tonumber(args[1]) or 1
             local column = tonumber(args[2]) or 0
-            local success, action_id, result = M.ai_agent_set_cursor(line, column)
+            local success, action_id, result = M.ai_agent.ai_agent_set_cursor(line, column)
             if success then
                 vim.notify("AI agent set cursor to line " .. line .. ", column " .. column, vim.log.levels.INFO)
             else
@@ -229,7 +234,7 @@ function M.setup(opts)
         {name = "ParagonicAIAgentCreateWindow", func = function(args)
             local split_type = args[1] or "split"
             local buffer_id = tonumber(args[2])
-            local success, action_id, result = M.ai_agent_create_window(split_type, buffer_id)
+            local success, action_id, result = M.ai_agent.ai_agent_create_window(split_type, buffer_id)
             if success then
                 vim.notify("AI agent created " .. split_type .. " window", vim.log.levels.INFO)
             else
@@ -248,7 +253,7 @@ function M.setup(opts)
                 mode = "insert"
             end
             
-            local success, action_id, result = M.ai_agent_insert_text(text, mode)
+            local success, action_id, result = M.ai_agent.ai_agent_insert_text(text, mode)
             if success then
                 vim.notify("AI agent inserted text (" .. mode .. " mode)", vim.log.levels.INFO)
             else
@@ -256,7 +261,7 @@ function M.setup(opts)
             end
         end, opts = {nargs = "*"}},
         {name = "ParagonicAIAgentGetState", func = function()
-            local success, action_id, state = M.ai_agent_get_state()
+            local success, action_id, state = M.ai_agent.ai_agent_get_state()
             if success then
                 vim.notify("AI agent retrieved Neovim state (" .. #state.buffers .. " buffers, " .. #state.windows .. " windows)", vim.log.levels.INFO)
             else
@@ -279,7 +284,7 @@ function M.setup(opts)
                 })
             end
             
-            local success, action_id, result = M.ai_agent_execute_sequence(actions)
+            local success, action_id, result = M.ai_agent.ai_agent_execute_sequence(actions)
             if success then
                 vim.notify("AI agent executed sequence (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.INFO)
             else
@@ -289,7 +294,7 @@ function M.setup(opts)
         
         -- Connection management commands
         {name = "ParagonicReconnect", func = function()
-            local success = M.force_reconnect()
+            local success = M.backend.force_reconnect()
             if success then
                 vim.notify("Successfully reconnected to Paragonic backend", vim.log.levels.INFO)
             else
@@ -304,11 +309,11 @@ function M.setup(opts)
     end
     
     -- Set up keyboard mappings immediately
-    M._setup_keymaps()
+    M.keymaps.setup_keymaps()
     
     -- Load persistent data asynchronously to avoid startup delay
     vim.defer_fn(function()
-        M._load_persistent_data()
+        M.utils.load_persistent_data()
     end, 500)  -- Wait 500ms after startup
     
     -- Don't initialize backend during startup - let it initialize on first use
@@ -340,214 +345,13 @@ function M._get_rpc_client()
     return M._rpc_client
 end
 
--- AI agent session functions - delegate to ai_agent module
--- AI agent session functions - delegate to ai_agent module
-function M.start_ai_agent_session(agent_name, capabilities)
-    return ai_agent.start_ai_agent_session(agent_name, capabilities)
-end
 
-function M.stop_ai_agent_session()
-    return ai_agent.stop_ai_agent_session()
-end
 
--- AI agent message functions - delegate to ai_agent module
-function M.send_ai_agent_message(message, message_type)
-    return ai_agent.send_ai_agent_message(message, message_type)
-end
 
-function M.receive_ai_agent_message(message, message_type)
-    return ai_agent.receive_ai_agent_message(message, message_type)
-end
 
--- AI agent command function - delegate to ai_agent module
-function M.execute_ai_agent_command(command, description)
-    return ai_agent.execute_ai_agent_command(command, description)
-end
 
--- AI agent buffer content function - delegate to ai_agent module
-function M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
-    return ai_agent.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
-end
 
--- AI agent buffer content setter - delegate to ai_agent module
-function M.set_ai_agent_buffer_content(buffer_id, lines, start_line, end_line)
-    return ai_agent.set_ai_agent_buffer_content(buffer_id, lines, start_line, end_line)
-end
 
--- AI Agent Action Functions for Enhanced Collaboration
-
--- AI agent buffer switch function - delegate to ai_agent module
-function M.ai_agent_switch_buffer(buffer_id)
-    return ai_agent.ai_agent_switch_buffer(buffer_id)
-end
-
--- AI agent cursor setter - delegate to ai_agent module
-function M.ai_agent_set_cursor(line, column)
-    return ai_agent.ai_agent_set_cursor(line, column)
-end
-
--- AI agent window creator - delegate to ai_agent module
-function M.ai_agent_create_window(split_type, buffer_id)
-    return ai_agent.ai_agent_create_window(split_type, buffer_id)
-end
-
--- AI agent text inserter - delegate to ai_agent module
-function M.ai_agent_insert_text(text, mode)
-    return ai_agent.ai_agent_insert_text(text, mode)
-end
-
--- AI agent state getter - delegate to ai_agent module
-function M.ai_agent_get_state()
-    return ai_agent.ai_agent_get_state()
-end
-
--- AI agent sequence executor - delegate to ai_agent module
-function M.ai_agent_execute_sequence(actions)
-    return ai_agent.ai_agent_execute_sequence(actions)
-end
-
--- Event handling functions - delegate to events module
-function M.register_buffer_change_handler(handler)
-    return events.register_buffer_change_handler(handler)
-end
-
-function M.register_cursor_movement_handler(handler)
-    return events.register_cursor_movement_handler(handler)
-end
-
-function M.register_window_change_handler(handler)
-    return events.register_window_change_handler(handler)
-end
-
--- Event trigger functions - delegate to events module
-function M.trigger_buffer_change_event(buffer_id, change_type)
-    return events.trigger_buffer_change_event(buffer_id, change_type)
-end
-
-function M.trigger_cursor_movement_event(line, column)
-    return events.trigger_cursor_movement_event(line, column)
-end
-
-function M.trigger_window_change_event(window_id, change_type)
-    return events.trigger_window_change_event(window_id, change_type)
-end
-
--- Event setup functions - delegate to events module
-function M.setup_buffer_change_autocommands()
-    return events.setup_buffer_change_autocommands()
-end
-
-function M.setup_cursor_movement_autocommands()
-    return events.setup_cursor_movement_autocommands()
-end
-
-function M.setup_window_change_autocommands()
-    return events.setup_window_change_autocommands()
-end
-
-function M.setup_all_event_autocommands()
-    return events.setup_all_event_autocommands()
-end
-
--- AI Agent Session Integration Functions (TDD Implementation)
-
--- Session-aware event handler - delegate to events module
-function M.register_session_aware_handler(event_type, handler)
-    return events.register_session_aware_handler(event_type, handler)
-end
-
--- Track event in session - delegate to ai_agent module
-function M.track_event_in_session(event_type, event_data)
-    return ai_agent.track_event_in_session(event_type, event_data)
-end
-
--- Get session event history - delegate to ai_agent module
-function M.get_session_event_history()
-    return ai_agent.get_session_event_history()
-end
-
--- AI agent session status getter - delegate to ai_agent module
-function M.get_ai_agent_session_status()
-    return ai_agent.get_ai_agent_session_status()
-end
-
--- Send message - delegate to chat module
-function M.send_message(message, model)
-    return chat.send_message(message, model)
-end
-
--- Enhanced send message - delegate to chat module
-function M.send_message_enhanced(message, model)
-    return chat.send_message_enhanced(message, model)
-end
-
--- Debug buffer management
-local debug_buffer = nil
-
--- Debug print function - delegate to debug module
-function M.debug_print(message, level)
-    return debug.debug_print(message, level)
-end
-
--- Debug buffer functions - delegate to debug module
-function M.get_or_create_debug_buffer()
-    return debug.get_or_create_debug_buffer()
-end
-
-function M.open_debug_buffer()
-    return debug.open_debug_buffer()
-end
-
-function M.append_debug_message(buffer, message, level)
-    return debug.append_debug_message(buffer, message, level)
-end
-
--- Backend API functions - delegate to backend module
-function M.get_available_models()
-    return backend.get_available_models()
-end
-
-function M.get_projects()
-    return backend.get_projects()
-end
-
-function M.create_project(name, description)
-    return backend.create_project(name, description)
-end
-
-function M.get_config()
-    return backend.get_config()
-end
-
-function M.save_config(config_data)
-    return backend.save_config(config_data)
-end
-
--- JSON parsing helpers - delegate to utils module
-function M.parse_json_response(json_string)
-    return utils.parse_json_response(json_string)
-end
-
-function M.parse_json_response_enhanced(input)
-    return utils.parse_json_response_enhanced(input)
-end
-
--- Backend initialization functions - delegate to backend module
-function M._initialize_backend()
-    return backend.initialize_backend()
-end
-
-function M.force_reconnect()
-    return backend.force_reconnect()
-end
-
--- Manually initialize backend when needed
-function M.initialize_backend()
-    if not M._rpc_client then
-        M._initialize_backend()
-    end
-    return M._rpc_client ~= nil
-end
 
 -- Open chat interface - delegate to chat module
 function M.open_chat()
