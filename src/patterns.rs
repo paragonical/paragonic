@@ -900,6 +900,107 @@ impl Default for PatternRegistry {
     }
 }
 
+/// Represents a specialized skill that can be mixed into workflows
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Skill {
+    pub id: Uuid,
+    pub name: String,
+    pub description: String,
+    pub category: SkillCategory,
+    pub expertise_level: ExpertiseLevel,
+    pub knowledge_domains: Vec<String>,
+    pub activation_conditions: Vec<String>,
+    pub required_resources: Vec<String>,
+    pub estimated_completion_time_minutes: u32,
+    pub success_criteria: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub metadata: Option<Value>,
+}
+
+/// Categories of skills for role-oriented patterns
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SkillCategory {
+    Technical,
+    Creative,
+    Analytical,
+    Communication,
+    Leadership,
+    ProblemSolving,
+    DomainSpecific,
+    ToolUsage,
+    Research,
+    QualityAssurance,
+}
+
+/// Levels of expertise for skills
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ExpertiseLevel {
+    Beginner,
+    Intermediate,
+    Advanced,
+    Expert,
+    Master,
+}
+
+impl Skill {
+    /// Creates a new skill with validation
+    pub fn new(
+        name: String,
+        description: String,
+        category: SkillCategory,
+        expertise_level: ExpertiseLevel,
+        knowledge_domains: Vec<String>,
+        activation_conditions: Vec<String>,
+        required_resources: Vec<String>,
+        estimated_completion_time_minutes: u32,
+        success_criteria: Vec<String>,
+        metadata: Option<Value>,
+    ) -> ParagonicResult<Self> {
+        // Validate inputs
+        if name.trim().is_empty() {
+            return Err(ParagonicError::InvalidInput(
+                "Skill name cannot be empty".to_string()
+            ));
+        }
+
+        if description.trim().is_empty() {
+            return Err(ParagonicError::InvalidInput(
+                "Skill description cannot be empty".to_string()
+            ));
+        }
+
+        if knowledge_domains.is_empty() {
+            return Err(ParagonicError::InvalidInput(
+                "Skill must have at least one knowledge domain".to_string()
+            ));
+        }
+
+        if estimated_completion_time_minutes == 0 {
+            return Err(ParagonicError::InvalidInput(
+                "Estimated completion time must be greater than 0".to_string()
+            ));
+        }
+
+        let now = Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            name,
+            description,
+            category,
+            expertise_level,
+            knowledge_domains,
+            activation_conditions,
+            required_resources,
+            estimated_completion_time_minutes,
+            success_criteria,
+            created_at: now,
+            updated_at: now,
+            metadata,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2152,6 +2253,121 @@ mod tests {
                 assert!(msg.contains("Failed to read") || msg.contains("Failed to parse"));
             }
             _ => panic!("Expected InvalidInput error for missing files"),
+        }
+    }
+
+    #[test]
+    fn test_skill_creation_with_valid_data() {
+        let skill = Skill::new(
+            "Rust Code Review".to_string(),
+            "Expert-level code review for Rust applications".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Expert,
+            vec!["Rust".to_string(), "Code Review".to_string(), "Best Practices".to_string()],
+            vec!["rust_code_present".to_string(), "review_requested".to_string()],
+            vec!["rust_analyzer".to_string(), "clippy".to_string()],
+            30,
+            vec!["code_quality_improved".to_string(), "security_issues_identified".to_string()],
+            Some(json!({"review_depth": "comprehensive", "focus_areas": ["performance", "security"]})),
+        ).unwrap();
+
+        assert_eq!(skill.name, "Rust Code Review");
+        assert_eq!(skill.category, SkillCategory::Technical);
+        assert_eq!(skill.expertise_level, ExpertiseLevel::Expert);
+        assert_eq!(skill.knowledge_domains.len(), 3);
+        assert_eq!(skill.estimated_completion_time_minutes, 30);
+        assert!(skill.metadata.is_some());
+    }
+
+    #[test]
+    fn test_skill_creation_with_empty_name() {
+        let result = Skill::new(
+            "".to_string(),
+            "Description".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Beginner,
+            vec!["Domain".to_string()],
+            vec![],
+            vec![],
+            10,
+            vec![],
+            None,
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Skill name cannot be empty"));
+            }
+            _ => panic!("Expected InvalidInput error for empty name"),
+        }
+    }
+
+    #[test]
+    fn test_skill_creation_with_empty_description() {
+        let result = Skill::new(
+            "Valid Name".to_string(),
+            "".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Beginner,
+            vec!["Domain".to_string()],
+            vec![],
+            vec![],
+            10,
+            vec![],
+            None,
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Skill description cannot be empty"));
+            }
+            _ => panic!("Expected InvalidInput error for empty description"),
+        }
+    }
+
+    #[test]
+    fn test_skill_creation_with_empty_knowledge_domains() {
+        let result = Skill::new(
+            "Valid Name".to_string(),
+            "Valid Description".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Beginner,
+            vec![],
+            vec![],
+            vec![],
+            10,
+            vec![],
+            None,
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Skill must have at least one knowledge domain"));
+            }
+            _ => panic!("Expected InvalidInput error for empty knowledge domains"),
+        }
+    }
+
+    #[test]
+    fn test_skill_creation_with_zero_completion_time() {
+        let result = Skill::new(
+            "Valid Name".to_string(),
+            "Valid Description".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Beginner,
+            vec!["Domain".to_string()],
+            vec![],
+            vec![],
+            0,
+            vec![],
+            None,
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Estimated completion time must be greater than 0"));
+            }
+            _ => panic!("Expected InvalidInput error for zero completion time"),
         }
     }
 }
