@@ -149,6 +149,24 @@ impl PatternRegistry {
             patterns: Vec::new(),
         }
     }
+
+    /// Registers a new system pattern
+    pub fn register_pattern(&mut self, pattern: SystemPattern) -> ParagonicResult<()> {
+        // Validate pattern name uniqueness
+        if self.patterns.iter().any(|p| p.name == pattern.name) {
+            return Err(ParagonicError::InvalidInput(
+                format!("Pattern with name '{}' already exists", pattern.name)
+            ));
+        }
+        
+        self.patterns.push(pattern);
+        Ok(())
+    }
+
+    /// Retrieves a system pattern by its ID
+    pub fn get_pattern(&self, id: Uuid) -> Option<&SystemPattern> {
+        self.patterns.iter().find(|p| p.id == id)
+    }
 }
 
 impl Default for PatternRegistry {
@@ -260,5 +278,69 @@ mod tests {
     fn test_pattern_registry_creation() {
         let registry = PatternRegistry::new();
         assert_eq!(registry.patterns.len(), 0);
+    }
+
+    #[test]
+    fn test_pattern_registry_register_pattern() {
+        let mut registry = PatternRegistry::new();
+        let pattern = SystemPattern::new(
+            "Test Session Summary".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Test pattern for session summarization".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_session", "description": "Analyze session data"}
+            ]),
+            json!({
+                "summary": "string"
+            }),
+            None,
+            None,
+        ).unwrap();
+        
+        let result = registry.register_pattern(pattern.clone());
+        assert!(result.is_ok());
+        assert_eq!(registry.patterns.len(), 1);
+        
+        let retrieved = registry.get_pattern(pattern.id);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, pattern.name);
+    }
+
+    #[test]
+    fn test_pattern_registry_register_duplicate_pattern() {
+        let mut registry = PatternRegistry::new();
+        let pattern1 = SystemPattern::new(
+            "Duplicate Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Description 1".to_string(),
+            json!([{"step": 1, "action": "action1", "description": "desc1"}]),
+            json!({"summary": "sum1"}),
+            None,
+            None,
+        ).unwrap();
+        let pattern2 = SystemPattern::new(
+            "Duplicate Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Description 2".to_string(),
+            json!([{"step": 1, "action": "action2", "description": "desc2"}]),
+            json!({"summary": "sum2"}),
+            None,
+            None,
+        ).unwrap();
+
+        let result1 = registry.register_pattern(pattern1);
+        assert!(result1.is_ok());
+
+        let result2 = registry.register_pattern(pattern2);
+        assert!(result2.is_err());
+        match result2 {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Duplicate Pattern"));
+            }
+            _ => panic!("Expected InvalidInput error for duplicate pattern"),
+        }
     }
 }
