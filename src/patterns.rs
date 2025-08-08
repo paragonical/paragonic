@@ -40,8 +40,8 @@ pub enum RelationshipType {
     DependsOn,
     Triggers,
     Enhances,
-    ConflictsWith,
-    SimilarTo,
+    Conflicts,
+    Replaces,
 }
 
 /// Represents a relationship between two system patterns
@@ -827,7 +827,8 @@ impl PatternBootstrap {
             "DependsOn" => RelationshipType::DependsOn,
             "Triggers" => RelationshipType::Triggers,
             "Enhances" => RelationshipType::Enhances,
-            "Conflicts" => RelationshipType::ConflictsWith,
+            "Conflicts" => RelationshipType::Conflicts,
+            "Replaces" => RelationshipType::Replaces,
             _ => return Err(ParagonicError::InvalidInput(
                 format!("Unknown relationship type: {}", relationship_type_str)
             )),

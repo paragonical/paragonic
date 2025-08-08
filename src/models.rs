@@ -333,14 +333,14 @@ pub struct OrganizationHierarchy {
     pub id: Uuid,
     pub parent_organization_id: Uuid,
     pub child_organization_id: Uuid,
-    pub relationship_type: RelationshipType,
+    pub relationship_type: OrganizationRelationshipType,
     pub created_at: DateTime<Utc>,
 }
 
-/// Relationship type enumeration
+/// Organizational relationship type enumeration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum RelationshipType {
+pub enum OrganizationRelationshipType {
     Subsidiary,
     Division,
     Project,
@@ -533,6 +533,304 @@ pub struct NewKnowledgeMetrics {
     pub metadata: Option<Value>,
 }
 */
+
+// ============================================================================
+// Pattern System Models
+// ============================================================================
+
+/// System pattern model representing a pattern for AI agent self-awareness
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
+#[diesel(table_name = system_patterns)]
+pub struct SystemPattern {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub pattern_type: String,
+    pub template_content: String,
+    pub execution_conditions: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+    pub is_active: Option<bool>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Pattern execution model representing the execution history of patterns
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
+#[diesel(table_name = pattern_executions)]
+pub struct PatternExecution {
+    pub id: Uuid,
+    pub pattern_id: Uuid,
+    pub session_id: Option<Uuid>,
+    pub execution_status: String,
+    pub input_data: Option<serde_json::Value>,
+    pub output_data: Option<serde_json::Value>,
+    pub error_message: Option<String>,
+    pub execution_time_ms: Option<i32>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Pattern relationship model representing relationships between patterns
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
+#[diesel(table_name = pattern_relationships)]
+pub struct PatternRelationship {
+    pub id: Uuid,
+    pub source_pattern_id: Uuid,
+    pub target_pattern_id: Uuid,
+    pub relationship_type: String, // Stored as string in database
+    pub relationship_strength: Option<f64>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl PatternRelationship {
+    pub fn get_relationship_type(&self) -> Option<PatternRelationshipType> {
+        PatternRelationshipType::from_str(&self.relationship_type)
+    }
+
+    pub fn set_relationship_type(&mut self, relationship_type: PatternRelationshipType) {
+        self.relationship_type = relationship_type.as_str().to_string();
+    }
+}
+
+/// Tool pattern mapping model representing mappings between MCP tools and patterns
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
+#[diesel(table_name = tool_pattern_mappings)]
+pub struct ToolPatternMapping {
+    pub id: Uuid,
+    pub tool_name: String,
+    pub pattern_id: Uuid,
+    pub mapping_type: String,
+    pub usage_frequency: Option<i32>,
+    pub success_rate: Option<f64>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Pattern learning metrics model representing learning data for patterns
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
+#[diesel(table_name = pattern_learning_metrics)]
+pub struct PatternLearningMetrics {
+    pub id: Uuid,
+    pub pattern_id: Uuid,
+    pub metric_name: String,
+    pub metric_value: f64,
+    pub metric_unit: Option<String>,
+    pub time_period: String,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// AI Agent Session model with pattern-related fields
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable, Insertable)]
+#[diesel(table_name = ai_agent_sessions)]
+pub struct AiAgentSession {
+    pub id: Uuid,
+    pub session_name: Option<String>,
+    pub session_type: Option<String>,
+    pub active_patterns: Option<serde_json::Value>,
+    pub pattern_execution_history: Option<serde_json::Value>,
+    pub last_pattern_execution: Option<DateTime<Utc>>,
+    pub pattern_learning_enabled: Option<bool>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+// ============================================================================
+// Pattern System Enums
+// ============================================================================
+
+/// Pattern type enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatternType {
+    SessionSummary,
+    ActivityLabeling,
+    SelfReflection,
+    ContextCondensation,
+    ProgressTracking,
+    KnowledgeExtraction,
+}
+
+/// Execution status enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// Pattern relationship type enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatternRelationshipType {
+    DependsOn,
+    Triggers,
+    Enhances,
+    Conflicts,
+    Replaces,
+}
+
+impl PatternRelationshipType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PatternRelationshipType::DependsOn => "depends_on",
+            PatternRelationshipType::Triggers => "triggers",
+            PatternRelationshipType::Enhances => "enhances",
+            PatternRelationshipType::Conflicts => "conflicts",
+            PatternRelationshipType::Replaces => "replaces",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "depends_on" => Some(PatternRelationshipType::DependsOn),
+            "triggers" => Some(PatternRelationshipType::Triggers),
+            "enhances" => Some(PatternRelationshipType::Enhances),
+            "conflicts" => Some(PatternRelationshipType::Conflicts),
+            "replaces" => Some(PatternRelationshipType::Replaces),
+            _ => None,
+        }
+    }
+}
+
+/// Mapping type enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MappingType {
+    Input,
+    Output,
+    Trigger,
+    Enhance,
+    Validate,
+}
+
+// ============================================================================
+// Pattern System Request/Response Models
+// ============================================================================
+
+/// Request to create a new system pattern
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSystemPatternRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub pattern_type: String,
+    pub template_content: String,
+    pub execution_conditions: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+    pub is_active: Option<bool>,
+}
+
+/// Request to update a system pattern
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateSystemPatternRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub pattern_type: Option<String>,
+    pub template_content: Option<String>,
+    pub execution_conditions: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+    pub is_active: Option<bool>,
+}
+
+/// Request to create a pattern execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePatternExecutionRequest {
+    pub pattern_id: Uuid,
+    pub session_id: Option<Uuid>,
+    pub input_data: Option<serde_json::Value>,
+}
+
+/// Request to update a pattern execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdatePatternExecutionRequest {
+    pub execution_status: Option<String>,
+    pub output_data: Option<serde_json::Value>,
+    pub error_message: Option<String>,
+    pub execution_time_ms: Option<i32>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Request to create a pattern relationship
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePatternRelationshipRequest {
+    pub source_pattern_id: Uuid,
+    pub target_pattern_id: Uuid,
+    pub relationship_type: PatternRelationshipType,
+    pub relationship_strength: Option<f64>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+impl CreatePatternRelationshipRequest {
+    pub fn to_pattern_relationship(&self) -> PatternRelationship {
+        PatternRelationship {
+            id: Uuid::new_v4(),
+            source_pattern_id: self.source_pattern_id,
+            target_pattern_id: self.target_pattern_id,
+            relationship_type: self.relationship_type.as_str().to_string(),
+            relationship_strength: self.relationship_strength,
+            metadata: self.metadata.clone(),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
+        }
+    }
+}
+
+/// Request to create a tool pattern mapping
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateToolPatternMappingRequest {
+    pub tool_name: String,
+    pub pattern_id: Uuid,
+    pub mapping_type: String,
+    pub usage_frequency: Option<i32>,
+    pub success_rate: Option<f64>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Request to create pattern learning metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePatternLearningMetricsRequest {
+    pub pattern_id: Uuid,
+    pub metric_name: String,
+    pub metric_value: f64,
+    pub metric_unit: Option<String>,
+    pub time_period: String,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Response containing a system pattern with its relationships
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemPatternResponse {
+    pub pattern: SystemPattern,
+    pub relationships: Vec<PatternRelationship>,
+    pub tool_mappings: Vec<ToolPatternMapping>,
+    pub recent_executions: Vec<PatternExecution>,
+}
+
+/// Response containing pattern execution with pattern details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternExecutionResponse {
+    pub execution: PatternExecution,
+    pub pattern: SystemPattern,
+}
+
+/// Response containing pattern learning metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternLearningMetricsResponse {
+    pub metrics: Vec<PatternLearningMetrics>,
+    pub pattern: SystemPattern,
+}
 
 #[cfg(test)]
 mod tests {
