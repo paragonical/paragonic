@@ -264,6 +264,20 @@ impl PatternTemplate {
                 format!("Failed to render template: {}", e)
             ))?)
     }
+
+    /// Validates the template syntax without rendering
+    pub fn validate_syntax(&self) -> ParagonicResult<()> {
+        let mut tera = Tera::default();
+        
+        // Try to add the template to Tera - this will fail if syntax is invalid
+        let template_name = "validation_template";
+        tera.add_raw_template(template_name, &self.template_content)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Invalid template syntax: {}", e)
+            ))?;
+        
+        Ok(())
+    }
 }
 
 /// Registry for managing system patterns
@@ -687,6 +701,36 @@ mod tests {
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
                 assert!(msg.contains("Failed to parse template"));
+            }
+            _ => panic!("Expected InvalidInput error for invalid template syntax"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_template_validate_syntax() {
+        let template = PatternTemplate::new(
+            "Valid Template".to_string(),
+            "This template has valid syntax".to_string(),
+            "{{ pattern_name }} - {{ session_id }}".to_string(),
+        ).unwrap();
+
+        let result = template.validate_syntax();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_pattern_template_validate_syntax_with_invalid_syntax() {
+        let template = PatternTemplate::new(
+            "Invalid Template".to_string(),
+            "This template has invalid syntax".to_string(),
+            "{{ pattern_name } - {{ session_id }}".to_string(), // Missing closing brace
+        ).unwrap();
+
+        let result = template.validate_syntax();
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Invalid template syntax"));
             }
             _ => panic!("Expected InvalidInput error for invalid template syntax"),
         }
