@@ -16,6 +16,7 @@ pub mod vector;
 // pub mod fulltext; // TODO: Fix type annotation issue in Tantivy integration
 pub mod operations;
 pub mod iragl;
+pub mod patterns;
 
 pub use error::{ParagonicError, ParagonicResult};
 
