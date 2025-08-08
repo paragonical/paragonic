@@ -191,6 +191,20 @@ impl PatternRegistry {
             })
             .collect()
     }
+
+    /// Removes a pattern by its ID
+    pub fn remove_pattern(&mut self, id: Uuid) -> ParagonicResult<()> {
+        let initial_len = self.patterns.len();
+        self.patterns.retain(|p| p.id != id);
+        
+        if self.patterns.len() == initial_len {
+            return Err(ParagonicError::InvalidInput(
+                format!("Pattern with id '{}' not found", id)
+            ));
+        }
+        
+        Ok(())
+    }
 }
 
 impl Default for PatternRegistry {
@@ -451,5 +465,92 @@ mod tests {
         let user_reflection_patterns = registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
         assert_eq!(user_reflection_patterns.len(), 1);
         assert_eq!(user_reflection_patterns[0].name, "User Reflection");
+    }
+
+    #[test]
+    fn test_pattern_registry_list_patterns_with_filtering() {
+        let mut registry = PatternRegistry::new();
+        
+        let pattern1 = SystemPattern::new(
+            "Session Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Session management pattern".to_string(),
+            json!([{"step": 1, "action": "session_action", "description": "session_desc"}]),
+            json!({"summary": "session_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern2 = SystemPattern::new(
+            "Reflection Pattern".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::User,
+            "Self reflection pattern".to_string(),
+            json!([{"step": 1, "action": "reflection_action", "description": "reflection_desc"}]),
+            json!({"summary": "reflection_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1.clone()).unwrap();
+        registry.register_pattern(pattern2.clone()).unwrap();
+        
+        // Test filtering by category
+        let session_patterns = registry.list_patterns(Some(PatternCategory::SessionManagement), None);
+        assert_eq!(session_patterns.len(), 1);
+        assert_eq!(session_patterns[0].name, "Session Pattern");
+        
+        // Test filtering by meta level
+        let system_patterns = registry.list_patterns(None, Some(MetaLevel::System));
+        assert_eq!(system_patterns.len(), 1);
+        assert_eq!(system_patterns[0].name, "Session Pattern");
+        
+        // Test filtering by both
+        let filtered_patterns = registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
+        assert_eq!(filtered_patterns.len(), 1);
+        assert_eq!(filtered_patterns[0].name, "Reflection Pattern");
+        
+        // Test no filtering
+        let all_patterns = registry.list_patterns(None, None);
+        assert_eq!(all_patterns.len(), 2);
+    }
+
+    #[test]
+    fn test_pattern_registry_remove_pattern() {
+        let mut registry = PatternRegistry::new();
+        let pattern = SystemPattern::new(
+            "Pattern to Remove".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern that will be removed".to_string(),
+            json!([{"step": 1, "action": "remove_action", "description": "remove_desc"}]),
+            json!({"summary": "remove_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern_id = pattern.id;
+        registry.register_pattern(pattern).unwrap();
+        assert_eq!(registry.patterns.len(), 1);
+        
+        let result = registry.remove_pattern(pattern_id);
+        assert!(result.is_ok());
+        assert_eq!(registry.patterns.len(), 0);
+    }
+
+    #[test]
+    fn test_pattern_registry_remove_nonexistent_pattern() {
+        let mut registry = PatternRegistry::new();
+        let nonexistent_id = Uuid::new_v4();
+        
+        let result = registry.remove_pattern(nonexistent_id);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("not found"));
+            }
+            _ => panic!("Expected InvalidInput error"),
+        }
     }
 }
