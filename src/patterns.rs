@@ -137,6 +137,26 @@ impl PatternExecution {
     }
 }
 
+/// Registry for managing system patterns
+pub struct PatternRegistry {
+    patterns: Vec<SystemPattern>,
+}
+
+impl PatternRegistry {
+    /// Creates a new empty PatternRegistry
+    pub fn new() -> Self {
+        Self {
+            patterns: Vec::new(),
+        }
+    }
+}
+
+impl Default for PatternRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +254,11 @@ mod tests {
             }
             _ => panic!("Expected InvalidInput error"),
         }
+    }
+
+    #[test]
+    fn test_pattern_registry_creation() {
+        let registry = PatternRegistry::new();
+        assert_eq!(registry.patterns.len(), 0);
     }
 }
