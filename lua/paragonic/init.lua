@@ -556,122 +556,25 @@ function M.append_debug_message(buffer, message, level)
     return debug.append_debug_message(buffer, message, level)
 end
 
--- Get list of available models
+-- Backend API functions - delegate to backend module
 function M.get_available_models()
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        -- Return default models to prevent freezing
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Get models list with timeout
-    local success, response = pcall(function()
-        return rpc_client:list_models()
-    end)
-    
-    if not success or not response then
-        -- Return default models on failure
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Parse JSON response
-    local parsed_response = M.parse_json_response(response)
-    if not parsed_response then
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Check for error in response
-    if parsed_response.error then
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Extract models list
-    if parsed_response.result and parsed_response.result.models then
-        return parsed_response.result.models
-    else
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
+    return backend.get_available_models()
 end
 
--- Get list of projects
 function M.get_projects()
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Get projects list
-    local response = rpc_client:get_projects()
-    if not response then
-        return nil, "Failed to get projects list"
-    end
-    
-    -- Parse JSON response
-    local parsed_response = M.parse_json_response(response)
-    if not parsed_response then
-        return nil, "Failed to parse projects response"
-    end
-    
-    -- Check for error in response
-    if parsed_response.error then
-        return nil, "Projects error: " .. (parsed_response.error.message or "Unknown error")
-    end
-    
-    -- Extract projects list
-    if parsed_response.result and parsed_response.result.projects then
-        return parsed_response.result.projects
-    else
-        return nil, "Unexpected projects response format"
-    end
+    return backend.get_projects()
 end
 
--- Create a new project
 function M.create_project(name, description)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Create project
-    local response = rpc_client:create_project(name, description)
-    if not response then
-        return nil, "Failed to create project"
-    end
-    
-    return response
+    return backend.create_project(name, description)
 end
 
--- Get configuration from backend
 function M.get_config()
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Get configuration
-    local response = rpc_client:get_config()
-    if not response then
-        return nil, "Failed to get configuration"
-    end
-    
-    -- Return the full JSON-RPC response as a string
-    return response
+    return backend.get_config()
 end
 
--- Save configuration to backend
 function M.save_config(config_data)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Save configuration
-    local response = rpc_client:save_config(config_data)
-    if not response then
-        return nil, "Failed to save configuration"
-    end
-    
-    return response
+    return backend.save_config(config_data)
 end
 
 -- JSON parsing helpers - delegate to utils module
@@ -700,55 +603,9 @@ function M.initialize_backend()
     return M._rpc_client ~= nil
 end
 
--- Open chat interface
+-- Open chat interface - delegate to chat module
 function M.open_chat()
-    -- Check if chat buffer already exists
-    local chat_buf = nil
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-        local name = vim.api.nvim_buf_get_name(buf)
-        if name == "paragonic://chat" then
-            chat_buf = buf
-            break
-        end
-    end
-    
-    -- Create new buffer if it doesn't exist
-    if not chat_buf then
-        chat_buf = vim.api.nvim_create_buf(true, true)
-        
-        -- Set buffer name
-        vim.api.nvim_buf_set_name(chat_buf, "paragonic://chat")
-        
-        -- Set buffer options
-        vim.api.nvim_buf_set_option(chat_buf, "buftype", "nofile")
-        vim.api.nvim_buf_set_option(chat_buf, "swapfile", false)
-        vim.api.nvim_buf_set_option(chat_buf, "modifiable", true)
-        
-        -- Add initial content with default model information
-        vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
-            "# Paragonic Chat",
-            "",
-            "Available models: llama2 (default)",
-            "",
-            "Type your message below and use :ParagonicSend to send:",
-            "",
-            "∎"
-        })
-        
-        -- Models info will be updated when user first interacts with the chat
-        -- This prevents freezing during buffer creation
-        
-        -- Set filetype for syntax highlighting
-        vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
-        
-        -- Set up buffer-local commands
-        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader><CR>", ":ParagonicSendDebug<CR>", {noremap = true, silent = true})
-    end
-    
-    -- Open the buffer in a new window
-    vim.api.nvim_command("split")
-    vim.api.nvim_set_current_buf(chat_buf)
+    return chat.open_chat()
 end
 
 -- Open projects interface - delegate to ui module
@@ -1010,215 +867,18 @@ function M.select_search_result(buf)
     end
 end
 
--- Show detailed information about a search result
+-- Show detailed information about a search result - delegate to search module
 function M.show_result_details(result)
-    if not result or not result.embedding then
-        vim.notify("Invalid result data", vim.log.levels.ERROR)
-        return
-    end
-    
-    -- Create a new buffer for detailed view
-    local detail_buf = vim.api.nvim_create_buf(true, true)
-    vim.api.nvim_buf_set_name(detail_buf, "paragonic://result-details")
-    
-    -- Format detailed information
-    local lines = {
-        "📋 Search Result Details",
-        string.rep("─", 25),
-        "",
-        "📄 Content Type: " .. (result.embedding.content_type or "unknown"),
-        "🎯 Similarity Score: " .. string.format("%.3f", result.similarity_score or 0),
-        "🆔 Content ID: " .. (result.embedding.content_id or "unknown"),
-        "",
-        "📝 Content:",
-        string.rep("─", 10),
-        result.embedding.content_text or "No content available",
-        "",
-        "📅 Created: " .. (result.embedding.created_at or "unknown"),
-        "🔄 Updated: " .. (result.embedding.updated_at or "unknown"),
-        "",
-        string.rep("─", 50),
-        "Press q to close"
-    }
-    
-    -- Set buffer content
-    vim.api.nvim_buf_set_lines(detail_buf, 0, -1, false, lines)
-    
-    -- Set buffer options
-    vim.api.nvim_buf_set_option(detail_buf, "modifiable", false)
-    vim.api.nvim_buf_set_option(detail_buf, "buftype", "nofile")
-    vim.api.nvim_buf_set_option(detail_buf, "swapfile", false)
-    vim.api.nvim_buf_set_option(detail_buf, "filetype", "markdown")
-    
-    -- Create window
-    local width = math.min(70, vim.o.columns - 4)
-    local height = math.min(20, vim.o.lines - 4)
-    local row = math.floor((vim.o.lines - height) / 2)
-    local col = math.floor((vim.o.columns - width) / 2)
-    
-    local detail_win = vim.api.nvim_open_win(detail_buf, true, {
-        relative = "editor",
-        width = width,
-        height = height,
-        row = row,
-        col = col,
-        style = "minimal",
-        border = "rounded",
-        title = " Result Details ",
-        title_pos = "center"
-    })
-    
-    -- Set up keymaps
-    vim.api.nvim_buf_set_keymap(detail_buf, "n", "q", "<cmd>close<CR>", {noremap = true, silent = true})
-    vim.api.nvim_buf_set_keymap(detail_buf, "n", "<Esc>", "<cmd>close<CR>", {noremap = true, silent = true})
-    
-    -- Set cursor to first line
-    vim.api.nvim_win_set_cursor(detail_win, {1, 0})
+    return search.show_result_details(result)
 end
 
--- Which-key integration for Paragonic commands
+-- Keymap setup functions - delegate to keymaps module
 function M.setup_which_key()
-    -- Check if we're in Neovim environment
-    if not vim then
-        return
-    end
-    
-    -- Check if which-key is available
-    local ok, wk = pcall(require, "which-key")
-    if not ok or not wk then
-        M.debug_print("which-key not available, skipping integration", "warning")
-        return
-    end
-    
-    -- Register Paragonic keymaps with which-key (new spec format)
-    wk.add({
-        { "<leader>P", group = "🚀 Paragonic", icon = "🚀" },
-        { "<leader>Ps", "<cmd>ParagonicSearch<CR>", desc = "🔍 Basic Search" },
-        { "<leader>Pf", "<cmd>ParagonicSearchFiltered<CR>", desc = "🔍 Filtered Search" },
-        { "<leader>Ph", "<cmd>ParagonicSearchHybrid<CR>", desc = "🔍 Hybrid Search" },
-        { "<leader>Pc", "<cmd>ParagonicChat<CR>", desc = "💬 Open Chat" },
-        { "<leader>Pp", "<cmd>ParagonicProjects<CR>", desc = "📁 Open Projects" },
-        { "<leader>Po", "<cmd>ParagonicConfig<CR>", desc = "⚙️  Open Config" },
-        { "<leader>Pd", "<cmd>ParagonicDebug<CR>", desc = "🐛 Open Debug" },
-        { "<leader>Py", "<cmd>ParagonicSearchHistory<CR>", desc = "📚 Search History" },
-        { "<leader>Pv", "<cmd>ParagonicSavedSearches<CR>", desc = "💾 Saved Searches" },
-        { "<leader>Pw", "<cmd>ParagonicSaveSearch<CR>", desc = "💾 Save Current Search" },
-        { "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", desc = "🤖 AI Agent Session" },
-        { "<leader>Pe", "<cmd>ParagonicExportData<CR>", desc = "📤 Export Data" },
-        { "<leader>Pi", "<cmd>ParagonicImportData<CR>", desc = "📥 Import Data" },
-        { "<leader>Pb", "<cmd>ParagonicBackupData<CR>", desc = "💾 Backup Data" },
-        { "<leader>Pr", "<cmd>ParagonicReconnect<CR>", desc = "🔌 Force Reconnect" },
-    })
-    
-    -- Register visual mode keymaps for search with selection (new spec format)
-    wk.add({
-        {
-            mode = { "v" },
-            { "<leader>Ps", function()
-                local saved_reg = vim.fn.getreg('"')
-                vim.cmd('normal! y')
-                local selected_text = vim.fn.getreg('"')
-                vim.fn.setreg('"', saved_reg)
-                
-                if selected_text and selected_text ~= "" then
-                    vim.cmd('ParagonicSearch ' .. vim.fn.shellescape(selected_text))
-                else
-                    vim.cmd('ParagonicSearch')
-                end
-            end, desc = "🔍 Search Selected Text" },
-            { "<leader>Pf", function()
-                local saved_reg = vim.fn.getreg('"')
-                vim.cmd('normal! y')
-                local selected_text = vim.fn.getreg('"')
-                vim.fn.setreg('"', saved_reg)
-                
-                if selected_text and selected_text ~= "" then
-                    vim.cmd('ParagonicSearchFiltered ' .. vim.fn.shellescape(selected_text))
-                else
-                    vim.cmd('ParagonicSearchFiltered')
-                end
-            end, desc = "🔍 Filtered Search Selected Text" },
-            { "<leader>Ph", function()
-                local saved_reg = vim.fn.getreg('"')
-                vim.cmd('normal! y')
-                local selected_text = vim.fn.getreg('"')
-                vim.fn.setreg('"', saved_reg)
-                
-                if selected_text and selected_text ~= "" then
-                    vim.cmd('ParagonicSearchHybrid ' .. vim.fn.shellescape(selected_text))
-                else
-                    vim.cmd('ParagonicSearchHybrid')
-                end
-            end, desc = "🔍 Hybrid Search Selected Text" },
-        },
-    })
-    
-    M.debug_print("which-key integration setup completed", "info")
+    return keymaps.setup_which_key()
 end
 
--- Set up keyboard mappings
 function M._setup_keymaps()
-    -- Set up which-key integration if available
-    M.setup_which_key()
-    
-    -- Fallback keymaps for when which-key is not available
-    vim.keymap.set("n", "<leader>Ps", "<cmd>ParagonicSearch<CR>", {desc = "Paragonic: Basic Search"})
-    vim.keymap.set("n", "<leader>Pf", "<cmd>ParagonicSearchFiltered<CR>", {desc = "Paragonic: Filtered Search"})
-    vim.keymap.set("n", "<leader>Ph", "<cmd>ParagonicSearchHybrid<CR>", {desc = "Paragonic: Hybrid Search"})
-    vim.keymap.set("n", "<leader>Pc", "<cmd>ParagonicChat<CR>", {desc = "Paragonic: Open Chat"})
-    vim.keymap.set("n", "<leader>Pp", "<cmd>ParagonicProjects<CR>", {desc = "Paragonic: Open Projects"})
-    vim.keymap.set("n", "<leader>Po", "<cmd>ParagonicConfig<CR>", {desc = "Paragonic: Open Config"})
-    vim.keymap.set("n", "<leader>Pd", "<cmd>ParagonicDebug<CR>", {desc = "Paragonic: Open Debug"})
-    vim.keymap.set("n", "<leader>Py", "<cmd>ParagonicSearchHistory<CR>", {desc = "Paragonic: Search History"})
-    vim.keymap.set("n", "<leader>Pv", "<cmd>ParagonicSavedSearches<CR>", {desc = "Paragonic: Saved Searches"})
-    vim.keymap.set("n", "<leader>Pw", "<cmd>ParagonicSaveSearch<CR>", {desc = "Paragonic: Save Current Search"})
-    vim.keymap.set("n", "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", {desc = "Paragonic: AI Agent Session"})
-    vim.keymap.set("n", "<leader>Pe", "<cmd>ParagonicExportData<CR>", {desc = "Paragonic: Export Data"})
-    vim.keymap.set("n", "<leader>Pi", "<cmd>ParagonicImportData<CR>", {desc = "Paragonic: Import Data"})
-    vim.keymap.set("n", "<leader>Pb", "<cmd>ParagonicBackupData<CR>", {desc = "Paragonic: Backup Data"})
-    vim.keymap.set("n", "<leader>Pr", "<cmd>ParagonicReconnect<CR>", {desc = "Paragonic: Force Reconnect"})
-    
-    -- Visual mode keymaps for search with selection
-    vim.keymap.set("v", "<leader>Ps", function()
-        local saved_reg = vim.fn.getreg('"')
-        vim.cmd('normal! y')
-        local selected_text = vim.fn.getreg('"')
-        vim.fn.setreg('"', saved_reg)
-        
-        if selected_text and selected_text ~= "" then
-            vim.cmd('ParagonicSearch ' .. vim.fn.shellescape(selected_text))
-        else
-            vim.cmd('ParagonicSearch')
-        end
-    end, {desc = "Paragonic: Search Selected Text"})
-    
-    vim.keymap.set("v", "<leader>Pf", function()
-        local saved_reg = vim.fn.getreg('"')
-        vim.cmd('normal! y')
-        local selected_text = vim.fn.getreg('"')
-        vim.fn.setreg('"', saved_reg)
-        
-        if selected_text and selected_text ~= "" then
-            vim.cmd('ParagonicSearchFiltered ' .. vim.fn.shellescape(selected_text))
-        else
-            vim.cmd('ParagonicSearchFiltered')
-        end
-    end, {desc = "Paragonic: Filtered Search Selected Text"})
-    
-    vim.keymap.set("v", "<leader>Ph", function()
-        local saved_reg = vim.fn.getreg('"')
-        vim.cmd('normal! y')
-        local selected_text = vim.fn.getreg('"')
-        vim.fn.setreg('"', saved_reg)
-        
-        if selected_text and selected_text ~= "" then
-            vim.cmd('ParagonicSearchHybrid ' .. vim.fn.shellescape(selected_text))
-        else
-            vim.cmd('ParagonicSearchHybrid')
-        end
-    end, {desc = "Paragonic: Hybrid Search Selected Text"})
-    
-    M.debug_print("Keymaps setup completed with which-key integration", "info")
+    return keymaps.setup_keymaps()
 end
 
 -- Enhanced search command with better UX
