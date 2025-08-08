@@ -720,85 +720,17 @@ function M.debug_print(message, level)
     return debug.debug_print(message, level)
 end
 
+-- Debug buffer functions - delegate to debug module
 function M.get_or_create_debug_buffer()
-    -- Check if debug buffer already exists
-    if debug_buffer and vim.api.nvim_buf_is_valid(debug_buffer) then
-        return debug_buffer
-    end
-    
-    -- Look for existing debug buffer
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-        local name = vim.api.nvim_buf_get_name(buf)
-        if name == "paragonic://debug" then
-            debug_buffer = buf
-            return debug_buffer
-        end
-    end
-    
-    -- Create new debug buffer
-    debug_buffer = vim.api.nvim_create_buf(true, true)
-    vim.api.nvim_buf_set_name(debug_buffer, "paragonic://debug")
-    vim.api.nvim_buf_set_option(debug_buffer, "buftype", "nofile")
-    vim.api.nvim_buf_set_option(debug_buffer, "swapfile", false)
-    vim.api.nvim_buf_set_option(debug_buffer, "modifiable", true)
-    vim.api.nvim_buf_set_option(debug_buffer, "filetype", "markdown")
-    
-    -- Add initial content
-    vim.api.nvim_buf_set_lines(debug_buffer, 0, -1, false, {
-        "# Paragonic Debug Log",
-        "",
-        "Debug messages and system information will appear here.",
-        "",
-        "---"
-    })
-    
-    return debug_buffer
+    return debug.get_or_create_debug_buffer()
 end
 
 function M.open_debug_buffer()
-    local debug_buf = M.get_or_create_debug_buffer()
-    
-    -- Open the buffer in a new window
-    vim.api.nvim_command("split")
-    vim.api.nvim_set_current_buf(debug_buf)
+    return debug.open_debug_buffer()
 end
 
--- Append debug message to debug buffer instead of chat buffer
 function M.append_debug_message(buffer, message, level)
-    -- Don't debug the debug function itself to avoid infinite loops
-    -- print("🔧 append_debug_message() called with buffer=" .. tostring(buffer) .. ", message=" .. tostring(message))
-    
-    if not message then
-        -- Use vim.notify for critical errors to avoid infinite loops
-        vim.notify("❌ append_debug_message: Message is required", vim.log.levels.ERROR)
-        return false, "Message is required"
-    end
-    
-    -- Get or create debug buffer
-    local debug_buf = M.get_or_create_debug_buffer()
-    
-    -- Validate debug buffer exists
-    if not vim.api.nvim_buf_is_valid(debug_buf) then
-        vim.notify("❌ append_debug_message: Invalid debug buffer", vim.log.levels.ERROR)
-        return false, "Invalid debug buffer"
-    end
-    
-    -- Default level
-    level = level or "info"
-    
-    -- Format debug message with timestamp
-    local timestamp = os.date("%H:%M:%S")
-    local formatted_message = "**[" .. timestamp .. "] DEBUG [" .. level:upper() .. "]:** " .. message
-    
-    -- Get current debug buffer lines
-    local current_lines = vim.api.nvim_buf_get_lines(debug_buf, 0, -1, false)
-    
-    -- Append debug message to debug buffer
-    vim.api.nvim_buf_set_lines(debug_buf, #current_lines, #current_lines, false, {
-        formatted_message
-    })
-    
-    return true, "Debug message appended successfully"
+    return debug.append_debug_message(buffer, message, level)
 end
 
 -- Get list of available models
@@ -919,177 +851,22 @@ function M.save_config(config_data)
     return response
 end
 
--- Parse JSON-RPC response
+-- JSON parsing helpers - delegate to utils module
 function M.parse_json_response(json_string)
-    if not json_string or json_string == "" then
-        return nil, "Empty JSON string"
-    end
-    
-    -- Parse JSON with error handling using vim.json
-    local success, result = pcall(vim.json.decode, json_string)
-    if not success then
-        return nil, "Failed to parse JSON: " .. tostring(result)
-    end
-    
-    return result
+    return utils.parse_json_response(json_string)
 end
 
--- Enhanced parse JSON-RPC response (handles both strings and tables)
 function M.parse_json_response_enhanced(input)
-    if not input then
-        return nil, "Empty input"
-    end
-    
-    -- If input is already a table, return it directly
-    if type(input) == "table" then
-        return input
-    end
-    
-    -- If input is a string, parse it as JSON
-    if type(input) == "string" then
-        if input == "" then
-            return nil, "Empty JSON string"
-        end
-        
-        -- Parse JSON with error handling using vim.json
-        local success, result = pcall(vim.json.decode, input)
-        if not success then
-            return nil, "Failed to parse JSON: " .. tostring(result)
-        end
-        
-        return result
-    end
-    
-    -- Unsupported input type
-    return nil, "Unsupported input type: " .. type(input)
+    return utils.parse_json_response_enhanced(input)
 end
 
--- Initialize Rust backend
+-- Backend initialization functions - delegate to backend module
 function M._initialize_backend()
-    M.debug_print("🔧 _initialize_backend() called", "debug")
-    
-    -- Only initialize once
-    if M._rpc_client then
-        M.debug_print("✅ RPC client already exists, returning true", "info")
-        return true
-    end
-    
-    M.debug_print("🔧 Starting backend initialization...", "info")
-    
-    -- Create RPC client with timeout
-    M.debug_print("🔧 Step 1: About to require paragonic.rpc...", "debug")
-    local success, rpc = pcall(require, "paragonic.rpc")
-    if not success then
-        M.debug_print("❌ Failed to require paragonic.rpc: " .. tostring(rpc), "error")
-        return false
-    end
-    M.debug_print("✅ paragonic.rpc module loaded successfully", "success")
-    
-    M.debug_print("🔧 Step 2: About to create RPC client with rpc.new()...", "debug")
-    local success2, client = pcall(function() return rpc.new("127.0.0.1:3000") end)
-    if not success2 then
-        M.debug_print("❌ Failed to create RPC client: " .. tostring(client), "error")
-        return false
-    end
-    M._rpc_client = client
-    M.debug_print("✅ RPC client created successfully", "success")
-    
-    -- Set a timeout for the connection attempt
-    local connection_timeout = 5000 -- 5 seconds
-    local max_retries = 2
-    local retry_count = 0
-    
-    M.debug_print("🔧 Step 3: About to start connection attempts...", "debug")
-    
-    while retry_count <= max_retries do
-        local start_time = vim.loop.hrtime() / 1000000
-        
-        M.debug_print("🔧 Attempt " .. (retry_count + 1) .. "/" .. (max_retries + 1) .. ": About to call connect()...", "debug")
-        
-        -- Connect to the Rust backend with timeout
-        M.debug_print("🔧 Calling M._rpc_client:connect()...", "debug")
-        local success, err = M._rpc_client:connect()
-        M.debug_print("✅ connect() call completed, success=" .. tostring(success), "debug")
-        
-        if not success then
-            local end_time = vim.loop.hrtime() / 1000000
-            local duration = end_time - start_time
-            
-            retry_count = retry_count + 1
-            
-            if duration > connection_timeout then
-                M.debug_print("❌ Connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", "error")
-            else
-                M.debug_print("❌ Connection failed: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", "error")
-            end
-            
-            if retry_count > max_retries then
-                M.debug_print("❌ Failed to connect after " .. (max_retries + 1) .. " attempts", "error")
-                M._rpc_client = nil
-                return false
-            end
-            
-            -- Wait a bit before retrying
-            M.debug_print("⏳ Waiting 1 second before retry...", "info")
-            vim.wait(1000)
-        else
-            M.debug_print("✅ Connection successful!", "success")
-            break
-        end
-    end
-    
-    -- Test connection with hello call (also with timeout)
-    M.debug_print("🔧 Step 4: About to test connection with hello call...", "debug")
-    local hello_start = vim.loop.hrtime() / 1000000
-    M.debug_print("🔧 Calling M._rpc_client:hello()...", "debug")
-    local response = M._rpc_client:hello()
-    M.debug_print("✅ hello() call completed, response=" .. tostring(response ~= nil), "debug")
-    local hello_end = vim.loop.hrtime() / 1000000
-    local hello_duration = hello_end - hello_start
-    
-    if not response then
-        if hello_duration > connection_timeout then
-            M.debug_print("❌ Hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms", "error")
-        else
-            M.debug_print("❌ Hello call failed - no response", "error")
-        end
-        
-        M._rpc_client:disconnect()
-        M._rpc_client = nil
-        return false
-    end
-    
-    M.debug_print("✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms", "success")
-    return true
+    return backend.initialize_backend()
 end
 
--- Force reconnection to the backend (useful when server restarts)
 function M.force_reconnect()
-    M.debug_print("🔧 force_reconnect() called", "debug")
-    
-    if not M._rpc_client then
-        M.debug_print("🔧 No RPC client exists, initializing backend...", "info")
-        return M._initialize_backend()
-    end
-    
-    M.debug_print("🔧 Forcing reconnection of existing RPC client...", "info")
-    
-    -- Disconnect current client
-    M._rpc_client:disconnect()
-    
-    -- Try to reconnect
-    local success = M._rpc_client:reconnect()
-    
-    if success then
-        M.debug_print("✅ Force reconnection successful", "success")
-        return true
-    else
-        M.debug_print("❌ Force reconnection failed, reinitializing backend...", "error")
-        
-        -- If reconnection fails, reinitialize the entire backend
-        M._rpc_client = nil
-        return M._initialize_backend()
-    end
+    return backend.force_reconnect()
 end
 
 -- Manually initialize backend when needed
@@ -2687,41 +2464,21 @@ M.cancellation_state = {
     next_operation_id = 1
 }
 
--- Register a cancellable operation
+-- Cancellation operation helpers - delegate to mcp module
 function M.register_cancellable_operation(operation_type, description)
-    local operation_id = "op-" .. M.cancellation_state.next_operation_id
-    M.cancellation_state.next_operation_id = M.cancellation_state.next_operation_id + 1
-    
-    M.cancellation_state.active_operations[operation_id] = {
-        type = operation_type,
-        description = description,
-        start_time = os.time(),
-        cancelled = false
-    }
-    
-    return operation_id
+    return mcp.register_cancellable_operation(operation_type, description)
 end
 
--- Check if operation is cancelled
 function M.is_operation_cancelled(operation_id)
-    local operation = M.cancellation_state.active_operations[operation_id]
-    return operation and operation.cancelled
+    return mcp.is_operation_cancelled(operation_id)
 end
 
--- Cancel an operation
 function M.cancel_operation(operation_id)
-    local operation = M.cancellation_state.active_operations[operation_id]
-    if operation then
-        operation.cancelled = true
-        operation.cancel_time = os.time()
-        return true
-    end
-    return false
+    return mcp.cancel_operation(operation_id)
 end
 
--- Complete an operation (remove from active list)
 function M.complete_operation(operation_id)
-    M.cancellation_state.active_operations[operation_id] = nil
+    return mcp.complete_operation(operation_id)
 end
 
 -- Enhanced tool call with cancellation support
