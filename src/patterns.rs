@@ -221,6 +221,33 @@ impl PatternExecution {
         self.execution_duration_ms = Some(0);
         Ok(())
     }
+
+    /// Completes execution tracking and records results
+    pub fn complete_execution(&mut self, success: bool, output_result: Option<Value>, error_message: Option<String>) -> ParagonicResult<()> {
+        // Check if execution has been started
+        if self.execution_duration_ms.is_none() {
+            return Err(ParagonicError::InvalidInput(
+                "Cannot complete execution that has not been started".to_string()
+            ));
+        }
+        
+        // Check if execution is already completed
+        if self.success {
+            return Err(ParagonicError::InvalidInput(
+                "Execution is already completed".to_string()
+            ));
+        }
+        
+        // Set execution results
+        self.success = success;
+        self.output_result = output_result;
+        self.error_message = error_message;
+        
+        // Calculate execution duration (placeholder for now)
+        self.execution_duration_ms = Some(100); // Mock duration
+        
+        Ok(())
+    }
 }
 
 /// Represents a pattern template
@@ -814,6 +841,98 @@ mod tests {
                 assert_eq!(msg, "Cannot start execution that is already completed");
             }
             _ => panic!("Expected InvalidInput error for completed execution"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_execution_complete_execution_success() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Start execution
+        execution.start_execution().unwrap();
+
+        // Complete execution with success
+        let result = execution.complete_execution(true, Some(json!({"result": "success"})), None);
+        assert!(result.is_ok());
+        assert_eq!(execution.success, true);
+        assert!(execution.output_result.is_some());
+        assert_eq!(execution.output_result.unwrap(), json!({"result": "success"}));
+        assert!(execution.execution_duration_ms.is_some());
+        assert_eq!(execution.execution_duration_ms.unwrap(), 100);
+        assert!(execution.error_message.is_none());
+    }
+
+    #[test]
+    fn test_pattern_execution_complete_execution_failure() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Start execution
+        execution.start_execution().unwrap();
+
+        // Complete execution with failure
+        let result = execution.complete_execution(false, Some(json!({"result": "failure"})), Some("Error message".to_string()));
+        assert!(result.is_ok());
+        assert_eq!(execution.success, false);
+        assert!(execution.output_result.is_some());
+        assert_eq!(execution.output_result.unwrap(), json!({"result": "failure"}));
+        assert!(execution.execution_duration_ms.is_some());
+        assert_eq!(execution.execution_duration_ms.unwrap(), 100);
+        assert!(execution.error_message.is_some());
+        assert_eq!(execution.error_message.unwrap(), "Error message".to_string());
+    }
+
+    #[test]
+    fn test_pattern_execution_complete_execution_not_started() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Try to complete execution without starting it first
+        let result = execution.complete_execution(true, Some(json!({"result": "success"})), None);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Cannot complete execution that has not been started");
+            }
+            _ => panic!("Expected InvalidInput error for not started execution"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_execution_complete_execution_already_completed() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        // Start execution
+        execution.start_execution().unwrap();
+        // Complete execution
+        execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
+
+        // Try to complete again
+        let result = execution.complete_execution(false, Some(json!({"result": "failure"})), Some("Error message".to_string()));
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert_eq!(msg, "Execution is already completed");
+            }
+            _ => panic!("Expected InvalidInput error for already completed execution"),
         }
     }
 
