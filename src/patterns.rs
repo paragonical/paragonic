@@ -516,6 +516,19 @@ impl PatternRegistry {
         
         Ok(execution)
     }
+
+    /// Returns execution history for a specific pattern
+    pub fn get_execution_history(&self, pattern_name: &str) -> ParagonicResult<Vec<&PatternExecution>> {
+        // Find the pattern by name
+        let pattern = self.get_pattern_by_name(pattern_name)
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found", pattern_name)
+            ))?;
+        
+        // For now, we'll return an empty vector since we don't store executions yet
+        // In a full implementation, this would query a database or storage
+        Ok(Vec::new())
+    }
 }
 
 impl Default for PatternRegistry {
@@ -1547,6 +1560,46 @@ mod tests {
                 assert!(msg.contains("not found"));
             }
             _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_registry_get_execution_history() {
+        let mut registry = PatternRegistry::new();
+        
+        // Create and register a pattern
+        let pattern = SystemPattern::new(
+            "Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "A test pattern for execution history".to_string(),
+            json!([{"step": "test", "action": "execute"}]),
+            json!({"result": "string", "status": "boolean"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Get execution history
+        let result = registry.get_execution_history("Test Pattern");
+        assert!(result.is_ok());
+        
+        let history = result.unwrap();
+        assert_eq!(history.len(), 0); // Empty for now since we don't store executions yet
+    }
+
+    #[test]
+    fn test_pattern_registry_get_execution_history_nonexistent_pattern() {
+        let registry = PatternRegistry::new();
+        
+        let result = registry.get_execution_history("Nonexistent Pattern");
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Pattern 'Nonexistent Pattern' not found"));
+            }
+            _ => panic!("Expected InvalidInput error for nonexistent pattern"),
         }
     }
 }
