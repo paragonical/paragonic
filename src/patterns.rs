@@ -529,6 +529,36 @@ impl PatternRegistry {
         // In a full implementation, this would query a database or storage
         Ok(Vec::new())
     }
+
+    /// Returns statistics for a specific pattern
+    pub fn get_pattern_statistics(&self, pattern_name: &str) -> ParagonicResult<PatternStatistics> {
+        // Find the pattern by name
+        let _pattern = self.get_pattern_by_name(pattern_name)
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found", pattern_name)
+            ))?;
+        
+        // For now, we'll return default statistics since we don't store executions yet
+        // In a full implementation, this would calculate from execution history
+        Ok(PatternStatistics {
+            total_executions: 0,
+            successful_executions: 0,
+            failed_executions: 0,
+            average_execution_time_ms: 0.0,
+            last_executed: None,
+            success_rate: 0.0,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PatternStatistics {
+    pub total_executions: u32,
+    pub successful_executions: u32,
+    pub failed_executions: u32,
+    pub average_execution_time_ms: f64,
+    pub last_executed: Option<DateTime<Utc>>,
+    pub success_rate: f64,
 }
 
 impl Default for PatternRegistry {
@@ -1594,6 +1624,51 @@ mod tests {
         let registry = PatternRegistry::new();
         
         let result = registry.get_execution_history("Nonexistent Pattern");
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Pattern 'Nonexistent Pattern' not found"));
+            }
+            _ => panic!("Expected InvalidInput error for nonexistent pattern"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_registry_get_pattern_statistics() {
+        let mut registry = PatternRegistry::new();
+        
+        // Create and register a pattern
+        let pattern = SystemPattern::new(
+            "Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "A test pattern for statistics".to_string(),
+            json!([{"step": "test", "action": "execute"}]),
+            json!({"result": "string", "status": "boolean"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Get statistics for the pattern
+        let result = registry.get_pattern_statistics("Test Pattern");
+        assert!(result.is_ok());
+        
+        let stats = result.unwrap();
+        assert_eq!(stats.total_executions, 0);
+        assert_eq!(stats.successful_executions, 0);
+        assert_eq!(stats.failed_executions, 0);
+        assert_eq!(stats.average_execution_time_ms, 0.0);
+        assert!(stats.last_executed.is_none());
+        assert_eq!(stats.success_rate, 0.0);
+    }
+
+    #[test]
+    fn test_pattern_registry_get_pattern_statistics_nonexistent_pattern() {
+        let registry = PatternRegistry::new();
+        
+        let result = registry.get_pattern_statistics("Nonexistent Pattern");
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
