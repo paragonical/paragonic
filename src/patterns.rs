@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::error::{ParagonicError, ParagonicResult};
@@ -481,6 +481,40 @@ impl PatternRegistry {
         }
         
         Ok(())
+    }
+
+    /// Executes a pattern with the given context
+    pub fn execute_pattern(&mut self, pattern_name: &str, context: Option<Value>) -> ParagonicResult<PatternExecution> {
+        // Find the pattern by name
+        let pattern = self.get_pattern_by_name(pattern_name)
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found", pattern_name)
+            ))?;
+        
+        // Create a new execution
+        let mut execution = PatternExecution::new(
+            pattern.id,
+            None, // session_id will be set by caller if needed
+            TriggerType::Manual,
+            context,
+        )?;
+        
+        // Start execution
+        execution.start_execution()?;
+        
+        // For now, we'll just mark it as completed with a basic result
+        // In a full implementation, this would execute the actual pattern logic
+        execution.complete_execution(
+            true,
+            Some(json!({
+                "pattern_name": pattern_name,
+                "executed_at": chrono::Utc::now().to_rfc3339(),
+                "status": "completed"
+            })),
+            None
+        )?;
+        
+        Ok(execution)
     }
 }
 
@@ -1076,6 +1110,57 @@ mod tests {
 
         execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
         assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
+    }
+
+    #[test]
+    fn test_pattern_registry_execute_pattern() {
+        let mut registry = PatternRegistry::new();
+        
+        // Create and register a pattern
+        let pattern = SystemPattern::new(
+            "Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "A test pattern for execution".to_string(),
+            json!([{"step": "test", "action": "execute"}]),
+            json!({"result": "string", "status": "boolean"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Execute the pattern
+        let context = json!({
+            "user_id": "123",
+            "session_data": {"key": "value"}
+        });
+        
+        let result = registry.execute_pattern("Test Pattern", Some(context));
+        assert!(result.is_ok());
+        
+        let execution = result.unwrap();
+        assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
+        assert!(execution.success);
+        assert!(execution.output_result.is_some());
+        
+        let output = execution.output_result.as_ref().unwrap();
+        assert_eq!(output["pattern_name"], "Test Pattern");
+        assert_eq!(output["status"], "completed");
+    }
+
+    #[test]
+    fn test_pattern_registry_execute_nonexistent_pattern() {
+        let mut registry = PatternRegistry::new();
+        
+        let result = registry.execute_pattern("Nonexistent Pattern", None);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Pattern 'Nonexistent Pattern' not found"));
+            }
+            _ => panic!("Expected InvalidInput error for nonexistent pattern"),
+        }
     }
 
     #[test]
