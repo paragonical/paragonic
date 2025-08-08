@@ -204,6 +204,7 @@ impl PatternExecution {
 /// Registry for managing system patterns
 pub struct PatternRegistry {
     patterns: Vec<SystemPattern>,
+    relationships: Vec<PatternRelationship>,
 }
 
 impl PatternRegistry {
@@ -211,6 +212,7 @@ impl PatternRegistry {
     pub fn new() -> Self {
         Self {
             patterns: Vec::new(),
+            relationships: Vec::new(),
         }
     }
 
@@ -267,6 +269,35 @@ impl PatternRegistry {
             ));
         }
         
+        Ok(())
+    }
+
+    /// Adds a relationship between two patterns
+    pub fn add_relationship(&mut self, relationship: PatternRelationship) -> ParagonicResult<()> {
+        // Validate that both patterns exist
+        if !self.patterns.iter().any(|p| p.id == relationship.source_pattern_id) {
+            return Err(ParagonicError::InvalidInput(
+                format!("Source pattern with id '{}' does not exist", relationship.source_pattern_id)
+            ));
+        }
+        if !self.patterns.iter().any(|p| p.id == relationship.target_pattern_id) {
+            return Err(ParagonicError::InvalidInput(
+                format!("Target pattern with id '{}' does not exist", relationship.target_pattern_id)
+            ));
+        }
+        
+        // Check for duplicate relationships
+        if self.relationships.iter().any(|r| {
+            r.source_pattern_id == relationship.source_pattern_id &&
+            r.target_pattern_id == relationship.target_pattern_id &&
+            r.relationship_type == relationship.relationship_type
+        }) {
+            return Err(ParagonicError::InvalidInput(
+                "Relationship already exists".to_string()
+            ));
+        }
+        
+        self.relationships.push(relationship);
         Ok(())
     }
 }
@@ -454,6 +485,88 @@ mod tests {
                 assert_eq!(msg, "Description cannot be empty");
             }
             _ => panic!("Expected InvalidInput error for empty description"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_registry_add_relationship() {
+        let mut registry = PatternRegistry::new();
+        
+        // Create two patterns first
+        let pattern1 = SystemPattern::new(
+            "Source Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Source pattern for relationship".to_string(),
+            json!([{"step": 1, "action": "source_action", "description": "source_desc"}]),
+            json!({"summary": "source_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern2 = SystemPattern::new(
+            "Target Pattern".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::User,
+            "Target pattern for relationship".to_string(),
+            json!([{"step": 1, "action": "target_action", "description": "target_desc"}]),
+            json!({"summary": "target_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1.clone()).unwrap();
+        registry.register_pattern(pattern2.clone()).unwrap();
+        
+        // Create and add relationship
+        let relationship = PatternRelationship::new(
+            pattern1.id,
+            pattern2.id,
+            RelationshipType::DependsOn,
+            "Source depends on target".to_string(),
+            0.8,
+        ).unwrap();
+        
+        let result = registry.add_relationship(relationship);
+        assert!(result.is_ok());
+        assert_eq!(registry.relationships.len(), 1);
+    }
+
+    #[test]
+    fn test_pattern_registry_add_relationship_with_nonexistent_pattern() {
+        let mut registry = PatternRegistry::new();
+        
+        // Create only one pattern
+        let pattern1 = SystemPattern::new(
+            "Source Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Source pattern for relationship".to_string(),
+            json!([{"step": 1, "action": "source_action", "description": "source_desc"}]),
+            json!({"summary": "source_summary"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1.clone()).unwrap();
+        
+        // Try to create relationship with non-existent target pattern
+        let nonexistent_id = Uuid::new_v4();
+        let relationship = PatternRelationship::new(
+            pattern1.id,
+            nonexistent_id,
+            RelationshipType::DependsOn,
+            "Source depends on non-existent target".to_string(),
+            0.8,
+        ).unwrap();
+        
+        let result = registry.add_relationship(relationship);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("does not exist"));
+            }
+            _ => panic!("Expected InvalidInput error for non-existent pattern"),
         }
     }
 
