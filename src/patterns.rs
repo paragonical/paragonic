@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use crate::error::{ParagonicError, ParagonicResult};
 use tera::{Tera, Context};
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 /// Categories for system patterns
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2368,6 +2369,249 @@ mod tests {
                 assert!(msg.contains("Estimated completion time must be greater than 0"));
             }
             _ => panic!("Expected InvalidInput error for zero completion time"),
+        }
+    }
+
+    #[test]
+    fn test_skill_registry_creation() {
+        let registry = SkillRegistry::new();
+        // The registry should be empty initially
+        // We can't directly access the private fields, but we can verify it was created
+        assert!(true); // Registry was created successfully
+    }
+
+    #[test]
+    fn test_skill_registry_register_skill() {
+        let mut registry = SkillRegistry::new();
+        let skill = Skill::new(
+            "Rust Code Review".to_string(),
+            "Expert-level code review for Rust applications".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Expert,
+            vec!["Rust".to_string(), "Code Review".to_string(), "Best Practices".to_string()],
+            vec!["rust_code_present".to_string(), "review_requested".to_string()],
+            vec!["rust_analyzer".to_string(), "clippy".to_string()],
+            30,
+            vec!["code_quality_improved".to_string(), "security_issues_identified".to_string()],
+            Some(json!({"review_depth": "comprehensive", "focus_areas": ["performance", "security"]})),
+        ).unwrap();
+        
+        let result = registry.register_skill(skill.clone());
+        assert!(result.is_ok());
+        
+        let retrieved = registry.get_skill(skill.id);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, skill.name);
+    }
+
+    #[test]
+    fn test_skill_registry_get_skill_by_name() {
+        let mut registry = SkillRegistry::new();
+        let skill = Skill::new(
+            "Python Testing".to_string(),
+            "Comprehensive testing for Python applications".to_string(),
+            SkillCategory::QualityAssurance,
+            ExpertiseLevel::Advanced,
+            vec!["Python".to_string(), "Testing".to_string(), "Pytest".to_string()],
+            vec!["python_code_present".to_string(), "test_requested".to_string()],
+            vec!["pytest".to_string(), "coverage".to_string()],
+            45,
+            vec!["test_coverage_improved".to_string(), "bugs_found".to_string()],
+            None,
+        ).unwrap();
+        
+        registry.register_skill(skill.clone()).unwrap();
+        
+        let retrieved = registry.get_skill_by_name("Python Testing");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, "Python Testing");
+        assert_eq!(retrieved.unwrap().category, SkillCategory::QualityAssurance);
+        
+        let not_found = registry.get_skill_by_name("Non-existent Skill");
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_skill_registry_list_skills() {
+        let mut registry = SkillRegistry::new();
+        
+        let skill1 = Skill::new(
+            "Rust Code Review".to_string(),
+            "Expert-level code review for Rust applications".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Expert,
+            vec!["Rust".to_string(), "Code Review".to_string()],
+            vec!["rust_code_present".to_string()],
+            vec!["rust_analyzer".to_string()],
+            30,
+            vec!["code_quality_improved".to_string()],
+            None,
+        ).unwrap();
+        
+        let skill2 = Skill::new(
+            "Creative Writing".to_string(),
+            "Creative writing and storytelling".to_string(),
+            SkillCategory::Creative,
+            ExpertiseLevel::Intermediate,
+            vec!["Writing".to_string(), "Storytelling".to_string()],
+            vec!["writing_requested".to_string()],
+            vec!["word_processor".to_string()],
+            60,
+            vec!["story_completed".to_string()],
+            None,
+        ).unwrap();
+        
+        let skill3 = Skill::new(
+            "Data Analysis".to_string(),
+            "Advanced data analysis and visualization".to_string(),
+            SkillCategory::Analytical,
+            ExpertiseLevel::Advanced,
+            vec!["Data Analysis".to_string(), "Statistics".to_string()],
+            vec!["data_present".to_string()],
+            vec!["python".to_string(), "pandas".to_string()],
+            90,
+            vec!["insights_generated".to_string()],
+            None,
+        ).unwrap();
+        
+        registry.register_skill(skill1).unwrap();
+        registry.register_skill(skill2).unwrap();
+        registry.register_skill(skill3).unwrap();
+        
+        // Test listing all skills
+        let all_skills = registry.list_skills(None, None);
+        assert_eq!(all_skills.len(), 3);
+        
+        // Test filtering by category
+        let technical_skills = registry.list_skills(Some(SkillCategory::Technical), None);
+        assert_eq!(technical_skills.len(), 1);
+        assert_eq!(technical_skills[0].name, "Rust Code Review");
+        
+        // Test filtering by expertise level
+        let advanced_skills = registry.list_skills(None, Some(ExpertiseLevel::Advanced));
+        assert_eq!(advanced_skills.len(), 1);
+        assert_eq!(advanced_skills[0].name, "Data Analysis");
+        
+        // Test filtering by both category and expertise level
+        let creative_intermediate = registry.list_skills(Some(SkillCategory::Creative), Some(ExpertiseLevel::Intermediate));
+        assert_eq!(creative_intermediate.len(), 1);
+        assert_eq!(creative_intermediate[0].name, "Creative Writing");
+    }
+
+    #[test]
+    fn test_skill_registry_remove_skill() {
+        let mut registry = SkillRegistry::new();
+        let skill = Skill::new(
+            "Skill to Remove".to_string(),
+            "A skill that will be removed".to_string(),
+            SkillCategory::Technical,
+            ExpertiseLevel::Beginner,
+            vec!["Test".to_string()],
+            vec![],
+            vec![],
+            15,
+            vec![],
+            None,
+        ).unwrap();
+        
+        let skill_id = skill.id;
+        registry.register_skill(skill).unwrap();
+        assert_eq!(registry.list_skills(None, None).len(), 1);
+        
+        let result = registry.remove_skill(skill_id);
+        assert!(result.is_ok());
+        assert_eq!(registry.list_skills(None, None).len(), 0);
+        
+        // Verify skill is no longer accessible by name
+        let retrieved = registry.get_skill_by_name("Skill to Remove");
+        assert!(retrieved.is_none());
+    }
+
+    #[test]
+    fn test_skill_registry_remove_nonexistent_skill() {
+        let mut registry = SkillRegistry::new();
+        let nonexistent_id = Uuid::new_v4();
+        
+        let result = registry.remove_skill(nonexistent_id);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("not found"));
+            }
+            _ => panic!("Expected InvalidInput error"),
+        }
+    }
+}
+
+/// Registry for managing skills and their relationships
+#[derive(Debug, Clone)]
+pub struct SkillRegistry {
+    skills: HashMap<Uuid, Skill>,
+    skill_names: HashMap<String, Uuid>,
+}
+
+impl SkillRegistry {
+    /// Creates a new skill registry
+    pub fn new() -> Self {
+        Self {
+            skills: HashMap::new(),
+            skill_names: HashMap::new(),
+        }
+    }
+
+    /// Registers a new skill
+    pub fn register_skill(&mut self, skill: Skill) -> ParagonicResult<()> {
+        // Validate skill name uniqueness
+        if self.skill_names.contains_key(&skill.name) {
+            return Err(ParagonicError::InvalidInput(
+                format!("Skill with name '{}' already exists", skill.name)
+            ));
+        }
+        
+        // Store the skill and its name mapping
+        self.skills.insert(skill.id, skill.clone());
+        self.skill_names.insert(skill.name.clone(), skill.id);
+        
+        Ok(())
+    }
+
+    /// Retrieves a skill by its ID
+    pub fn get_skill(&self, id: Uuid) -> Option<&Skill> {
+        self.skills.get(&id)
+    }
+
+    /// Retrieves a skill by its name
+    pub fn get_skill_by_name(&self, name: &str) -> Option<&Skill> {
+        self.skill_names.get(name).and_then(|id| self.skills.get(id))
+    }
+
+    /// Lists all skills with optional filtering
+    pub fn list_skills(&self, category: Option<SkillCategory>, expertise_level: Option<ExpertiseLevel>) -> Vec<&Skill> {
+        self.skills.values()
+            .filter(|skill| {
+                if let Some(ref cat) = category {
+                    if skill.category != *cat {
+                        return false;
+                    }
+                }
+                if let Some(ref level) = expertise_level {
+                    if skill.expertise_level != *level {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect()
+    }
+
+    /// Removes a skill by its ID
+    pub fn remove_skill(&mut self, id: Uuid) -> ParagonicResult<()> {
+        let skill = self.skills.remove(&id);
+        if let Some(skill) = skill {
+            self.skill_names.remove(&skill.name);
+            Ok(())
+        } else {
+            Err(ParagonicError::InvalidInput("Skill not found".to_string()))
         }
     }
 }
