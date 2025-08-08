@@ -16,6 +16,7 @@ use regex;
 use crate::ollama::OllamaClient;
 use crate::error::ParagonicResult;
 use crate::ollama::ChatMessage;
+use crate::text::{TextFormatter, FormatConfig};
 
 /// Tool call structure for agent tool execution
 #[derive(Debug, Clone)]
@@ -133,6 +134,133 @@ impl ParagonicServer {
             Err(e) => {
                 // Log the error and return a user-friendly error message
                 tracing::error!("Ollama chat completion failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
+            }
+        }
+    }
+    
+    /// Handle formatted chat completion with server-side formatting
+    pub fn handle_formatted_chat_completion(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        tracing::debug!("Formatted chat completion request started");
+        
+        let params = params.as_ref()
+            .and_then(|p| p.as_array())
+            .ok_or_else(|| {
+                tracing::error!("Formatted chat completion: invalid params format");
+                RpcError::invalid_params(None)
+            })?;
+        
+        if params.len() < 2 {
+            tracing::error!("Formatted chat completion: insufficient parameters (expected 2-3, got {})", params.len());
+            return Err(RpcError::invalid_params(None));
+        }
+        
+        let message = params[0].as_str()
+            .ok_or_else(|| {
+                tracing::error!("Formatted chat completion: first parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
+            .to_string();
+        let model = params[1].as_str()
+            .ok_or_else(|| {
+                tracing::error!("Formatted chat completion: second parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
+            .to_string();
+        
+        // Parse optional format configuration
+        let format_config = if params.len() >= 3 {
+            if let Some(config_obj) = params[2].as_object() {
+                let mut config = FormatConfig::default();
+                
+                if let Some(max_width) = config_obj.get("max_width").and_then(|v| v.as_u64()) {
+                    config.max_width = max_width as usize;
+                }
+                if let Some(include_diamond) = config_obj.get("include_diamond").and_then(|v| v.as_bool()) {
+                    config.include_diamond = include_diamond;
+                }
+                if let Some(continuation_indent) = config_obj.get("continuation_indent").and_then(|v| v.as_u64()) {
+                    config.continuation_indent = continuation_indent as usize;
+                }
+                if let Some(strip_markdown) = config_obj.get("strip_markdown").and_then(|v| v.as_bool()) {
+                    config.strip_markdown = strip_markdown;
+                }
+                if let Some(preserve_paragraphs) = config_obj.get("preserve_paragraphs").and_then(|v| v.as_bool()) {
+                    config.preserve_paragraphs = preserve_paragraphs;
+                }
+                
+                config
+            } else {
+                FormatConfig::default()
+            }
+        } else {
+            FormatConfig::default()
+        };
+        
+        tracing::info!("Formatted chat completion: model={}, message_length={}, max_width={}", 
+            model, message.len(), format_config.max_width);
+        
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message,
+        };
+        
+        // Make actual Ollama API call
+        tracing::info!("Making Ollama API call to model: {}", model);
+        let ollama_start = std::time::Instant::now();
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| {
+                    tracing::error!("Failed to create runtime: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to create runtime: {e}")))
+                })?
+                .block_on(async {
+                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                })
+        };
+        
+        let ollama_duration = ollama_start.elapsed();
+        tracing::info!("Ollama API call completed in {:?}", ollama_duration);
+        
+        match response {
+            Ok(chat_response) => {
+                tracing::info!("Formatted chat completion successful: response_length={}", chat_response.message.content.len());
+                
+                // Format the response using the text formatter
+                let formatter = TextFormatter::with_config(format_config);
+                let formatted_response = formatter.format_with_timing(
+                    &chat_response.message.content,
+                    ollama_duration.as_secs_f64()
+                ).map_err(|e| {
+                    tracing::error!("Failed to format response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to format response: {e}")))
+                })?;
+                
+                // Return the formatted response as JSON
+                serde_json::to_string(&json!({
+                    "formatted_content": formatted_response,
+                    "original_content": chat_response.message.content,
+                    "model": model,
+                    "duration_sec": ollama_duration.as_secs_f64()
+                }))
+                .map_err(|e| {
+                    tracing::error!("Failed to serialize formatted response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to serialize formatted response: {e}")))
+                })
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                tracing::error!("Ollama formatted chat completion failed: {}", e);
                 Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
@@ -2063,6 +2191,8 @@ impl Server for ParagonicServer {
             },
             // Handle chat completion requests
             "chat_completion" => Some(self.handle_chat_completion(params)),
+            // Handle formatted chat completion with server-side formatting
+            "formatted_chat_completion" => Some(self.handle_formatted_chat_completion(params)),
             // Handle agent chat completion with tool calling
             "agent_chat_completion" => Some(self.handle_agent_chat_completion(params)),
             // Handle list models requests

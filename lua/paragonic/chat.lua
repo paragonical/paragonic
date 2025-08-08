@@ -93,6 +93,84 @@ function M.send_message(message, model)
     return nil, "Unexpected response format: " .. tostring(parsed_response)
 end
 
+-- Send message with server-side formatting
+function M.send_message_formatted(message, model, format_config)
+    local backend = require("paragonic.backend")
+    local rpc_client = backend._get_rpc_client()
+    if not rpc_client then
+        -- Try to initialize backend if not available
+        if not backend.initialize_backend() then
+            return nil, "Backend not available"
+        end
+        rpc_client = backend._get_rpc_client()
+    end
+    
+    -- Use default model if not specified
+    model = model or "llama2"
+    
+    -- Set default format configuration if not provided
+    format_config = format_config or {
+        max_width = 80,
+        include_diamond = true,
+        continuation_indent = 3,
+        strip_markdown = true,
+        preserve_paragraphs = true
+    }
+    
+    -- Send formatted chat completion request
+    local response = rpc_client:formatted_chat_completion(model, message, format_config)
+    if not response then
+        return nil, "Failed to get response from AI"
+    end
+    
+    -- Parse JSON response using enhanced parser
+    local utils = require("paragonic.utils")
+    local parsed_response = utils.parse_json_response_enhanced(response)
+    if not parsed_response then
+        return nil, "Failed to parse AI response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "AI error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract formatted content from response
+    if parsed_response.result then
+        -- Check if result is a JSON string (from backend)
+        if type(parsed_response.result) == "string" then
+            -- Try using cjson if available
+            local cjson_ok, cjson = pcall(require, "cjson")
+            if cjson_ok then
+                local success, inner_result = pcall(cjson.decode, parsed_response.result)
+                if success and inner_result and inner_result.formatted_content then
+                    return inner_result.formatted_content, inner_result.original_content, inner_result.duration_sec
+                end
+            end
+            -- Try using dkjson if available
+            local dkjson_ok, dkjson = pcall(require, "dkjson")
+            if dkjson_ok then
+                local success, inner_result = pcall(dkjson.decode, parsed_response.result)
+                if success and inner_result and inner_result.formatted_content then
+                    return inner_result.formatted_content, inner_result.original_content, inner_result.duration_sec
+                end
+            end
+            -- Fallback to vim.json.decode
+            local success, inner_result = pcall(vim.json.decode, parsed_response.result)
+            if success and inner_result and inner_result.formatted_content then
+                return inner_result.formatted_content, inner_result.original_content, inner_result.duration_sec
+            end
+        end
+        
+        -- Check if result is a table with formatted_content
+        if type(parsed_response.result) == "table" and parsed_response.result.formatted_content then
+            return parsed_response.result.formatted_content, parsed_response.result.original_content, parsed_response.result.duration_sec
+        end
+    end
+    
+    return nil, "Unexpected response format: " .. tostring(parsed_response)
+end
+
 -- Enhanced send message with improved response parsing
 function M.send_message_enhanced(message, model)
     local backend = require("paragonic.backend")
@@ -596,6 +674,93 @@ function M.send_message_command_debug()
     
     -- Debug: Success
     debug.append_debug_message(current_buf, "Message send process completed successfully", "success")
+end
+
+-- Send message command with server-side formatting
+function M.send_message_command_formatted()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    -- Only work in chat buffer
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get the current line as the message
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
+    local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
+    local message = lines[1] or ""
+    
+    -- Skip empty lines or lines that start with #
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    -- Initialize backend if not available
+    local backend = require("paragonic.backend")
+    if not backend._rpc_client then
+        local success = backend._initialize_backend()
+        if not success then
+            vim.notify("Failed to initialize backend", vim.log.levels.ERROR)
+            return
+        end
+    end
+    
+    -- Get buffer width for formatting
+    local buffer_width = vim.api.nvim_win_get_width(0)
+    local format_width = math.floor(buffer_width * 0.7)
+    if format_width < 20 then format_width = 20 end -- Minimum width
+    
+    -- Configure formatting for server-side processing
+    local format_config = {
+        max_width = format_width,
+        include_diamond = true,
+        continuation_indent = 3,
+        strip_markdown = true,
+        preserve_paragraphs = true
+    }
+    
+    -- Record start time for timing information
+    local start_time = vim.uv.now()
+    
+    -- Add zigzag arrow to indicate request is being sent
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
+    
+    -- Send the message using server-side formatted function
+    local formatted_response, original_response, server_duration_sec, err = M.send_message_formatted(message, "llama2", format_config)
+    
+    if not formatted_response then
+        vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        
+        -- Add error message to chat buffer with error symbol
+        local error_lines = {
+            "🛔  " .. (err or "unknown error")
+        }
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
+        return
+    end
+    
+    -- Since the response is already formatted by the server, we can add it directly
+    local response_lines = {}
+    for line in formatted_response:gmatch("[^\r\n]+") do
+        table.insert(response_lines, line)
+    end
+    
+    -- Add closing line
+    table.insert(response_lines, "")
+    table.insert(response_lines, "∎")
+    
+    -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
+    
+    -- Move cursor to the end of the buffer
+    local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+    vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+    
+    -- Notify success
+    vim.notify("Message sent successfully (server-formatted)", vim.log.levels.INFO)
 end
 
 return M

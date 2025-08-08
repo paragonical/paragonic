@@ -17,6 +17,7 @@ pub mod vector;
 pub mod operations;
 pub mod iragl;
 pub mod patterns;
+pub mod text;
 
 pub use error::{ParagonicError, ParagonicResult};
 
