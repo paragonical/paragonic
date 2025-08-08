@@ -265,17 +265,30 @@ impl PatternExecution {
             ));
         }
         
-        // Update execution with new results
-        if let Some(result) = output_result {
-            self.output_result = Some(result);
-        }
-        
-        if let Some(error) = error_message {
-            self.error_message = Some(error);
-        }
+        // Update output and error message
+        self.output_result = output_result;
+        self.error_message = error_message;
         
         Ok(())
     }
+
+    /// Returns the current execution status
+    pub fn get_execution_status(&self) -> ExecutionStatus {
+        if self.success {
+            ExecutionStatus::Completed
+        } else if self.execution_duration_ms.is_some() {
+            ExecutionStatus::InProgress
+        } else {
+            ExecutionStatus::NotStarted
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExecutionStatus {
+    NotStarted,
+    InProgress,
+    Completed,
 }
 
 /// Represents a pattern template
@@ -1045,6 +1058,24 @@ mod tests {
             }
             _ => panic!("Expected InvalidInput error for completed execution"),
         }
+    }
+
+    #[test]
+    fn test_pattern_execution_get_execution_status() {
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            TriggerType::Manual,
+            Some(json!({"test": "data"})),
+        ).unwrap();
+
+        assert_eq!(execution.get_execution_status(), ExecutionStatus::NotStarted);
+
+        execution.start_execution().unwrap();
+        assert_eq!(execution.get_execution_status(), ExecutionStatus::InProgress);
+
+        execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
+        assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
     }
 
     #[test]
