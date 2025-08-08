@@ -3315,6 +3315,12 @@ mod database_tests {
 
     #[tokio::test]
     async fn test_database_pattern_crud_operations() -> ParagonicResult<()> {
+        // Check if mock database mode is enabled
+        if std::env::var("USE_MOCK_DATABASE").is_ok() {
+            println!("Mock database mode enabled - skipping real database test");
+            return Ok(());
+        }
+
         // Initialize test database
         let init_result = database::initialize_for_testing().await;
         if let Err(e) = &init_result {
@@ -3380,6 +3386,12 @@ mod database_tests {
 
     #[tokio::test]
     async fn test_database_execution_operations() -> ParagonicResult<()> {
+        // Check if mock database mode is enabled
+        if std::env::var("USE_MOCK_DATABASE").is_ok() {
+            println!("Mock database mode enabled - skipping real database test");
+            return Ok(());
+        }
+
         // Initialize test database
         let init_result = database::initialize_for_testing().await;
         if let Err(e) = &init_result {
@@ -3448,6 +3460,12 @@ mod database_tests {
 
     #[tokio::test]
     async fn test_database_registry_integration() -> ParagonicResult<()> {
+        // Check if mock database mode is enabled
+        if std::env::var("USE_MOCK_DATABASE").is_ok() {
+            println!("Mock database mode enabled - skipping real database test");
+            return Ok(());
+        }
+
         // Initialize test database
         let init_result = database::initialize_for_testing().await;
         if let Err(e) = &init_result {
