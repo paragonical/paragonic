@@ -51,4 +51,152 @@ function M._setup_keymaps()
     vim.api.nvim_set_keymap("n", "<leader>pt", ":ParagonicTest<CR>", {noremap = true, silent = true, desc = "Test Paragonic"})
 end
 
+-- Which-key integration for Paragonic commands
+function M.setup_which_key()
+    -- Check if we're in Neovim environment
+    if not vim then
+        return
+    end
+    
+    -- Check if which-key is available
+    local ok, wk = pcall(require, "which-key")
+    if not ok or not wk then
+        local debug = require("paragonic.debug")
+        debug.debug_print("which-key not available, skipping integration", "warning")
+        return
+    end
+    
+    -- Register Paragonic keymaps with which-key (new spec format)
+    wk.add({
+        { "<leader>P", group = "🚀 Paragonic", icon = "🚀" },
+        { "<leader>Ps", "<cmd>ParagonicSearch<CR>", desc = "🔍 Basic Search" },
+        { "<leader>Pf", "<cmd>ParagonicSearchFiltered<CR>", desc = "🔍 Filtered Search" },
+        { "<leader>Ph", "<cmd>ParagonicSearchHybrid<CR>", desc = "🔍 Hybrid Search" },
+        { "<leader>Pc", "<cmd>ParagonicChat<CR>", desc = "💬 Open Chat" },
+        { "<leader>Pp", "<cmd>ParagonicProjects<CR>", desc = "📁 Open Projects" },
+        { "<leader>Po", "<cmd>ParagonicConfig<CR>", desc = "⚙️  Open Config" },
+        { "<leader>Pd", "<cmd>ParagonicDebug<CR>", desc = "🐛 Open Debug" },
+        { "<leader>Py", "<cmd>ParagonicSearchHistory<CR>", desc = "📚 Search History" },
+        { "<leader>Pv", "<cmd>ParagonicSavedSearches<CR>", desc = "💾 Saved Searches" },
+        { "<leader>Pw", "<cmd>ParagonicSaveSearch<CR>", desc = "💾 Save Current Search" },
+        { "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", desc = "🤖 AI Agent Session" },
+        { "<leader>Pe", "<cmd>ParagonicExportData<CR>", desc = "📤 Export Data" },
+        { "<leader>Pi", "<cmd>ParagonicImportData<CR>", desc = "📥 Import Data" },
+        { "<leader>Pb", "<cmd>ParagonicBackupData<CR>", desc = "💾 Backup Data" },
+        { "<leader>Pr", "<cmd>ParagonicReconnect<CR>", desc = "🔌 Force Reconnect" },
+    })
+    
+    -- Register visual mode keymaps for search with selection (new spec format)
+    wk.add({
+        {
+            mode = { "v" },
+            { "<leader>Ps", function()
+                local saved_reg = vim.fn.getreg('"')
+                vim.cmd('normal! y')
+                local selected_text = vim.fn.getreg('"')
+                vim.fn.setreg('"', saved_reg)
+                
+                if selected_text and selected_text ~= "" then
+                    vim.cmd('ParagonicSearch ' .. vim.fn.shellescape(selected_text))
+                else
+                    vim.cmd('ParagonicSearch')
+                end
+            end, desc = "🔍 Search Selected Text" },
+            { "<leader>Pf", function()
+                local saved_reg = vim.fn.getreg('"')
+                vim.cmd('normal! y')
+                local selected_text = vim.fn.getreg('"')
+                vim.fn.setreg('"', saved_reg)
+                
+                if selected_text and selected_text ~= "" then
+                    vim.cmd('ParagonicSearchFiltered ' .. vim.fn.shellescape(selected_text))
+                else
+                    vim.cmd('ParagonicSearchFiltered')
+                end
+            end, desc = "🔍 Filtered Search Selected Text" },
+            { "<leader>Ph", function()
+                local saved_reg = vim.fn.getreg('"')
+                vim.cmd('normal! y')
+                local selected_text = vim.fn.getreg('"')
+                vim.fn.setreg('"', saved_reg)
+                
+                if selected_text and selected_text ~= "" then
+                    vim.cmd('ParagonicSearchHybrid ' .. vim.fn.shellescape(selected_text))
+                else
+                    vim.cmd('ParagonicSearchHybrid')
+                end
+            end, desc = "🔍 Hybrid Search Selected Text" },
+        },
+    })
+    
+    local debug = require("paragonic.debug")
+    debug.debug_print("which-key integration setup completed", "info")
+end
+
+-- Set up keyboard mappings with which-key integration
+function M.setup_keymaps()
+    -- Set up which-key integration if available
+    M.setup_which_key()
+    
+    -- Fallback keymaps for when which-key is not available
+    vim.keymap.set("n", "<leader>Ps", "<cmd>ParagonicSearch<CR>", {desc = "Paragonic: Basic Search"})
+    vim.keymap.set("n", "<leader>Pf", "<cmd>ParagonicSearchFiltered<CR>", {desc = "Paragonic: Filtered Search"})
+    vim.keymap.set("n", "<leader>Ph", "<cmd>ParagonicSearchHybrid<CR>", {desc = "Paragonic: Hybrid Search"})
+    vim.keymap.set("n", "<leader>Pc", "<cmd>ParagonicChat<CR>", {desc = "Paragonic: Open Chat"})
+    vim.keymap.set("n", "<leader>Pp", "<cmd>ParagonicProjects<CR>", {desc = "Paragonic: Open Projects"})
+    vim.keymap.set("n", "<leader>Po", "<cmd>ParagonicConfig<CR>", {desc = "Paragonic: Open Config"})
+    vim.keymap.set("n", "<leader>Pd", "<cmd>ParagonicDebug<CR>", {desc = "Paragonic: Open Debug"})
+    vim.keymap.set("n", "<leader>Py", "<cmd>ParagonicSearchHistory<CR>", {desc = "Paragonic: Search History"})
+    vim.keymap.set("n", "<leader>Pv", "<cmd>ParagonicSavedSearches<CR>", {desc = "Paragonic: Saved Searches"})
+    vim.keymap.set("n", "<leader>Pw", "<cmd>ParagonicSaveSearch<CR>", {desc = "Paragonic: Save Current Search"})
+    vim.keymap.set("n", "<leader>Pa", "<cmd>ParagonicAgentSession<CR>", {desc = "Paragonic: AI Agent Session"})
+    vim.keymap.set("n", "<leader>Pe", "<cmd>ParagonicExportData<CR>", {desc = "Paragonic: Export Data"})
+    vim.keymap.set("n", "<leader>Pi", "<cmd>ParagonicImportData<CR>", {desc = "Paragonic: Import Data"})
+    vim.keymap.set("n", "<leader>Pb", "<cmd>ParagonicBackupData<CR>", {desc = "Paragonic: Backup Data"})
+    vim.keymap.set("n", "<leader>Pr", "<cmd>ParagonicReconnect<CR>", {desc = "Paragonic: Force Reconnect"})
+    
+    -- Visual mode keymaps for search with selection
+    vim.keymap.set("v", "<leader>Ps", function()
+        local saved_reg = vim.fn.getreg('"')
+        vim.cmd('normal! y')
+        local selected_text = vim.fn.getreg('"')
+        vim.fn.setreg('"', saved_reg)
+        
+        if selected_text and selected_text ~= "" then
+            vim.cmd('ParagonicSearch ' .. vim.fn.shellescape(selected_text))
+        else
+            vim.cmd('ParagonicSearch')
+        end
+    end, {desc = "Paragonic: Search Selected Text"})
+    
+    vim.keymap.set("v", "<leader>Pf", function()
+        local saved_reg = vim.fn.getreg('"')
+        vim.cmd('normal! y')
+        local selected_text = vim.fn.getreg('"')
+        vim.fn.setreg('"', saved_reg)
+        
+        if selected_text and selected_text ~= "" then
+            vim.cmd('ParagonicSearchFiltered ' .. vim.fn.shellescape(selected_text))
+        else
+            vim.cmd('ParagonicSearchFiltered')
+        end
+    end, {desc = "Paragonic: Filtered Search Selected Text"})
+    
+    vim.keymap.set("v", "<leader>Ph", function()
+        local saved_reg = vim.fn.getreg('"')
+        vim.cmd('normal! y')
+        local selected_text = vim.fn.getreg('"')
+        vim.fn.setreg('"', saved_reg)
+        
+        if selected_text and selected_text ~= "" then
+            vim.cmd('ParagonicSearchHybrid ' .. vim.fn.shellescape(selected_text))
+        else
+            vim.cmd('ParagonicSearchHybrid')
+        end
+    end, {desc = "Paragonic: Hybrid Search Selected Text"})
+    
+    local debug = require("paragonic.debug")
+    debug.debug_print("Keymaps setup completed with which-key integration", "info")
+end
+
 return M
