@@ -6,6 +6,7 @@ use crate::error::{ParagonicError, ParagonicResult};
 use tera::{Tera, Context};
 use std::path::PathBuf;
 use std::collections::HashMap;
+use crate::patterns::database::PatternRepository;
 
 /// Categories for system patterns
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -369,6 +370,63 @@ impl PatternTemplate {
         
         Ok(())
     }
+}
+
+/// Represents a queued pattern execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuedPatternExecution {
+    pub id: Uuid,
+    pub pattern_name: String,
+    pub context: Option<Value>,
+    pub priority: u32, // Higher number = higher priority
+    pub queued_at: DateTime<Utc>,
+}
+
+impl QueuedPatternExecution {
+    /// Creates a new queued pattern execution
+    pub fn new(pattern_name: String, context: Option<Value>, priority: u32) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            pattern_name,
+            context,
+            priority,
+            queued_at: Utc::now(),
+        }
+    }
+}
+
+/// Represents a pattern registered for automatic triggering
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoTriggerPattern {
+    pub id: Uuid,
+    pub pattern_name: String,
+    pub trigger_conditions: Value,
+    pub registered_at: DateTime<Utc>,
+}
+
+impl AutoTriggerPattern {
+    /// Creates a new auto trigger pattern
+    pub fn new(pattern_name: String, trigger_conditions: Value) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            pattern_name,
+            trigger_conditions,
+            registered_at: Utc::now(),
+        }
+    }
+}
+
+/// Represents a processed pattern execution result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessedResult {
+    pub id: Uuid,
+    pub execution_id: Uuid,
+    pub pattern_name: String,
+    pub processed_at: DateTime<Utc>,
+    pub summary: String,
+    pub key_insights: Vec<String>,
+    pub action_items: Vec<String>,
+    pub metadata: Value,
 }
 
 /// Registry for managing system patterns
@@ -902,6 +960,631 @@ impl Default for PatternRegistry {
     }
 }
 
+/// Engine for executing system patterns with queue management and execution tracking
+pub struct PatternExecutionEngine {
+    execution_queue: Vec<QueuedPatternExecution>,
+    execution_history: Vec<PatternExecution>,
+    max_concurrent_executions: usize,
+    active_executions: std::collections::HashMap<Uuid, PatternExecution>,
+}
+
+impl PatternExecutionEngine {
+    /// Creates a new PatternExecutionEngine
+    pub fn new() -> Self {
+        Self {
+            execution_queue: Vec::new(),
+            execution_history: Vec::new(),
+            max_concurrent_executions: 5, // Default limit
+            active_executions: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Creates a new PatternExecutionEngine with custom concurrency limit
+    pub fn with_concurrency_limit(max_concurrent: usize) -> Self {
+        Self {
+            execution_queue: Vec::new(),
+            execution_history: Vec::new(),
+            max_concurrent_executions: max_concurrent,
+            active_executions: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Checks if the engine is empty (no queued or active executions)
+    pub fn is_empty(&self) -> bool {
+        self.execution_queue.is_empty() && self.active_executions.is_empty()
+    }
+
+    /// Executes a single pattern
+    pub fn execute_pattern(
+        &mut self,
+        registry: &mut PatternRegistry,
+        pattern_name: &str,
+        context: Option<Value>,
+    ) -> ParagonicResult<PatternExecution> {
+        // Find the pattern
+        let pattern = registry.get_pattern_by_name(pattern_name)
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found", pattern_name)
+            ))?;
+
+        // Create execution
+        let mut execution = PatternExecution::new(
+            pattern.id,
+            None, // session_id will be set by caller if needed
+            TriggerType::Manual,
+            context,
+        )?;
+
+        // Start execution
+        execution.start_execution()?;
+
+        // Execute the pattern workflow
+        let result = self.execute_pattern_workflow(pattern, &execution.input_context)?;
+
+        // Complete execution
+        execution.complete_execution(true, Some(result), None)?;
+
+        // Add to history
+        self.execution_history.push(execution.clone());
+
+        Ok(execution)
+    }
+
+    /// Executes multiple patterns in batch
+    pub fn execute_patterns_batch(
+        &mut self,
+        registry: &mut PatternRegistry,
+        pattern_names: Vec<String>,
+        context: Option<Value>,
+    ) -> ParagonicResult<Vec<PatternExecution>> {
+        let mut executions = Vec::new();
+
+        for pattern_name in pattern_names {
+            let execution = self.execute_pattern(registry, &pattern_name, context.clone())?;
+            executions.push(execution);
+        }
+
+        Ok(executions)
+    }
+
+    /// Queues a pattern for execution
+    pub fn queue_pattern_execution(&mut self, pattern_name: &str, context: Option<Value>) {
+        let queued_execution = QueuedPatternExecution::new(
+            pattern_name.to_string(),
+            context,
+            0, // Default priority
+        );
+        self.execution_queue.push(queued_execution);
+    }
+
+    /// Queues a pattern for execution with priority
+    pub fn queue_pattern_execution_with_priority(
+        &mut self,
+        pattern_name: &str,
+        context: Option<Value>,
+        priority: u32,
+    ) {
+        let queued_execution = QueuedPatternExecution::new(
+            pattern_name.to_string(),
+            context,
+            priority,
+        );
+        self.execution_queue.push(queued_execution);
+    }
+
+    /// Gets the current execution queue
+    pub fn get_execution_queue(&self) -> &[QueuedPatternExecution] {
+        &self.execution_queue
+    }
+
+    /// Processes the execution queue
+    pub fn process_execution_queue(&mut self, registry: &mut PatternRegistry) -> ParagonicResult<Vec<PatternExecution>> {
+        let mut executions = Vec::new();
+
+        // Sort queue by priority (highest first)
+        self.execution_queue.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+        // Process queue items
+        while !self.execution_queue.is_empty() && self.active_executions.len() < self.max_concurrent_executions {
+            let queued = self.execution_queue.remove(0);
+            
+            match self.execute_pattern(registry, &queued.pattern_name, queued.context) {
+                Ok(execution) => executions.push(execution),
+                Err(e) => {
+                    // Log error but continue processing other items
+                    eprintln!("Failed to execute pattern '{}': {:?}", queued.pattern_name, e);
+                }
+            }
+        }
+
+        Ok(executions)
+    }
+
+    /// Clears the execution queue
+    pub fn clear_execution_queue(&mut self) {
+        self.execution_queue.clear();
+    }
+
+    /// Gets the execution history
+    pub fn get_execution_history(&self) -> &[PatternExecution] {
+        &self.execution_history
+    }
+
+    /// Gets active executions
+    pub fn get_active_executions(&self) -> &std::collections::HashMap<Uuid, PatternExecution> {
+        &self.active_executions
+    }
+
+    /// Sets the maximum number of concurrent executions
+    pub fn set_max_concurrent_executions(&mut self, max: usize) {
+        self.max_concurrent_executions = max;
+    }
+
+    /// Executes the actual pattern workflow
+    fn execute_pattern_workflow(&self, pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // For now, we'll implement a basic workflow execution
+        // In a full implementation, this would parse and execute the workflow_steps
+        
+        let workflow_steps = pattern.workflow_steps.as_array()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Workflow steps must be an array".to_string()
+            ))?;
+
+        let mut result = json!({
+            "pattern_name": pattern.name,
+            "executed_at": chrono::Utc::now().to_rfc3339(),
+            "steps_executed": workflow_steps.len(),
+            "status": "completed"
+        });
+
+        // Add context if provided
+        if let Some(ref ctx) = context {
+            result["context"] = ctx.clone();
+        }
+
+        Ok(result)
+    }
+}
+
+impl Default for PatternExecutionEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// System for automatically triggering patterns based on conditions
+pub struct AutomaticTriggerSystem {
+    registered_patterns: Vec<AutoTriggerPattern>,
+}
+
+impl AutomaticTriggerSystem {
+    /// Creates a new AutomaticTriggerSystem
+    pub fn new() -> Self {
+        Self {
+            registered_patterns: Vec::new(),
+        }
+    }
+
+    /// Checks if the trigger system is empty
+    pub fn is_empty(&self) -> bool {
+        self.registered_patterns.is_empty()
+    }
+
+    /// Registers a pattern for automatic triggering
+    pub fn register_pattern_for_auto_trigger(
+        &mut self,
+        registry: &PatternRegistry,
+        pattern_name: &str,
+        trigger_conditions: Value,
+    ) -> ParagonicResult<()> {
+        // Validate that the pattern exists
+        if registry.get_pattern_by_name(pattern_name).is_none() {
+            return Err(ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found in registry", pattern_name)
+            ));
+        }
+
+        // Check if pattern is already registered
+        if self.registered_patterns.iter().any(|p| p.pattern_name == pattern_name) {
+            return Err(ParagonicError::InvalidInput(
+                format!("Pattern '{}' is already registered for auto-triggering", pattern_name)
+            ));
+        }
+
+        // Register the pattern
+        let auto_trigger_pattern = AutoTriggerPattern::new(
+            pattern_name.to_string(),
+            trigger_conditions,
+        );
+        self.registered_patterns.push(auto_trigger_pattern);
+
+        Ok(())
+    }
+
+    /// Removes a pattern from automatic triggering
+    pub fn remove_pattern_from_auto_trigger(&mut self, pattern_name: &str) -> ParagonicResult<()> {
+        let initial_len = self.registered_patterns.len();
+        self.registered_patterns.retain(|p| p.pattern_name != pattern_name);
+        
+        if self.registered_patterns.len() == initial_len {
+            return Err(ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found in auto-trigger registry", pattern_name)
+            ));
+        }
+        
+        Ok(())
+    }
+
+    /// Gets all registered patterns
+    pub fn get_registered_patterns(&self) -> &[AutoTriggerPattern] {
+        &self.registered_patterns
+    }
+
+    /// Clears all registered patterns
+    pub fn clear_all_patterns(&mut self) {
+        self.registered_patterns.clear();
+    }
+
+    /// Evaluates conditions against session context and returns patterns that should be triggered
+    pub fn evaluate_conditions(&self, session_context: &Value) -> Vec<String> {
+        let mut triggered_patterns = Vec::new();
+
+        for auto_trigger_pattern in &self.registered_patterns {
+            if self.evaluate_single_condition(&auto_trigger_pattern.trigger_conditions, session_context) {
+                triggered_patterns.push(auto_trigger_pattern.pattern_name.clone());
+            }
+        }
+
+        triggered_patterns
+    }
+
+    /// Evaluates a single condition against session context
+    fn evaluate_single_condition(&self, condition: &Value, context: &Value) -> bool {
+        match condition {
+            Value::Object(condition_obj) => {
+                for (key, condition_value) in condition_obj {
+                    if let Some(context_value) = context.get(key) {
+                        if !self.compare_values(condition_value, context_value) {
+                            return false;
+                        }
+                    } else {
+                        // Key not found in context, condition fails
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => {
+                // Simple equality comparison
+                condition == context
+            }
+        }
+    }
+
+    /// Compares condition value with context value, supporting operators
+    fn compare_values(&self, condition: &Value, context: &Value) -> bool {
+        match condition {
+            Value::Object(operator_obj) => {
+                // Handle operators like {"gte": 30}
+                for (operator, value) in operator_obj {
+                    match operator.as_str() {
+                        "gte" => {
+                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                                return context_num >= condition_num;
+                            }
+                        }
+                        "lte" => {
+                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                                return context_num <= condition_num;
+                            }
+                        }
+                        "gt" => {
+                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                                return context_num > condition_num;
+                            }
+                        }
+                        "lt" => {
+                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                                return context_num < condition_num;
+                            }
+                        }
+                        "eq" => {
+                            return value == context;
+                        }
+                        "ne" => {
+                            return value != context;
+                        }
+                        _ => {
+                            // Unknown operator, treat as equality
+                            return value == context;
+                        }
+                    }
+                }
+                false
+            }
+            _ => {
+                // Simple equality comparison
+                condition == context
+            }
+        }
+    }
+}
+
+impl Default for AutomaticTriggerSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Manager for preparing and managing execution contexts
+pub struct ExecutionContextManager {
+    stored_contexts: std::collections::HashMap<Uuid, Value>,
+    required_fields: Vec<String>,
+}
+
+impl ExecutionContextManager {
+    /// Creates a new ExecutionContextManager
+    pub fn new() -> Self {
+        Self {
+            stored_contexts: std::collections::HashMap::new(),
+            required_fields: vec![
+                "session_id".to_string(),
+                "user_id".to_string(),
+            ],
+        }
+    }
+
+    /// Creates a new ExecutionContextManager with custom required fields
+    pub fn with_required_fields(required_fields: Vec<String>) -> Self {
+        Self {
+            stored_contexts: std::collections::HashMap::new(),
+            required_fields,
+        }
+    }
+
+    /// Checks if the context manager is empty
+    pub fn is_empty(&self) -> bool {
+        self.stored_contexts.is_empty()
+    }
+
+    /// Prepares execution context for a pattern
+    pub fn prepare_context(
+        &mut self,
+        registry: &PatternRegistry,
+        pattern_name: &str,
+        session_data: Value,
+    ) -> ParagonicResult<Value> {
+        // Validate that the pattern exists
+        if registry.get_pattern_by_name(pattern_name).is_none() {
+            return Err(ParagonicError::InvalidInput(
+                format!("Pattern '{}' not found", pattern_name)
+            ));
+        }
+
+        // Validate the session data
+        self.validate_context(&session_data)?;
+
+        // Create prepared context
+        let mut prepared_context = session_data.clone();
+        
+        // Add pattern-specific information
+        prepared_context["pattern_name"] = json!(pattern_name);
+        prepared_context["prepared_at"] = json!(chrono::Utc::now().to_rfc3339());
+        prepared_context["context_version"] = json!("1.0");
+
+        Ok(prepared_context)
+    }
+
+    /// Validates context data
+    pub fn validate_context(&self, context: &Value) -> ParagonicResult<()> {
+        if let Value::Object(context_obj) = context {
+            for required_field in &self.required_fields {
+                if !context_obj.contains_key(required_field) {
+                    return Err(ParagonicError::InvalidInput(
+                        format!("Missing required context field: {}", required_field)
+                    ));
+                }
+            }
+            Ok(())
+        } else {
+            Err(ParagonicError::InvalidInput(
+                "Context must be a JSON object".to_string()
+            ))
+        }
+    }
+
+    /// Enriches context with additional data
+    pub fn enrich_context(&self, base_context: Value, enrichment_data: Value) -> Value {
+        if let (Value::Object(mut base_obj), Value::Object(enrichment_obj)) = (base_context.clone(), enrichment_data) {
+            for (key, value) in enrichment_obj {
+                base_obj.insert(key, value);
+            }
+            Value::Object(base_obj)
+        } else {
+            base_context
+        }
+    }
+
+    /// Stores context data
+    pub fn store_context(&mut self, context_id: Uuid, context_data: Value) {
+        self.stored_contexts.insert(context_id, context_data);
+    }
+
+    /// Retrieves stored context data
+    pub fn get_context(&self, context_id: Uuid) -> Option<&Value> {
+        self.stored_contexts.get(&context_id)
+    }
+
+    /// Clears stored context data
+    pub fn clear_context(&mut self, context_id: Uuid) {
+        self.stored_contexts.remove(&context_id);
+    }
+
+    /// Gets all stored context IDs
+    pub fn get_stored_context_ids(&self) -> Vec<Uuid> {
+        self.stored_contexts.keys().cloned().collect()
+    }
+
+    /// Clears all stored contexts
+    pub fn clear_all_contexts(&mut self) {
+        self.stored_contexts.clear();
+    }
+
+    /// Sets required fields for context validation
+    pub fn set_required_fields(&mut self, required_fields: Vec<String>) {
+        self.required_fields = required_fields;
+    }
+
+    /// Gets current required fields
+    pub fn get_required_fields(&self) -> &[String] {
+        &self.required_fields
+    }
+}
+
+impl Default for ExecutionContextManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Processor for handling pattern execution results and storage
+pub struct ResultProcessor {
+    processed_results: Vec<ProcessedResult>,
+    storage_backend: Option<Box<dyn PatternRepository>>,
+}
+
+impl ResultProcessor {
+    /// Creates a new ResultProcessor
+    pub fn new() -> Self {
+        Self {
+            processed_results: Vec::new(),
+            storage_backend: None,
+        }
+    }
+
+    /// Creates a new ResultProcessor with storage backend
+    pub fn with_storage(storage_backend: Box<dyn PatternRepository>) -> Self {
+        Self {
+            processed_results: Vec::new(),
+            storage_backend: Some(storage_backend),
+        }
+    }
+
+    /// Checks if the processor is empty
+    pub fn is_empty(&self) -> bool {
+        self.processed_results.is_empty()
+    }
+
+    /// Processes a pattern execution result
+    pub fn process_result(&mut self, execution: &PatternExecution) -> ParagonicResult<ProcessedResult> {
+        let processed = ProcessedResult {
+            id: Uuid::new_v4(),
+            execution_id: execution.id,
+            pattern_name: execution.pattern_id.to_string(),
+            processed_at: Utc::now(),
+            summary: self.generate_summary(execution),
+            key_insights: self.extract_key_insights(execution),
+            action_items: self.extract_action_items(execution),
+            metadata: json!({
+                "execution_duration_ms": execution.execution_duration_ms,
+                "success": execution.success,
+                "trigger_type": format!("{:?}", execution.trigger_type),
+            }),
+        };
+
+        self.processed_results.push(processed.clone());
+
+        // Store in backend if available
+        if let Some(backend) = &mut self.storage_backend {
+            backend.create_execution(execution)?;
+        }
+
+        Ok(processed)
+    }
+
+    /// Generates a summary from execution result
+    fn generate_summary(&self, execution: &PatternExecution) -> String {
+        format!(
+            "Pattern execution {} completed with success: {}",
+            execution.id,
+            execution.success
+        )
+    }
+
+    /// Extracts key insights from execution result
+    fn extract_key_insights(&self, execution: &PatternExecution) -> Vec<String> {
+        let mut insights = Vec::new();
+        
+        if let Some(output) = &execution.output_result {
+            if let Some(key_points) = output.get("key_points") {
+                if let Some(points) = key_points.as_array() {
+                    for point in points {
+                        if let Some(point_str) = point.as_str() {
+                            insights.push(point_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        insights
+    }
+
+    /// Extracts action items from execution result
+    fn extract_action_items(&self, execution: &PatternExecution) -> Vec<String> {
+        let mut actions = Vec::new();
+        
+        if let Some(output) = &execution.output_result {
+            if let Some(action_items) = output.get("action_items") {
+                if let Some(items) = action_items.as_array() {
+                    for item in items {
+                        if let Some(item_str) = item.as_str() {
+                            actions.push(item_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        actions
+    }
+
+    /// Gets all processed results
+    pub fn get_processed_results(&self) -> &[ProcessedResult] {
+        &self.processed_results
+    }
+
+    /// Gets processed results for a specific pattern
+    pub fn get_results_for_pattern(&self, pattern_name: &str) -> Vec<&ProcessedResult> {
+        self.processed_results
+            .iter()
+            .filter(|result| result.pattern_name == pattern_name)
+            .collect()
+    }
+
+    /// Clears all processed results
+    pub fn clear_results(&mut self) {
+        self.processed_results.clear();
+    }
+}
+
+impl Default for ResultProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
+
+
+
+    /// Creates a new ResultProcessor with custom required fields
+
+
+
+
+
+
 /// Represents a specialized skill that can be mixed into workflows
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Skill {
@@ -1007,6 +1690,680 @@ impl Skill {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // PatternExecutionEngine tests
+    #[test]
+    fn test_pattern_execution_engine_creation() {
+        let engine = PatternExecutionEngine::new();
+        assert!(engine.is_empty());
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_execute_pattern() {
+        let mut engine = PatternExecutionEngine::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create and register a test pattern
+        let pattern = SystemPattern::new(
+            "Test Execution Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Test pattern for execution engine".to_string(),
+            json!([
+                {"step": 1, "action": "test_action", "description": "Test action"}
+            ]),
+            json!({"result": "string", "status": "boolean"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Execute pattern through engine
+        let context = json!({
+            "user_id": "123",
+            "session_data": {"key": "value"}
+        });
+        
+        let result = engine.execute_pattern(&mut registry, "Test Execution Pattern", Some(context));
+        assert!(result.is_ok());
+        
+        let execution = result.unwrap();
+        assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
+        assert!(execution.success);
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_execute_nonexistent_pattern() {
+        let mut engine = PatternExecutionEngine::new();
+        let mut registry = PatternRegistry::new();
+        
+        let result = engine.execute_pattern(&mut registry, "Nonexistent Pattern", None);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Pattern 'Nonexistent Pattern' not found"));
+            }
+            _ => panic!("Expected InvalidInput error for nonexistent pattern"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_batch_execution() {
+        let mut engine = PatternExecutionEngine::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create multiple patterns
+        let pattern1 = SystemPattern::new(
+            "Pattern 1".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "First test pattern".to_string(),
+            json!([{"step": 1, "action": "action1"}]),
+            json!({"result": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern2 = SystemPattern::new(
+            "Pattern 2".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Second test pattern".to_string(),
+            json!([{"step": 1, "action": "action2"}]),
+            json!({"result": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1).unwrap();
+        registry.register_pattern(pattern2).unwrap();
+        
+        // Execute batch
+        let pattern_names = vec!["Pattern 1".to_string(), "Pattern 2".to_string()];
+        let context = json!({"batch_execution": true});
+        
+        let result = engine.execute_patterns_batch(&mut registry, pattern_names, Some(context));
+        assert!(result.is_ok());
+        
+        let executions = result.unwrap();
+        assert_eq!(executions.len(), 2);
+        assert!(executions.iter().all(|e| e.success));
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_get_execution_queue() {
+        let mut engine = PatternExecutionEngine::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create a pattern
+        let pattern = SystemPattern::new(
+            "Queue Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern for queue testing".to_string(),
+            json!([{"step": 1, "action": "queue_action"}]),
+            json!({"result": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Add to queue
+        engine.queue_pattern_execution("Queue Test Pattern", Some(json!({"queued": true})));
+        
+        // Check queue
+        let queue = engine.get_execution_queue();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].pattern_name, "Queue Test Pattern");
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_process_queue() {
+        let mut engine = PatternExecutionEngine::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create a pattern
+        let pattern = SystemPattern::new(
+            "Queue Process Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern for queue processing".to_string(),
+            json!([{"step": 1, "action": "process_action"}]),
+            json!({"result": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Add to queue
+        engine.queue_pattern_execution("Queue Process Pattern", Some(json!({"queued": true})));
+        
+        // Process queue
+        let result = engine.process_execution_queue(&mut registry);
+        assert!(result.is_ok());
+        
+        let executions = result.unwrap();
+        assert_eq!(executions.len(), 1);
+        assert!(executions[0].success);
+        
+        // Queue should be empty now
+        assert!(engine.get_execution_queue().is_empty());
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_clear_queue() {
+        let mut engine = PatternExecutionEngine::new();
+        
+        // Add items to queue
+        engine.queue_pattern_execution("Pattern 1", None);
+        engine.queue_pattern_execution("Pattern 2", None);
+        
+        assert_eq!(engine.get_execution_queue().len(), 2);
+        
+        // Clear queue
+        engine.clear_execution_queue();
+        assert!(engine.get_execution_queue().is_empty());
+    }
+
+    #[test]
+    fn test_pattern_execution_engine_get_execution_history() {
+        let mut engine = PatternExecutionEngine::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create a pattern
+        let pattern = SystemPattern::new(
+            "History Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern for history testing".to_string(),
+            json!([{"step": 1, "action": "history_action"}]),
+            json!({"result": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Execute pattern
+        engine.execute_pattern(&mut registry, "History Test Pattern", None).unwrap();
+        
+        // Get history
+        let history = engine.get_execution_history();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].pattern_id, registry.get_pattern_by_name("History Test Pattern").unwrap().id);
+    }
+
+    // Automatic trigger system tests
+    #[test]
+    fn test_automatic_trigger_system_creation() {
+        let trigger_system = AutomaticTriggerSystem::new();
+        assert!(trigger_system.is_empty());
+    }
+
+    #[test]
+    fn test_automatic_trigger_system_register_pattern() {
+        let mut trigger_system = AutomaticTriggerSystem::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create a pattern with trigger conditions
+        let pattern = SystemPattern::new(
+            "Auto Trigger Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern with automatic triggers".to_string(),
+            json!([{"step": 1, "action": "auto_action"}]),
+            json!({"result": "string"}),
+            Some(json!({
+                "session_duration_minutes": 30,
+                "message_count": 10
+            })),
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Register pattern for automatic triggering
+        let result = trigger_system.register_pattern_for_auto_trigger(
+            &registry,
+            "Auto Trigger Pattern",
+            json!({
+                "session_duration_minutes": 30,
+                "message_count": 10
+            })
+        );
+        assert!(result.is_ok());
+        
+        // Check if pattern is registered
+        let registered_patterns = trigger_system.get_registered_patterns();
+        assert_eq!(registered_patterns.len(), 1);
+        assert_eq!(registered_patterns[0].pattern_name, "Auto Trigger Pattern");
+    }
+
+    #[test]
+    fn test_automatic_trigger_system_evaluate_conditions() {
+        let mut trigger_system = AutomaticTriggerSystem::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create a pattern with trigger conditions
+        let pattern = SystemPattern::new(
+            "Condition Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern for condition testing".to_string(),
+            json!([{"step": 1, "action": "condition_action"}]),
+            json!({"result": "string"}),
+            Some(json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 5}
+            })),
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Register pattern
+        trigger_system.register_pattern_for_auto_trigger(
+            &registry,
+            "Condition Test Pattern",
+            json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 5}
+            })
+        ).unwrap();
+        
+        // Test condition evaluation - should trigger
+        let session_context = json!({
+            "session_duration_minutes": 45,
+            "message_count": 8
+        });
+        
+        let triggered_patterns = trigger_system.evaluate_conditions(&session_context);
+        assert_eq!(triggered_patterns.len(), 1);
+        assert_eq!(triggered_patterns[0], "Condition Test Pattern");
+        
+        // Test condition evaluation - should not trigger
+        let session_context = json!({
+            "session_duration_minutes": 20,
+            "message_count": 3
+        });
+        
+        let triggered_patterns = trigger_system.evaluate_conditions(&session_context);
+        assert_eq!(triggered_patterns.len(), 0);
+    }
+
+    #[test]
+    fn test_automatic_trigger_system_remove_pattern() {
+        let mut trigger_system = AutomaticTriggerSystem::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create and register a pattern
+        let pattern = SystemPattern::new(
+            "Remove Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern for removal testing".to_string(),
+            json!([{"step": 1, "action": "remove_action"}]),
+            json!({"result": "string"}),
+            Some(json!({"session_duration_minutes": 30})),
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        trigger_system.register_pattern_for_auto_trigger(
+            &registry,
+            "Remove Test Pattern",
+            json!({"session_duration_minutes": 30})
+        ).unwrap();
+        
+        assert_eq!(trigger_system.get_registered_patterns().len(), 1);
+        
+        // Remove pattern
+        let result = trigger_system.remove_pattern_from_auto_trigger("Remove Test Pattern");
+        assert!(result.is_ok());
+        
+        assert_eq!(trigger_system.get_registered_patterns().len(), 0);
+    }
+
+    #[test]
+    fn test_automatic_trigger_system_clear_all() {
+        let mut trigger_system = AutomaticTriggerSystem::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create multiple patterns
+        let pattern1 = SystemPattern::new(
+            "Pattern 1".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "First pattern".to_string(),
+            json!([{"step": 1, "action": "action1"}]),
+            json!({"result": "string"}),
+            Some(json!({"condition1": true})),
+            None,
+        ).unwrap();
+        
+        let pattern2 = SystemPattern::new(
+            "Pattern 2".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Second pattern".to_string(),
+            json!([{"step": 1, "action": "action2"}]),
+            json!({"result": "string"}),
+            Some(json!({"condition2": true})),
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1).unwrap();
+        registry.register_pattern(pattern2).unwrap();
+        
+        // Register both patterns
+        trigger_system.register_pattern_for_auto_trigger(&registry, "Pattern 1", json!({"condition1": true})).unwrap();
+        trigger_system.register_pattern_for_auto_trigger(&registry, "Pattern 2", json!({"condition2": true})).unwrap();
+        
+        assert_eq!(trigger_system.get_registered_patterns().len(), 2);
+        
+        // Clear all
+        trigger_system.clear_all_patterns();
+        assert_eq!(trigger_system.get_registered_patterns().len(), 0);
+    }
+
+    // Execution context management tests
+    #[test]
+    fn test_execution_context_manager_creation() {
+        let context_manager = ExecutionContextManager::new();
+        assert!(context_manager.is_empty());
+    }
+
+    #[test]
+    fn test_execution_context_manager_prepare_context() {
+        let mut context_manager = ExecutionContextManager::new();
+        let mut registry = PatternRegistry::new();
+        
+        // Create a pattern
+        let pattern = SystemPattern::new(
+            "Context Test Pattern".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Pattern for context testing".to_string(),
+            json!([{"step": 1, "action": "context_action"}]),
+            json!({"result": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern).unwrap();
+        
+        // Prepare context
+        let session_data = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": "user123",
+            "session_duration_minutes": 45,
+            "message_count": 12,
+            "current_topic": "Rust development"
+        });
+        
+        let result = context_manager.prepare_context(
+            &registry,
+            "Context Test Pattern",
+            session_data.clone()
+        );
+        assert!(result.is_ok());
+        
+        let prepared_context = result.unwrap();
+        assert!(prepared_context.get("session_id").is_some());
+        assert!(prepared_context.get("user_id").is_some());
+        assert!(prepared_context.get("session_duration_minutes").is_some());
+        assert!(prepared_context.get("message_count").is_some());
+        assert!(prepared_context.get("current_topic").is_some());
+        assert!(prepared_context.get("pattern_name").is_some());
+        assert_eq!(prepared_context["pattern_name"], "Context Test Pattern");
+    }
+
+    #[test]
+    fn test_execution_context_manager_prepare_context_nonexistent_pattern() {
+        let mut context_manager = ExecutionContextManager::new();
+        let registry = PatternRegistry::new();
+        
+        let session_data = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": "user123"
+        });
+        
+        let result = context_manager.prepare_context(
+            &registry,
+            "Nonexistent Pattern",
+            session_data
+        );
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Pattern 'Nonexistent Pattern' not found"));
+            }
+            _ => panic!("Expected InvalidInput error for nonexistent pattern"),
+        }
+    }
+
+    #[test]
+    fn test_execution_context_manager_validate_context() {
+        let context_manager = ExecutionContextManager::new();
+        
+        // Valid context
+        let valid_context = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": "user123",
+            "session_duration_minutes": 45
+        });
+        
+        let result = context_manager.validate_context(&valid_context);
+        assert!(result.is_ok());
+        
+        // Invalid context - missing required fields
+        let invalid_context = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000"
+            // Missing user_id and session_duration_minutes
+        });
+        
+        let result = context_manager.validate_context(&invalid_context);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Missing required context field"));
+            }
+            _ => panic!("Expected InvalidInput error for invalid context"),
+        }
+    }
+
+    #[test]
+    fn test_execution_context_manager_enrich_context() {
+        let mut context_manager = ExecutionContextManager::new();
+        
+        let base_context = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": "user123"
+        });
+        
+        let enrichment_data = json!({
+            "session_duration_minutes": 45,
+            "message_count": 12,
+            "current_topic": "Rust development"
+        });
+        
+        let enriched_context = context_manager.enrich_context(base_context, enrichment_data);
+        
+        assert!(enriched_context.get("session_id").is_some());
+        assert!(enriched_context.get("user_id").is_some());
+        assert!(enriched_context.get("session_duration_minutes").is_some());
+        assert!(enriched_context.get("message_count").is_some());
+        assert!(enriched_context.get("current_topic").is_some());
+        assert_eq!(enriched_context["session_duration_minutes"], 45);
+        assert_eq!(enriched_context["message_count"], 12);
+        assert_eq!(enriched_context["current_topic"], "Rust development");
+    }
+
+    #[test]
+    fn test_execution_context_manager_store_and_retrieve_context() {
+        let mut context_manager = ExecutionContextManager::new();
+        
+        let context_id = Uuid::new_v4();
+        let context_data = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": "user123",
+            "session_duration_minutes": 45
+        });
+        
+        // Store context
+        context_manager.store_context(context_id, context_data.clone());
+        
+        // Retrieve context
+        let retrieved_context = context_manager.get_context(context_id);
+        assert!(retrieved_context.is_some());
+        assert_eq!(retrieved_context.unwrap(), &context_data);
+        
+        // Try to retrieve non-existent context
+        let non_existent_id = Uuid::new_v4();
+        let retrieved_context = context_manager.get_context(non_existent_id);
+        assert!(retrieved_context.is_none());
+    }
+
+    #[test]
+    fn test_execution_context_manager_clear_context() {
+        let mut context_manager = ExecutionContextManager::new();
+        
+        let context_id = Uuid::new_v4();
+        let context_data = json!({
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+            "user_id": "user123"
+        });
+        
+        // Store context
+        context_manager.store_context(context_id, context_data);
+        
+        // Verify it's stored
+        assert!(context_manager.get_context(context_id).is_some());
+        
+        // Clear context
+        context_manager.clear_context(context_id);
+        
+        // Verify it's cleared
+        assert!(context_manager.get_context(context_id).is_none());
+    }
+
+    // Result processing and storage tests
+    #[test]
+    fn test_result_processor_creation() {
+        let processor = ResultProcessor::new();
+        assert!(processor.is_empty());
+    }
+
+    #[test]
+    fn test_result_processor_process_result() {
+        let mut processor = ResultProcessor::new();
+        
+        // Create a test pattern execution
+        let mut execution = PatternExecution::new(
+            Uuid::new_v4(),
+            None,
+            TriggerType::Manual,
+            Some(json!({"test": "context"})),
+        ).unwrap();
+        
+        // Start and complete the execution with output result
+        execution.start_execution().unwrap();
+        execution.complete_execution(
+            true,
+            Some(json!({
+                "key_points": ["insight1", "insight2"],
+                "action_items": ["action1", "action2"]
+            })),
+            None,
+        ).unwrap();
+        
+        let result = processor.process_result(&execution);
+        assert!(result.is_ok());
+        
+        let processed_result = result.unwrap();
+        assert_eq!(processed_result.execution_id, execution.id);
+        assert!(!processed_result.summary.is_empty());
+        assert!(!processed_result.key_insights.is_empty());
+        assert!(!processed_result.action_items.is_empty());
+    }
+
+    #[test]
+    fn test_result_processor_get_processed_results() {
+        let mut processor = ResultProcessor::new();
+        
+        // Create test executions
+        let execution1 = PatternExecution::new(
+            Uuid::new_v4(),
+            None,
+            TriggerType::Manual,
+            None,
+        ).unwrap();
+        
+        let execution2 = PatternExecution::new(
+            Uuid::new_v4(),
+            None,
+            TriggerType::Automatic,
+            None,
+        ).unwrap();
+        
+        // Process results
+        processor.process_result(&execution1).unwrap();
+        processor.process_result(&execution2).unwrap();
+        
+        let results = processor.get_processed_results();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_result_processor_get_results_for_pattern() {
+        let mut processor = ResultProcessor::new();
+        
+        // Create test executions
+        let execution1 = PatternExecution::new(
+            Uuid::new_v4(),
+            None,
+            TriggerType::Manual,
+            None,
+        ).unwrap();
+        
+        let execution2 = PatternExecution::new(
+            Uuid::new_v4(),
+            None,
+            TriggerType::Automatic,
+            None,
+        ).unwrap();
+        
+        // Process results
+        processor.process_result(&execution1).unwrap();
+        processor.process_result(&execution2).unwrap();
+        
+        // Get results for a specific pattern (using pattern_id as pattern_name)
+        let results = processor.get_results_for_pattern(&execution1.pattern_id.to_string());
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_result_processor_clear_results() {
+        let mut processor = ResultProcessor::new();
+        
+        // Create and process a test execution
+        let execution = PatternExecution::new(
+            Uuid::new_v4(),
+            None,
+            TriggerType::Manual,
+            None,
+        ).unwrap();
+        
+        processor.process_result(&execution).unwrap();
+        assert_eq!(processor.get_processed_results().len(), 1);
+        
+        processor.clear_results();
+        assert_eq!(processor.get_processed_results().len(), 0);
+    }
 
     #[test]
     fn test_system_pattern_creation_with_valid_data() {
