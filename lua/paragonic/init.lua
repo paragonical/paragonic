@@ -42,260 +42,266 @@ function M.setup(opts)
     -- Setup configuration
     config.setup(opts)
     
-    -- Create commands
-    vim.api.nvim_create_user_command("ParagonicChat", M.open_chat, {})
-vim.api.nvim_create_user_command("ParagonicProjects", M.open_projects, {})
-vim.api.nvim_create_user_command("ParagonicConfig", M.open_config, {})
-vim.api.nvim_create_user_command("ParagonicDebug", M.open_debug_buffer, {})
-    vim.api.nvim_create_user_command("ParagonicSend", function()
-        M.debug_print("WRAPPER: About to call send_message_command", "debug")
-        M.send_message_command()
-        M.debug_print("WRAPPER: send_message_command completed", "debug")
-    end, {})
-    vim.api.nvim_create_user_command("ParagonicSendDebug", M.send_message_command_debug, {})
-    vim.api.nvim_create_user_command("ParagonicTest", function()
-        M.debug_print("TEST COMMAND WORKING", "debug")
-        vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)
-    end, {})
-    
-    vim.api.nvim_create_user_command("ParagonicCreateProject", M.create_project_command, {})
-    vim.api.nvim_create_user_command("ParagonicSaveConfig", M.save_config_command, {})
-    
-    -- Search commands
-    vim.api.nvim_create_user_command("ParagonicSearch", M.search_command, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicSearchFiltered", M.search_filtered_command, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicSearchHybrid", M.search_hybrid_command, {nargs = "*"})
-    
-    -- Search history and saved searches commands
-    vim.api.nvim_create_user_command("ParagonicSearchHistory", M.show_search_history, {})
-    vim.api.nvim_create_user_command("ParagonicSavedSearches", M.show_saved_searches, {})
-    vim.api.nvim_create_user_command("ParagonicSaveSearch", M.save_current_search, {})
-    
-    -- Persistent storage commands
-    vim.api.nvim_create_user_command("ParagonicExportData", M.export_data, {})
-    vim.api.nvim_create_user_command("ParagonicImportData", M.import_data, {})
-    vim.api.nvim_create_user_command("ParagonicBackupData", M.backup_data, {})
-    
-    -- Agentic collaboration commands
-    vim.api.nvim_create_user_command("ParagonicAgentSession", M.get_agent_session_info, {})
-    vim.api.nvim_create_user_command("ParagonicAgentEdit", M.agent_edit_file, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicAgentCreate", M.agent_create_file, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicAgentSave", M.agent_save_file, {})
-    
-    -- MCP commands
-    vim.api.nvim_create_user_command("ParagonicMCPInit", M.initialize_mcp_server, {})
-    vim.api.nvim_create_user_command("ParagonicMCPResources", function() 
-        local resources = M.list_mcp_resources()
-        M.display_mcp_resources(resources)
-    end, {})
-    vim.api.nvim_create_user_command("ParagonicMCPTools", function()
-        local tools = M.list_mcp_tools()
-        M.display_mcp_tools(tools)
-    end, {})
-    vim.api.nvim_create_user_command("ParagonicMCPReadResource", function(args)
-        local uri = args[1] or "neovim://session"
-        local result = M.read_mcp_resource(uri)
-        M.display_resource_content(uri, result)
-    end, {nargs = "?"})
-    
-    -- MCP Client commands (sampling and roots)
-    vim.api.nvim_create_user_command("ParagonicMCPSample", function(args)
-        local uri = args[1] or "neovim://buffers"
-        local limit = tonumber(args[2]) or 5
-        local criteria = {limit = limit}
-        local result = M.sample_resource(uri, criteria)
-        M.display_sampled_content(uri, result, criteria)
-    end, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicMCPRoots", function(args)
-        local uri = args[1] or "neovim://buffers"
-        local roots = M.define_resource_roots(uri, {})
-        M.display_resource_roots(uri, roots)
-    end, {nargs = "?"})
-    
-    -- AI Agent collaboration commands
-    vim.api.nvim_create_user_command("ParagonicAIAgentStart", function(args)
-        local agent_name = args[1] or "AI Agent"
-        local session_id = M.start_ai_agent_session(agent_name)
-        if session_id then
-            vim.notify("AI agent session started: " .. session_id, vim.log.levels.INFO)
-        end
-    end, {nargs = "?"})
-    vim.api.nvim_create_user_command("ParagonicAIAgentStop", function()
-        local success = M.stop_ai_agent_session()
-        if success then
-            vim.notify("AI agent session stopped successfully", vim.log.levels.INFO)
-        end
-    end, {})
-    vim.api.nvim_create_user_command("ParagonicAIAgentStatus", function()
-        local status = M.get_ai_agent_session_status()
-        M.display_ai_agent_status(status)
-    end, {})
-    vim.api.nvim_create_user_command("ParagonicAIAgentMessage", function(args)
-        if #args == 0 then
-            vim.notify("Message content is required", vim.log.levels.WARN)
-            return
-        end
-        local message = table.concat(args, " ")
-        local success, message_id = M.send_ai_agent_message(message)
-        if success then
-            vim.notify("AI agent message sent (ID: " .. message_id .. ")", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to send AI agent message: " .. message_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicAIAgentReceive", function(args)
-        if #args == 0 then
-            vim.notify("Message content is required", vim.log.levels.WARN)
-            return
-        end
-        local message = table.concat(args, " ")
-        local success, message_id = M.receive_ai_agent_message(message)
-        if success then
-            vim.notify("Neovim message received (ID: " .. message_id .. ")", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to receive Neovim message: " .. message_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicAIAgentCommand", function(args)
-        if #args == 0 then
-            vim.notify("Command is required", vim.log.levels.WARN)
-            return
-        end
-        local command = table.concat(args, " ")
-        local success, action_id, result = M.execute_ai_agent_command(command)
-        if success then
-            vim.notify("AI agent command executed (ID: " .. action_id .. ")", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to execute AI agent command: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicAIAgentBuffer", function(args)
-        local buffer_id = tonumber(args[1])
-        local start_line = tonumber(args[2])
-        local end_line = tonumber(args[3])
+    -- Define all user commands in a table for clean iteration
+    local commands = {
+        -- Core interface commands
+        {name = "ParagonicChat", func = M.open_chat, opts = {}},
+        {name = "ParagonicProjects", func = M.open_projects, opts = {}},
+        {name = "ParagonicConfig", func = M.open_config, opts = {}},
+        {name = "ParagonicDebug", func = M.open_debug_buffer, opts = {}},
         
-        local success, action_id, result = M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
-        if success then
-            vim.notify("AI agent buffer read (ID: " .. action_id .. ", " .. result.line_count .. " lines)", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to read buffer: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    vim.api.nvim_create_user_command("ParagonicAIAgentBufferWrite", function(args)
-        if #args < 2 then
-            vim.notify("Usage: :ParagonicAIAgentBufferWrite <buffer_id> <line1> <line2> ...", vim.log.levels.WARN)
-            return
-        end
+        -- Chat commands
+        {name = "ParagonicSend", func = function()
+            M.debug_print("WRAPPER: About to call send_message_command", "debug")
+            M.send_message_command()
+            M.debug_print("WRAPPER: send_message_command completed", "debug")
+        end, opts = {}},
+        {name = "ParagonicSendDebug", func = M.send_message_command_debug, opts = {}},
+        {name = "ParagonicTest", func = function()
+            M.debug_print("TEST COMMAND WORKING", "debug")
+            vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)
+        end, opts = {}},
         
-        local buffer_id = tonumber(args[1])
-        local lines = {}
-        for i = 2, #args do
-            table.insert(lines, args[i])
-        end
+        -- Project and config commands
+        {name = "ParagonicCreateProject", func = M.create_project_command, opts = {}},
+        {name = "ParagonicSaveConfig", func = M.save_config_command, opts = {}},
         
-        local success, action_id, result = M.set_ai_agent_buffer_content(buffer_id, lines)
-        if success then
-            vim.notify("AI agent buffer write (ID: " .. action_id .. ", " .. result.lines_written .. " lines)", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to write buffer: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    
-    -- Enhanced AI Agent Action Commands
-    vim.api.nvim_create_user_command("ParagonicAIAgentSwitchBuffer", function(args)
-        local buffer_id = tonumber(args[1])
-        local success, action_id, result = M.ai_agent_switch_buffer(buffer_id)
-        if success then
-            vim.notify("AI agent switched to buffer " .. result.buffer_id, vim.log.levels.INFO)
-        else
-            vim.notify("Failed to switch buffer: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "?"})
-    
-    vim.api.nvim_create_user_command("ParagonicAIAgentSetCursor", function(args)
-        local line = tonumber(args[1]) or 1
-        local column = tonumber(args[2]) or 0
-        local success, action_id, result = M.ai_agent_set_cursor(line, column)
-        if success then
-            vim.notify("AI agent set cursor to line " .. line .. ", column " .. column, vim.log.levels.INFO)
-        else
-            vim.notify("Failed to set cursor: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    
-    vim.api.nvim_create_user_command("ParagonicAIAgentCreateWindow", function(args)
-        local split_type = args[1] or "split"
-        local buffer_id = tonumber(args[2])
-        local success, action_id, result = M.ai_agent_create_window(split_type, buffer_id)
-        if success then
-            vim.notify("AI agent created " .. split_type .. " window", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to create window: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    
-    vim.api.nvim_create_user_command("ParagonicAIAgentInsertText", function(args)
-        if #args < 1 then
-            vim.notify("Usage: :ParagonicAIAgentInsertText <text> [mode]", vim.log.levels.WARN)
-            return
-        end
+        -- Search commands
+        {name = "ParagonicSearch", func = M.search_command, opts = {nargs = "*"}},
+        {name = "ParagonicSearchFiltered", func = M.search_filtered_command, opts = {nargs = "*"}},
+        {name = "ParagonicSearchHybrid", func = M.search_hybrid_command, opts = {nargs = "*"}},
         
-        local text = table.concat(args, " ")
-        local mode = args[#args] == "insert" or args[#args] == "append" or args[#args] == "replace" and args[#args] or "insert"
-        if mode ~= "insert" and mode ~= "append" and mode ~= "replace" then
-            mode = "insert"
-        end
+        -- Search history and saved searches commands
+        {name = "ParagonicSearchHistory", func = M.show_search_history, opts = {}},
+        {name = "ParagonicSavedSearches", func = M.show_saved_searches, opts = {}},
+        {name = "ParagonicSaveSearch", func = M.save_current_search, opts = {}},
         
-        local success, action_id, result = M.ai_agent_insert_text(text, mode)
-        if success then
-            vim.notify("AI agent inserted text (" .. mode .. " mode)", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to insert text: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {nargs = "*"})
-    
-    vim.api.nvim_create_user_command("ParagonicAIAgentGetState", function()
-        local success, action_id, state = M.ai_agent_get_state()
-        if success then
-            vim.notify("AI agent retrieved Neovim state (" .. #state.buffers .. " buffers, " .. #state.windows .. " windows)", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to get state: " .. action_id, vim.log.levels.ERROR)
-        end
-    end, {})
-    
-    vim.api.nvim_create_user_command("ParagonicAIAgentExecuteSequence", function(args)
-        if #args < 1 then
-            vim.notify("Usage: :ParagonicAIAgentExecuteSequence <action1> <action2> ...", vim.log.levels.WARN)
-            return
-        end
+        -- Persistent storage commands
+        {name = "ParagonicExportData", func = M.export_data, opts = {}},
+        {name = "ParagonicImportData", func = M.import_data, opts = {}},
+        {name = "ParagonicBackupData", func = M.backup_data, opts = {}},
         
-        -- For now, this is a simple implementation that executes commands
-        -- In a full implementation, this would parse action objects
-        local actions = {}
-        for i, arg in ipairs(args) do
-            table.insert(actions, {
-                type = "command",
-                params = {command = arg}
-            })
-        end
+        -- Agentic collaboration commands
+        {name = "ParagonicAgentSession", func = M.get_agent_session_info, opts = {}},
+        {name = "ParagonicAgentEdit", func = M.agent_edit_file, opts = {nargs = "*"}},
+        {name = "ParagonicAgentCreate", func = M.agent_create_file, opts = {nargs = "*"}},
+        {name = "ParagonicAgentSave", func = M.agent_save_file, opts = {}},
         
-        local success, action_id, result = M.ai_agent_execute_sequence(actions)
-        if success then
-            vim.notify("AI agent executed sequence (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.INFO)
-        else
-            vim.notify("AI agent executed sequence with errors (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.WARN)
-        end
-    end, {nargs = "*"})
+        -- MCP commands
+        {name = "ParagonicMCPInit", func = M.initialize_mcp_server, opts = {}},
+        {name = "ParagonicMCPResources", func = function() 
+            local resources = M.list_mcp_resources()
+            M.display_mcp_resources(resources)
+        end, opts = {}},
+        {name = "ParagonicMCPTools", func = function()
+            local tools = M.list_mcp_tools()
+            M.display_mcp_tools(tools)
+        end, opts = {}},
+        {name = "ParagonicMCPReadResource", func = function(args)
+            local uri = args[1] or "neovim://session"
+            local result = M.read_mcp_resource(uri)
+            M.display_resource_content(uri, result)
+        end, opts = {nargs = "?"}},
+        
+        -- MCP Client commands (sampling and roots)
+        {name = "ParagonicMCPSample", func = function(args)
+            local uri = args[1] or "neovim://buffers"
+            local limit = tonumber(args[2]) or 5
+            local criteria = {limit = limit}
+            local result = M.sample_resource(uri, criteria)
+            M.display_sampled_content(uri, result, criteria)
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicMCPRoots", func = function(args)
+            local uri = args[1] or "neovim://buffers"
+            local roots = M.define_resource_roots(uri, {})
+            M.display_resource_roots(uri, roots)
+        end, opts = {nargs = "?"}},
+        
+        -- AI Agent collaboration commands
+        {name = "ParagonicAIAgentStart", func = function(args)
+            local agent_name = args[1] or "AI Agent"
+            local session_id = M.start_ai_agent_session(agent_name)
+            if session_id then
+                vim.notify("AI agent session started: " .. session_id, vim.log.levels.INFO)
+            end
+        end, opts = {nargs = "?"}},
+        {name = "ParagonicAIAgentStop", func = function()
+            local success = M.stop_ai_agent_session()
+            if success then
+                vim.notify("AI agent session stopped successfully", vim.log.levels.INFO)
+            end
+        end, opts = {}},
+        {name = "ParagonicAIAgentStatus", func = function()
+            local status = M.get_ai_agent_session_status()
+            M.display_ai_agent_status(status)
+        end, opts = {}},
+        {name = "ParagonicAIAgentMessage", func = function(args)
+            if #args == 0 then
+                vim.notify("Message content is required", vim.log.levels.WARN)
+                return
+            end
+            local message = table.concat(args, " ")
+            local success, message_id = M.send_ai_agent_message(message)
+            if success then
+                vim.notify("AI agent message sent (ID: " .. message_id .. ")", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to send AI agent message: " .. message_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentReceive", func = function(args)
+            if #args == 0 then
+                vim.notify("Message content is required", vim.log.levels.WARN)
+                return
+            end
+            local message = table.concat(args, " ")
+            local success, message_id = M.receive_ai_agent_message(message)
+            if success then
+                vim.notify("Neovim message received (ID: " .. message_id .. ")", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to receive Neovim message: " .. message_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentCommand", func = function(args)
+            if #args == 0 then
+                vim.notify("Command is required", vim.log.levels.WARN)
+                return
+            end
+            local command = table.concat(args, " ")
+            local success, action_id, result = M.execute_ai_agent_command(command)
+            if success then
+                vim.notify("AI agent command executed (ID: " .. action_id .. ")", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to execute AI agent command: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentBuffer", func = function(args)
+            local buffer_id = tonumber(args[1])
+            local start_line = tonumber(args[2])
+            local end_line = tonumber(args[3])
+            
+            local success, action_id, result = M.get_ai_agent_buffer_content(buffer_id, start_line, end_line)
+            if success then
+                vim.notify("AI agent buffer read (ID: " .. action_id .. ", " .. result.line_count .. " lines)", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to read buffer: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentBufferWrite", func = function(args)
+            if #args < 2 then
+                vim.notify("Usage: :ParagonicAIAgentBufferWrite <buffer_id> <line1> <line2> ...", vim.log.levels.WARN)
+                return
+            end
+            
+            local buffer_id = tonumber(args[1])
+            local lines = {}
+            for i = 2, #args do
+                table.insert(lines, args[i])
+            end
+            
+            local success, action_id, result = M.set_ai_agent_buffer_content(buffer_id, lines)
+            if success then
+                vim.notify("AI agent buffer write (ID: " .. action_id .. ", " .. result.lines_written .. " lines)", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to write buffer: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        
+        -- Enhanced AI Agent Action Commands
+        {name = "ParagonicAIAgentSwitchBuffer", func = function(args)
+            local buffer_id = tonumber(args[1])
+            local success, action_id, result = M.ai_agent_switch_buffer(buffer_id)
+            if success then
+                vim.notify("AI agent switched to buffer " .. result.buffer_id, vim.log.levels.INFO)
+            else
+                vim.notify("Failed to switch buffer: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "?"}},
+        {name = "ParagonicAIAgentSetCursor", func = function(args)
+            local line = tonumber(args[1]) or 1
+            local column = tonumber(args[2]) or 0
+            local success, action_id, result = M.ai_agent_set_cursor(line, column)
+            if success then
+                vim.notify("AI agent set cursor to line " .. line .. ", column " .. column, vim.log.levels.INFO)
+            else
+                vim.notify("Failed to set cursor: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentCreateWindow", func = function(args)
+            local split_type = args[1] or "split"
+            local buffer_id = tonumber(args[2])
+            local success, action_id, result = M.ai_agent_create_window(split_type, buffer_id)
+            if success then
+                vim.notify("AI agent created " .. split_type .. " window", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to create window: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentInsertText", func = function(args)
+            if #args < 1 then
+                vim.notify("Usage: :ParagonicAIAgentInsertText <text> [mode]", vim.log.levels.WARN)
+                return
+            end
+            
+            local text = table.concat(args, " ")
+            local mode = args[#args] == "insert" or args[#args] == "append" or args[#args] == "replace" and args[#args] or "insert"
+            if mode ~= "insert" and mode ~= "append" and mode ~= "replace" then
+                mode = "insert"
+            end
+            
+            local success, action_id, result = M.ai_agent_insert_text(text, mode)
+            if success then
+                vim.notify("AI agent inserted text (" .. mode .. " mode)", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to insert text: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentGetState", func = function()
+            local success, action_id, state = M.ai_agent_get_state()
+            if success then
+                vim.notify("AI agent retrieved Neovim state (" .. #state.buffers .. " buffers, " .. #state.windows .. " windows)", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to get state: " .. action_id, vim.log.levels.ERROR)
+            end
+        end, opts = {}},
+        {name = "ParagonicAIAgentExecuteSequence", func = function(args)
+            if #args < 1 then
+                vim.notify("Usage: :ParagonicAIAgentExecuteSequence <action1> <action2> ...", vim.log.levels.WARN)
+                return
+            end
+            
+            -- For now, this is a simple implementation that executes commands
+            -- In a full implementation, this would parse action objects
+            local actions = {}
+            for i, arg in ipairs(args) do
+                table.insert(actions, {
+                    type = "command",
+                    params = {command = arg}
+                })
+            end
+            
+            local success, action_id, result = M.ai_agent_execute_sequence(actions)
+            if success then
+                vim.notify("AI agent executed sequence (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.INFO)
+            else
+                vim.notify("AI agent executed sequence with errors (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.WARN)
+            end
+        end, opts = {nargs = "*"}},
+        
+        -- Connection management commands
+        {name = "ParagonicReconnect", func = function()
+            local success = M.force_reconnect()
+            if success then
+                vim.notify("Successfully reconnected to Paragonic backend", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to reconnect to Paragonic backend", vim.log.levels.ERROR)
+            end
+        end, opts = {}},
+    }
     
-    -- Connection management commands
-    vim.api.nvim_create_user_command("ParagonicReconnect", function()
-        local success = M.force_reconnect()
-        if success then
-            vim.notify("Successfully reconnected to Paragonic backend", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to reconnect to Paragonic backend", vim.log.levels.ERROR)
-        end
-    end, {})
+    -- Create all commands in a clean iteration
+    for _, cmd in ipairs(commands) do
+        vim.api.nvim_create_user_command(cmd.name, cmd.func, cmd.opts)
+    end
     
     -- Set up keyboard mappings immediately
     M._setup_keymaps()
