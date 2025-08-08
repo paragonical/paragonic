@@ -188,44 +188,45 @@ function M.open_chat()
             break
         end
     end
-    
+
     -- Create new buffer if it doesn't exist
     if not chat_buf then
         chat_buf = vim.api.nvim_create_buf(true, true)
-        
+
         -- Set buffer name
         vim.api.nvim_buf_set_name(chat_buf, "paragonic://chat")
-        
+
         -- Set buffer options
         vim.api.nvim_buf_set_option(chat_buf, "buftype", "nofile")
         vim.api.nvim_buf_set_option(chat_buf, "swapfile", false)
         vim.api.nvim_buf_set_option(chat_buf, "modifiable", true)
-        
+
         -- Add initial content with default model information
         vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
             "# Paragonic Chat",
-            "",
-            "Available models: llama2 (default)",
-            "",
-            "Type your message below and use :ParagonicSend to send:",
-            "",
-            "∎"
+            "Type your message below and use :ParagonicSend or <ESC><CR> to send:",
+            "∎",
+            ""
         })
-        
+
         -- Models info will be updated when user first interacts with the chat
         -- This prevents freezing during buffer creation
-        
+
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
-        
+
         -- Set up buffer-local commands
         vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true})
         vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader><CR>", ":ParagonicSendDebug<CR>", {noremap = true, silent = true})
+
     end
-    
+
     -- Open the buffer in a new window
     vim.api.nvim_command("split")
     vim.api.nvim_set_current_buf(chat_buf)
+
+    -- Move cursor to the end of the buffer
+    vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(0), 0 })
 end
 
 -- Send message command

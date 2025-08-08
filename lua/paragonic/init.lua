@@ -6,32 +6,32 @@ Main plugin entry point
 local M = {}
 
 -- Load all modules
-local config = require("paragonic.config")
-local utils = require("paragonic.utils")
-local debug = require("paragonic.debug")
+local ai_agent = require("paragonic.ai_agent")
 local backend = require("paragonic.backend")
 local chat = require("paragonic.chat")
-local search = require("paragonic.search")
-local ai_agent = require("paragonic.ai_agent")
-local mcp = require("paragonic.mcp")
+local config = require("paragonic.config")
+local debug = require("paragonic.debug")
 local events = require("paragonic.events")
-local ui = require("paragonic.ui")
 local keymaps = require("paragonic.keymaps")
+local mcp = require("paragonic.mcp")
+local search = require("paragonic.search")
 local text = require("paragonic.text")
+local ui = require("paragonic.ui")
+local utils = require("paragonic.utils")
 
 -- Expose modules directly for clean API
+M.ai_agent = ai_agent
 M.backend = backend
 M.chat = chat
-M.search = search
-M.ai_agent = ai_agent
-M.mcp = mcp
-M.events = events
-M.ui = ui
-M.keymaps = keymaps
-M.text = text
-M.debug = debug
-M.utils = utils
 M.config = config
+M.debug = debug
+M.events = events
+M.keymaps = keymaps
+M.mcp = mcp
+M.search = search
+M.text = text
+M.ui = ui
+M.utils = utils
 
 -- Initialize the plugin
 function M.setup(opts)

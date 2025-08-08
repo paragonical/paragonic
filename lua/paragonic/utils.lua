@@ -433,16 +433,16 @@ function M.backup_data()
     
     local success = M.save_to_json(backup_data, backup_path)
     if success then
-        vim.notify("Backup created successfully: " .. backup_path, vim.log.levels.INFO)
+        vim.notify("Paragonic: Backup created successfully: " .. backup_path, vim.log.levels.INFO)
     else
-        vim.notify("Failed to create backup", vim.log.levels.ERROR)
+        vim.notify("Paragonic: Failed to create backup", vim.log.levels.ERROR)
     end
 end
 
 -- Load persistent data
 function M.load_persistent_data()
     -- This is a placeholder - implement based on your actual data structure
-    vim.notify("Persistent data loading not yet implemented", vim.log.levels.INFO)
+    vim.notify("Paragonic: Persistent data loading not yet implemented", vim.log.levels.INFO)
 end
 
 return M
