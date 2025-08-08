@@ -4,6 +4,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::error::{ParagonicError, ParagonicResult};
 use tera::{Tera, Context};
+use std::path::PathBuf;
 
 /// Categories for system patterns
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -559,6 +560,18 @@ pub struct PatternStatistics {
     pub average_execution_time_ms: f64,
     pub last_executed: Option<DateTime<Utc>>,
     pub success_rate: f64,
+}
+
+/// Bootstrap loader for patterns from repository files
+pub struct PatternBootstrap {
+    patterns_dir: PathBuf,
+}
+
+impl PatternBootstrap {
+    /// Creates a new PatternBootstrap instance
+    pub fn new(patterns_dir: PathBuf) -> Self {
+        Self { patterns_dir }
+    }
 }
 
 impl Default for PatternRegistry {
@@ -1676,5 +1689,13 @@ mod tests {
             }
             _ => panic!("Expected InvalidInput error for nonexistent pattern"),
         }
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_new() {
+        let patterns_dir = PathBuf::from("patterns");
+        let bootstrap = PatternBootstrap::new(patterns_dir.clone());
+        
+        assert_eq!(bootstrap.patterns_dir, patterns_dir);
     }
 }

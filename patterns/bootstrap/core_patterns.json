@@ -1,0 +1,61 @@
+{
+  "version": "1.0.0",
+  "patterns": [
+    {
+      "id": "session-summary-generation",
+      "name": "Session Summary Generation",
+      "category": "SessionManagement",
+      "meta_level": "System",
+      "description": "Create a comprehensive summary of the current session for future reference",
+      "workflow_steps": [
+        {
+          "step": 1,
+          "action": "analyze_session_history",
+          "description": "Analyze session history and interactions"
+        },
+        {
+          "step": 2,
+          "action": "extract_key_decisions",
+          "description": "Extract key decisions and actions taken"
+        },
+        {
+          "step": 3,
+          "action": "identify_files_changed",
+          "description": "Identify important files and changes made"
+        },
+        {
+          "step": 4,
+          "action": "summarize_goals",
+          "description": "Summarize user goals and progress"
+        },
+        {
+          "step": 5,
+          "action": "generate_summary",
+          "description": "Generate session summary document"
+        }
+      ],
+      "output_format": {
+        "session_summary": "string",
+        "key_decisions": ["string"],
+        "files_modified": ["string"],
+        "goals_achieved": ["string"],
+        "next_steps": ["string"],
+        "session_duration": "duration",
+        "complexity_score": "float"
+      },
+      "trigger_conditions": {
+        "session_duration_minutes": 30,
+        "message_count": 10,
+        "file_changes": true
+      },
+      "success_criteria": {
+        "summary_length_min": 100,
+        "key_decisions_count_min": 1,
+        "files_mentioned_count_min": 1
+      },
+      "template_file": "session-summary.tmpl",
+      "tags": ["session", "summary", "reflection"],
+      "priority": "high"
+    }
+  ]
+}
