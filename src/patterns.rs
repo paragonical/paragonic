@@ -172,6 +172,25 @@ impl PatternRegistry {
     pub fn get_pattern_by_name(&self, name: &str) -> Option<&SystemPattern> {
         self.patterns.iter().find(|p| p.name == name)
     }
+
+    /// Lists all patterns with optional filtering
+    pub fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> Vec<&SystemPattern> {
+        self.patterns.iter()
+            .filter(|p| {
+                if let Some(ref cat) = category {
+                    if p.category != *cat {
+                        return false;
+                    }
+                }
+                if let Some(ref level) = meta_level {
+                    if p.meta_level != *level {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect()
+    }
 }
 
 impl Default for PatternRegistry {
@@ -372,5 +391,65 @@ mod tests {
         
         let not_found = registry.get_pattern_by_name("Non-existent Pattern");
         assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_pattern_registry_list_patterns() {
+        let mut registry = PatternRegistry::new();
+        
+        let pattern1 = SystemPattern::new(
+            "Session Summary".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Session summary pattern".to_string(),
+            json!([{"step": 1, "action": "summarize", "description": "Summarize session"}]),
+            json!({"summary": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern2 = SystemPattern::new(
+            "Activity Label".to_string(),
+            PatternCategory::ActivityLabeling,
+            MetaLevel::System,
+            "Activity labeling pattern".to_string(),
+            json!([{"step": 1, "action": "label", "description": "Label activity"}]),
+            json!({"label": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        let pattern3 = SystemPattern::new(
+            "User Reflection".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::User,
+            "User reflection pattern".to_string(),
+            json!([{"step": 1, "action": "reflect", "description": "User reflection"}]),
+            json!({"reflection": "string"}),
+            None,
+            None,
+        ).unwrap();
+        
+        registry.register_pattern(pattern1).unwrap();
+        registry.register_pattern(pattern2).unwrap();
+        registry.register_pattern(pattern3).unwrap();
+        
+        // Test listing all patterns
+        let all_patterns = registry.list_patterns(None, None);
+        assert_eq!(all_patterns.len(), 3);
+        
+        // Test filtering by category
+        let session_patterns = registry.list_patterns(Some(PatternCategory::SessionManagement), None);
+        assert_eq!(session_patterns.len(), 1);
+        assert_eq!(session_patterns[0].name, "Session Summary");
+        
+        // Test filtering by meta_level
+        let system_patterns = registry.list_patterns(None, Some(MetaLevel::System));
+        assert_eq!(system_patterns.len(), 2);
+        
+        // Test filtering by both category and meta_level
+        let user_reflection_patterns = registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
+        assert_eq!(user_reflection_patterns.len(), 1);
+        assert_eq!(user_reflection_patterns[0].name, "User Reflection");
     }
 }
