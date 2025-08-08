@@ -319,4 +319,130 @@ function M.is_text_file(filename)
     return false
 end
 
+-- Persistent storage functions
+
+-- Ensure data directory exists
+function M.ensure_data_directory()
+    local data_dir = vim.fn.stdpath("data") .. "/paragonic"
+    if vim.fn.isdirectory(data_dir) == 0 then
+        vim.fn.mkdir(data_dir, "p")
+    end
+    return data_dir
+end
+
+-- Save data to JSON file
+function M.save_to_json(data, file_path)
+    if not data or not file_path then
+        return false
+    end
+    
+    -- Ensure directory exists
+    local dir = vim.fn.fnamemodify(file_path, ":h")
+    if vim.fn.isdirectory(dir) == 0 then
+        vim.fn.mkdir(dir, "p")
+    end
+    
+    -- Convert to JSON
+    local json_string = vim.json.encode(data)
+    if not json_string then
+        return false
+    end
+    
+    -- Write to file
+    local success = pcall(vim.fn.writefile, vim.split(json_string, "\n"), file_path)
+    return success
+end
+
+-- Load data from JSON file
+function M.load_from_json(file_path)
+    if not file_path or vim.fn.filereadable(file_path) == 0 then
+        return nil
+    end
+    
+    -- Read file
+    local lines = vim.fn.readfile(file_path)
+    if not lines or #lines == 0 then
+        return nil
+    end
+    
+    -- Parse JSON
+    local json_string = table.concat(lines, "\n")
+    local success, data = pcall(vim.json.decode, json_string)
+    
+    if not success then
+        return nil
+    end
+    
+    return data
+end
+
+-- Export data to a file
+function M.export_data()
+    local export_path = vim.fn.input("Export to file: ")
+    if export_path == "" then
+        vim.notify("Export path is required", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Get current data (this would need to be implemented based on your data structure)
+    local export_data = {
+        export_date = os.date("%Y-%m-%d %H:%M:%S"),
+        version = "1.0"
+    }
+    
+    local success = M.save_to_json(export_data, export_path)
+    if success then
+        vim.notify("Data exported successfully to " .. export_path, vim.log.levels.INFO)
+    else
+        vim.notify("Failed to export data", vim.log.levels.ERROR)
+    end
+end
+
+-- Import data from a file
+function M.import_data()
+    local import_path = vim.fn.input("Import from file: ")
+    if import_path == "" then
+        vim.notify("Import path is required", vim.log.levels.WARN)
+        return
+    end
+    
+    local data = M.load_from_json(import_path)
+    if data then
+        vim.notify("Data imported successfully from " .. import_path, vim.log.levels.INFO)
+        -- Here you would implement the actual import logic
+    else
+        vim.notify("Failed to import data", vim.log.levels.ERROR)
+    end
+end
+
+-- Backup data
+function M.backup_data()
+    local backup_dir = vim.fn.stdpath("data") .. "/paragonic/backups"
+    if vim.fn.isdirectory(backup_dir) == 0 then
+        vim.fn.mkdir(backup_dir, "p")
+    end
+    
+    local timestamp = os.date("%Y%m%d_%H%M%S")
+    local backup_path = backup_dir .. "/backup_" .. timestamp .. ".json"
+    
+    -- Get current data (this would need to be implemented based on your data structure)
+    local backup_data = {
+        backup_date = os.date("%Y-%m-%d %H:%M:%S"),
+        version = "1.0"
+    }
+    
+    local success = M.save_to_json(backup_data, backup_path)
+    if success then
+        vim.notify("Backup created successfully: " .. backup_path, vim.log.levels.INFO)
+    else
+        vim.notify("Failed to create backup", vim.log.levels.ERROR)
+    end
+end
+
+-- Load persistent data
+function M.load_persistent_data()
+    -- This is a placeholder - implement based on your actual data structure
+    vim.notify("Persistent data loading not yet implemented", vim.log.levels.INFO)
+end
+
 return M
