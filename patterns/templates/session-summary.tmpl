@@ -1,0 +1,27 @@
+# Session Summary
+
+**Duration:** {{ session_duration }}
+**Messages:** {{ message_count }}
+
+## Key Decisions Made
+{% for decision in key_decisions %}
+- {{ decision }}
+{% endfor %}
+
+## Files Modified
+{% for file in files_modified %}
+- {{ file }}
+{% endfor %}
+
+## Summary
+{{ summary }}
+
+## Key Points
+{% for point in key_points %}
+- {{ point }}
+{% endfor %}
+
+## Next Actions
+{% for action in next_actions %}
+- {{ action }}
+{% endfor %}

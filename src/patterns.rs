@@ -684,6 +684,80 @@ impl PatternBootstrap {
             success_criteria,
         )
     }
+
+    /// Load pattern templates from repository files
+    pub fn load_templates(&self) -> ParagonicResult<Vec<PatternTemplate>> {
+        let templates_file = self.patterns_dir.join("bootstrap/pattern_templates.json");
+        let content = std::fs::read_to_string(templates_file)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to read templates file: {}", e)
+            ))?;
+        
+        let data: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to parse templates JSON: {}", e)
+            ))?;
+        
+        // Parse and validate templates
+        let templates = self.parse_templates(data)?;
+        Ok(templates)
+    }
+
+    /// Parse templates from JSON data
+    fn parse_templates(&self, data: serde_json::Value) -> ParagonicResult<Vec<PatternTemplate>> {
+        let templates_array = data.get("templates")
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Missing 'templates' field in JSON data".to_string()
+            ))?
+            .as_array()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "'templates' field must be an array".to_string()
+            ))?;
+        
+        let mut templates = Vec::new();
+        for template_data in templates_array {
+            let template = self.parse_single_template(template_data)?;
+            templates.push(template);
+        }
+        
+        Ok(templates)
+    }
+
+    /// Parse a single template from JSON data
+    fn parse_single_template(&self, template_data: &serde_json::Value) -> ParagonicResult<PatternTemplate> {
+        let name = template_data.get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Template missing 'name' field".to_string()
+            ))?
+            .to_string();
+        
+        let description = template_data.get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Template missing 'description' field".to_string()
+            ))?
+            .to_string();
+        
+        let template_file = template_data.get("template_file")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Template missing 'template_file' field".to_string()
+            ))?;
+        
+        // Load the actual template content from file
+        let template_path = self.patterns_dir.join("templates").join(template_file);
+        let template_content = std::fs::read_to_string(template_path)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to read template file '{}': {}", template_file, e)
+            ))?;
+        
+        PatternTemplate::new(
+            name,
+            description,
+            template_content,
+        )
+    }
 }
 
 impl Default for PatternRegistry {
@@ -1839,6 +1913,39 @@ mod tests {
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
                 assert!(msg.contains("Failed to read core patterns file"));
+            }
+            _ => panic!("Expected InvalidInput error for missing file"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_load_templates() {
+        let patterns_dir = PathBuf::from("patterns");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        
+        let result = bootstrap.load_templates();
+        assert!(result.is_ok());
+        
+        let templates = result.unwrap();
+        assert_eq!(templates.len(), 1);
+        
+        let template = &templates[0];
+        assert_eq!(template.name, "Session Summary Template");
+        assert!(template.description.contains("generating session summaries"));
+        assert!(template.template_content.contains("Session Summary"));
+        assert!(template.template_content.contains("{{ session_duration }}"));
+    }
+
+    #[test]
+    fn test_pattern_bootstrap_load_templates_missing_file() {
+        let patterns_dir = PathBuf::from("nonexistent");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        
+        let result = bootstrap.load_templates();
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Failed to read templates file"));
             }
             _ => panic!("Expected InvalidInput error for missing file"),
         }
