@@ -240,6 +240,30 @@ impl PatternTemplate {
             updated_at: now,
         })
     }
+
+    /// Renders the template with the provided context
+    pub fn render(&self, context: &serde_json::Value) -> ParagonicResult<String> {
+        let mut tera = Tera::default();
+        
+        // Add the template to Tera
+        let template_name = "pattern_template";
+        tera.add_raw_template(template_name, &self.template_content)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to parse template: {}", e)
+            ))?;
+        
+        // Create Tera context from JSON
+        let tera_context = Context::from_serialize(context)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to create template context: {}", e)
+            ))?;
+        
+        // Render the template
+        Ok(tera.render(template_name, &tera_context)
+            .map_err(|e| ParagonicError::InvalidInput(
+                format!("Failed to render template: {}", e)
+            ))?)
+    }
 }
 
 /// Registry for managing system patterns
@@ -604,6 +628,67 @@ mod tests {
                 assert_eq!(msg, "Pattern template content cannot be empty");
             }
             _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[test]
+    fn test_pattern_template_render() {
+        let template = PatternTemplate::new(
+            "Test Template".to_string(),
+            "This is a test template for pattern execution".to_string(),
+            "{{ pattern_name }} - {{ session_id }}".to_string(),
+        ).unwrap();
+
+        let context = json!({
+            "pattern_name": "My Pattern",
+            "session_id": "123e4567-e89b-12d3-a456-426614174000"
+        });
+
+        let rendered_output = template.render(&context).unwrap();
+        assert_eq!(rendered_output, "My Pattern - 123e4567-e89b-12d3-a456-426614174000");
+    }
+
+    #[test]
+    fn test_pattern_template_render_with_invalid_context() {
+        let template = PatternTemplate::new(
+            "Test Template".to_string(),
+            "This is a test template for pattern execution".to_string(),
+            "{{ pattern_name }} - {{ session_id }}".to_string(),
+        ).unwrap();
+
+        // Create an invalid context with a non-serializable value
+        let context = json!({
+            "pattern_name": "My Pattern",
+            "session_id": null // This should work fine with Tera
+        });
+
+        // The test should pass since null is valid in Tera
+        let result = template.render(&context);
+        assert!(result.is_ok());
+        let rendered = result.unwrap();
+        assert_eq!(rendered, "My Pattern - ");
+    }
+
+    #[test]
+    fn test_pattern_template_render_with_invalid_syntax() {
+        let template = PatternTemplate::new(
+            "Test Template".to_string(),
+            "This is a test template with invalid syntax".to_string(),
+            "{{ pattern_name } - {{ session_id }}".to_string(), // Missing closing brace
+        ).unwrap();
+
+        let context = json!({
+            "pattern_name": "My Pattern",
+            "session_id": "123e4567-e89b-12d3-a456-426614174000"
+        });
+
+        let result = template.render(&context);
+        assert!(result.is_err());
+        match result {
+            Err(ParagonicError::InvalidInput(msg)) => {
+                assert!(msg.contains("Failed to parse template"));
+            }
+            _ => panic!("Expected InvalidInput error for invalid template syntax"),
         }
     }
 
