@@ -58,6 +58,8 @@ tantivy = "0.24"
 
 # Regular expressions for tool calling and text processing
 regex = "1.0"
+# Markdown to text conversion
+pulldown-cmark = "0.10"
 
 # CLI argument parsing (for development/testing)
 clap = { version = "4.0", features = ["derive"] }
@@ -70,6 +72,7 @@ tokio-io = "0.1.13"
 tokio-codec = "0.1.2"
 tera = "1.20.0"
 comrak = { version = "0.40.0", features = ["shortcodes", "emojis"] }
+
 
 [[bin]]
 name = "paragonic"

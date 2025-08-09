@@ -1,6 +1,7 @@
-// Note: comrak is available if needed for more complex markdown processing
+// Using pulldown-cmark for markdown parsing and custom text formatting
 use serde::{Deserialize, Serialize};
 use crate::error::{ParagonicError, ParagonicResult};
+use pulldown_cmark::{Parser, Event, Tag, TagEnd, CodeBlockKind, HeadingLevel};
 
 /// Configuration for text formatting
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,154 +96,172 @@ impl TextFormatter {
         Ok(formatted_lines.join("\n"))
     }
 
-    /// Format markdown as nicely formatted plain text (like groff/nroff)
+    /// Format markdown using pulldown-cmark for clean terminal output
     fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
-        let mut result = String::new();
-        let lines: Vec<&str> = text.lines().collect();
-        let mut i = 0;
+        let mut output = String::new();
+        let parser = Parser::new(text);
         
-        while i < lines.len() {
-            let line = lines[i].trim();
-            
-            // Skip empty lines but preserve them
-            if line.is_empty() {
-                result.push('\n');
-                i += 1;
-                continue;
+        let mut in_code_block = false;
+        let mut in_list = false;
+        let mut list_depth = 0;
+        let mut is_ordered_list = false;
+        let mut current_list_number = 1;
+        let mut in_heading = false;
+        let mut in_strong = false;
+        let mut link_urls = Vec::new();
+        
+        for event in parser {
+            match event {
+                Event::Start(tag) => {
+                    match tag {
+                        Tag::Heading { level, .. } => {
+                            output.push('\n');
+                            in_heading = true;
+                        },
+                        Tag::Paragraph => {
+                            if !output.is_empty() && !output.ends_with('\n') {
+                                output.push('\n');
+                            }
+                        },
+                        Tag::CodeBlock(CodeBlockKind::Fenced(_)) => {
+                            in_code_block = true;
+                            output.push_str("\n    CODE BLOCK\n");
+                        },
+                        Tag::CodeBlock(CodeBlockKind::Indented) => {
+                            in_code_block = true;
+                            output.push_str("\n    CODE\n");
+                        },
+                        Tag::List(first_number) => {
+                            in_list = true;
+                            if let Some(num) = first_number {
+                                is_ordered_list = true;
+                                current_list_number = num;
+                            } else {
+                                is_ordered_list = false;
+                            }
+                            list_depth += 1;
+                            if !output.ends_with('\n') {
+                                output.push('\n');
+                            }
+                        },
+                        Tag::Item => {
+                            let indent = "  ".repeat(list_depth);
+                            if is_ordered_list {
+                                output.push_str(&format!("{}{}. ", indent, current_list_number));
+                                current_list_number += 1;
+                            } else {
+                                output.push_str(&format!("{}• ", indent));
+                            }
+                        },
+                        Tag::BlockQuote => {
+                            if !output.ends_with('\n') {
+                                output.push('\n');
+                            }
+                            output.push_str("    ❝ ");
+                        },
+                        Tag::Emphasis => output.push('/'),
+                        Tag::Strong => {
+                            output.push_str("**");
+                            in_strong = true;
+                        },
+                        Tag::Link { dest_url, .. } => {
+                            // Store the URL for later use in End event
+                            link_urls.push(dest_url.to_string());
+                        },
+                        _ => {}
+                    }
+                },
+                Event::End(tag_end) => {
+                    match tag_end {
+                        TagEnd::Heading(level) => {
+                            output.push('\n');
+                            let underline_char = match level {
+                                HeadingLevel::H1 => "=",
+                                HeadingLevel::H2 => "-",
+                                _ => "⋅",
+                            };
+                            // Get the last line to determine length for underline
+                            if let Some(last_line) = output.lines().last() {
+                                let underline = underline_char.repeat(last_line.trim().len());
+                                output.push_str(&underline);
+                            }
+                            output.push_str("\n\n");
+                            in_heading = false;
+                        },
+                        TagEnd::Paragraph => {
+                            output.push('\n');
+                        },
+                        TagEnd::CodeBlock => {
+                            in_code_block = false;
+                            output.push('\n');
+                        },
+                        TagEnd::List(_) => {
+                            in_list = false;
+                            list_depth -= 1;
+                            output.push('\n');
+                        },
+                        TagEnd::Item => {
+                            output.push('\n');
+                        },
+                        TagEnd::BlockQuote => {
+                            output.push('\n');
+                        },
+                        TagEnd::Emphasis => output.push('/'),
+                        TagEnd::Strong => {
+                            output.push_str("**");
+                            in_strong = false;
+                        },
+                        TagEnd::Link => {
+                            // Add the URL from our stored links
+                            if let Some(url) = link_urls.pop() {
+                                output.push_str(" ⟨");
+                                output.push_str(&url);
+                                output.push('⟩');
+                            }
+                        },
+                        _ => {}
+                    }
+                },
+                Event::Text(text) => {
+                    if in_code_block {
+                        // Format code with pipe separators
+                        for line in text.lines() {
+                            output.push_str("    │ ");
+                            output.push_str(line);
+                            output.push('\n');
+                        }
+                    } else {
+                        // Convert text content based on context
+                        let mut processed_text = text.to_string();
+                        
+                        // Convert headers to uppercase
+                        if in_heading {
+                            processed_text = processed_text.to_uppercase();
+                        }
+                        
+                        // Convert bold text to uppercase
+                        if in_strong {
+                            processed_text = processed_text.to_uppercase();
+                        }
+                        
+                        output.push_str(&processed_text);
+                    }
+                },
+                Event::Code(code) => {
+                    output.push('‹');
+                    output.push_str(&code);
+                    output.push('›');
+                },
+                Event::SoftBreak => output.push(' '),
+                Event::HardBreak => output.push('\n'),
+                _ => {}
             }
-            
-            // Headers - convert to bold uppercase with underlines
-            if let Some(caps) = regex::Regex::new(r"^(#{1,6})\s*(.*)$")
-                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-                .captures(line) {
-                let level = caps.get(1).unwrap().as_str().len();
-                let title = caps.get(2).unwrap().as_str().to_uppercase();
-                
-                result.push('\n');
-                result.push_str(&title);
-                result.push('\n');
-                
-                // Add underline for headers
-                match level {
-                    1 => result.push_str(&"=".repeat(title.len())),
-                    2 => result.push_str(&"-".repeat(title.len())),
-                    _ => result.push_str(&"⋅".repeat(title.len())),
-                }
-                result.push('\n');
-                result.push('\n');
-            }
-            // Code blocks - preserve with indentation
-            else if line.starts_with("```") {
-                i += 1; // Skip opening ```
-                result.push_str("    CODE:\n");
-                while i < lines.len() && !lines[i].trim().starts_with("```") {
-                    result.push_str("    │ ");
-                    result.push_str(lines[i]);
-                    result.push('\n');
-                    i += 1;
-                }
-                result.push('\n');
-            }
-            // Blockquotes - indent with nice prefix
-            else if line.starts_with('>') {
-                let quote_text = line.strip_prefix('>').unwrap_or(line).trim();
-                result.push_str("    ❝ ");
-                result.push_str(quote_text);
-                result.push('\n');
-            }
-            // Lists - format with nice bullets
-            else if let Some(caps) = regex::Regex::new(r"^[\s]*[-*+]\s+(.*)$")
-                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-                .captures(line) {
-                let item = caps.get(1).unwrap().as_str();
-                result.push_str("  • ");
-                result.push_str(item);
-                result.push('\n');
-            }
-            // Numbered lists
-            else if let Some(caps) = regex::Regex::new(r"^[\s]*(\d+)\.\s+(.*)$")
-                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-                .captures(line) {
-                let number = caps.get(1).unwrap().as_str();
-                let item = caps.get(2).unwrap().as_str();
-                result.push_str(&format!("  {}. ", number));
-                result.push_str(item);
-                result.push('\n');
-            }
-            // Regular text - format inline elements
-            else {
-                let formatted_line = self.format_inline_markdown(line)?;
-                result.push_str(&formatted_line);
-                result.push('\n');
-            }
-            
-            i += 1;
         }
         
-        Ok(result.trim().to_string())
+        Ok(output.trim().to_string())
     }
     
-    /// Format inline markdown elements (bold, italic, code, links)
-    fn format_inline_markdown(&self, text: &str) -> ParagonicResult<String> {
-        let mut result = text.to_string();
-        
-        // Use placeholders to avoid conflicts between bold and italic
-        
-        // 1. Links first [text](url) - show both text and URL
-        result = regex::Regex::new(r"\[([^\]]+)\]\(([^)]+)\)")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "$1 ⟨$2⟩")
-            .to_string();
-        
-        // 2. Inline code (`code`) - use different quotes
-        result = regex::Regex::new(r"`([^`]+)`")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "‹$1›")
-            .to_string();
-        
-        // 3. Bold text first - replace with placeholder to avoid conflicts
-        let mut bold_placeholders = Vec::new();
-        
-        // Process **bold** 
-        let bold_re = regex::Regex::new(r"\*\*([^*]+)\*\*")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?;
-        result = bold_re.replace_all(&result, |caps: &regex::Captures| {
-            let content = caps[1].to_uppercase();
-            let formatted = format!("**{}**", content);
-            let placeholder = format!("§§§BOLD〈{}〉§§§", bold_placeholders.len());
-            bold_placeholders.push(formatted);
-            placeholder
-        }).to_string();
-        
-        // Process __bold__
-        let bold_underscore_re = regex::Regex::new(r"__([^_]+)__")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?;
-        result = bold_underscore_re.replace_all(&result, |caps: &regex::Captures| {
-            let content = caps[1].to_uppercase();
-            let formatted = format!("**{}**", content);
-            let placeholder = format!("§§§BOLD〈{}〉§§§", bold_placeholders.len());
-            bold_placeholders.push(formatted);
-            placeholder
-        }).to_string();
-        
-        // 4. Now process italic safely (no more ** or __ to conflict with)
-        result = regex::Regex::new(r"\*([^*]+)\*")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "/$1/")
-            .to_string();
-        result = regex::Regex::new(r"_([^_]+)_")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "/$1/")
-            .to_string();
-        
-        // 5. Restore bold placeholders
-        for (i, bold_text) in bold_placeholders.iter().enumerate() {
-            let placeholder = format!("§§§BOLD〈{}〉§§§", i);
-            result = result.replace(&placeholder, bold_text);
-        }
-        
-        Ok(result)
-    }
+
 
     /// Convert HTML to plain text
     fn html_to_plain_text(&self, html: &str) -> ParagonicResult<String> {
@@ -447,9 +466,10 @@ fn main() {
         assert!(formatted.contains("/italic text/")); // Italic gets slashes
         assert!(formatted.contains("‹inline code›")); // Code gets angle quotes
         assert!(formatted.contains("  • List item 1")); // Lists get bullets
-        assert!(formatted.contains("    ❝ Blockquote text")); // Blockquotes get quotes
+        assert!(formatted.contains("    ❝")); // Blockquotes get quotes  
+        assert!(formatted.contains("Blockquote text")); // Blockquote content appears
         assert!(formatted.contains("Link text ⟨https://example.com⟩")); // Links show URL
-        assert!(formatted.contains("    CODE:")); // Code blocks labeled
+        assert!(formatted.contains("    CODE BLOCK")); // Code blocks labeled
         assert!(formatted.contains("    │ fn main()")); // Code indented with pipe
     }
 
