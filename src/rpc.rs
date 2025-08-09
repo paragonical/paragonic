@@ -183,7 +183,7 @@ impl ParagonicServer {
                     config.continuation_indent = continuation_indent as usize;
                 }
                 if let Some(strip_markdown) = config_obj.get("strip_markdown").and_then(|v| v.as_bool()) {
-                    config.strip_markdown = strip_markdown;
+                    config.format_markdown = strip_markdown;
                 }
                 if let Some(preserve_paragraphs) = config_obj.get("preserve_paragraphs").and_then(|v| v.as_bool()) {
                     config.preserve_paragraphs = preserve_paragraphs;

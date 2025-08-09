@@ -113,7 +113,7 @@ function M.send_message_formatted(message, model, format_config)
         max_width = 80,
         include_diamond = true,
         continuation_indent = 3,
-        strip_markdown = true,
+        format_markdown = true,
         preserve_paragraphs = true
     }
     
@@ -718,7 +718,7 @@ function M.send_message_command()
         max_width = format_width,
         include_diamond = true,
         continuation_indent = 3,
-        strip_markdown = true,
+        format_markdown = true,
         preserve_paragraphs = true
     }
     

@@ -1,4 +1,4 @@
-use comrak::{markdown_to_html, ComrakOptions};
+// Note: comrak is available if needed for more complex markdown processing
 use serde::{Deserialize, Serialize};
 use crate::error::{ParagonicError, ParagonicResult};
 
@@ -11,8 +11,8 @@ pub struct FormatConfig {
     pub include_diamond: bool,
     /// Indentation for continuation lines (in spaces)
     pub continuation_indent: usize,
-    /// Whether to convert markdown to plain text
-    pub strip_markdown: bool,
+    /// Whether to format markdown as nice plain text (like groff/nroff)
+    pub format_markdown: bool,
     /// Whether to preserve paragraph breaks
     pub preserve_paragraphs: bool,
 }
@@ -23,7 +23,7 @@ impl Default for FormatConfig {
             max_width: 80,
             include_diamond: true,
             continuation_indent: 3,
-            strip_markdown: true,
+            format_markdown: true,
             preserve_paragraphs: true,
         }
     }
@@ -49,18 +49,18 @@ impl TextFormatter {
 
     /// Format text for Neovim display with diamond prefix and indentation
     pub fn format_for_neovim(&self, text: &str) -> ParagonicResult<String> {
-        // First, strip markdown if configured
-        let plain_text = if self.config.strip_markdown {
-            self.strip_markdown(text)?
+        // First, format markdown if configured
+        let formatted_text = if self.config.format_markdown {
+            self.format_markdown(text)?
         } else {
             text.to_string()
         };
 
         // Split into paragraphs
         let paragraphs = if self.config.preserve_paragraphs {
-            self.split_paragraphs(&plain_text)
+            self.split_paragraphs(&formatted_text)
         } else {
-            vec![plain_text]
+            vec![formatted_text]
         };
 
         let mut formatted_lines = Vec::new();
@@ -95,17 +95,135 @@ impl TextFormatter {
         Ok(formatted_lines.join("\n"))
     }
 
-    /// Strip markdown formatting from text
-    fn strip_markdown(&self, text: &str) -> ParagonicResult<String> {
-        let mut options = ComrakOptions::default();
-        options.render.unsafe_ = true; // Allow unsafe HTML for better conversion
+    /// Format markdown as nicely formatted plain text (like groff/nroff)
+    fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
+        let mut result = String::new();
+        let lines: Vec<&str> = text.lines().collect();
+        let mut i = 0;
         
-        let html = markdown_to_html(text, &options);
+        while i < lines.len() {
+            let line = lines[i].trim();
+            
+            // Skip empty lines but preserve them
+            if line.is_empty() {
+                result.push('\n');
+                i += 1;
+                continue;
+            }
+            
+            // Headers - convert to bold uppercase with underlines
+            if let Some(caps) = regex::Regex::new(r"^(#{1,6})\s*(.*)$")
+                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+                .captures(line) {
+                let level = caps.get(1).unwrap().as_str().len();
+                let title = caps.get(2).unwrap().as_str().to_uppercase();
+                
+                result.push('\n');
+                result.push_str(&title);
+                result.push('\n');
+                
+                // Add underline for headers
+                match level {
+                    1 => result.push_str(&"=".repeat(title.len())),
+                    2 => result.push_str(&"-".repeat(title.len())),
+                    _ => result.push_str(&"⋅".repeat(title.len())),
+                }
+                result.push('\n');
+                result.push('\n');
+            }
+            // Code blocks - preserve with indentation
+            else if line.starts_with("```") {
+                i += 1; // Skip opening ```
+                result.push_str("    CODE:\n");
+                while i < lines.len() && !lines[i].trim().starts_with("```") {
+                    result.push_str("    │ ");
+                    result.push_str(lines[i]);
+                    result.push('\n');
+                    i += 1;
+                }
+                result.push('\n');
+            }
+            // Blockquotes - indent with nice prefix
+            else if line.starts_with('>') {
+                let quote_text = line.strip_prefix('>').unwrap_or(line).trim();
+                result.push_str("    ❝ ");
+                result.push_str(quote_text);
+                result.push('\n');
+            }
+            // Lists - format with nice bullets
+            else if let Some(caps) = regex::Regex::new(r"^[\s]*[-*+]\s+(.*)$")
+                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+                .captures(line) {
+                let item = caps.get(1).unwrap().as_str();
+                result.push_str("  • ");
+                result.push_str(item);
+                result.push('\n');
+            }
+            // Numbered lists
+            else if let Some(caps) = regex::Regex::new(r"^[\s]*(\d+)\.\s+(.*)$")
+                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+                .captures(line) {
+                let number = caps.get(1).unwrap().as_str();
+                let item = caps.get(2).unwrap().as_str();
+                result.push_str(&format!("  {}. ", number));
+                result.push_str(item);
+                result.push('\n');
+            }
+            // Regular text - format inline elements
+            else {
+                let formatted_line = self.format_inline_markdown(line)?;
+                result.push_str(&formatted_line);
+                result.push('\n');
+            }
+            
+            i += 1;
+        }
         
-        // Convert HTML back to plain text
-        let plain_text = self.html_to_plain_text(&html)?;
+        Ok(result.trim().to_string())
+    }
+    
+    /// Format inline markdown elements (bold, italic, code, links)
+    fn format_inline_markdown(&self, text: &str) -> ParagonicResult<String> {
+        let mut result = text.to_string();
         
-        Ok(plain_text)
+        // Bold text (**text** or __text__) - use Unicode bold-like chars or CAPS
+        result = regex::Regex::new(r"\*\*([^*]+)\*\*")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                format!("**{}**", caps[1].to_uppercase())
+            })
+            .to_string();
+        result = regex::Regex::new(r"__([^_]+)__")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                format!("**{}**", caps[1].to_uppercase())
+            })
+            .to_string();
+        
+        // Italic text (*text* or _text_) - use surrounding chars
+        // Note: We need to handle these after bold to avoid conflicts
+        result = regex::Regex::new(r"\*([^*]+)\*")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "/$1/")
+            .to_string();
+        result = regex::Regex::new(r"_([^_]+)_")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "/$1/")
+            .to_string();
+        
+        // Inline code (`code`) - use different quotes
+        result = regex::Regex::new(r"`([^`]+)`")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "‹$1›")
+            .to_string();
+        
+        // Links [text](url) - show both text and URL
+        result = regex::Regex::new(r"\[([^\]]+)\]\(([^)]+)\)")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "$1 ⟨$2⟩")
+            .to_string();
+        
+        Ok(result)
     }
 
     /// Convert HTML to plain text
@@ -239,7 +357,7 @@ mod tests {
             max_width: 60,
             include_diamond: false,
             continuation_indent: 2,
-            strip_markdown: false,
+            format_markdown: false,
             preserve_paragraphs: false,
         };
         
@@ -280,6 +398,44 @@ mod tests {
     }
 
     #[test]
+    fn test_format_markdown() {
+        let formatter = TextFormatter::new();
+        let markdown_text = r#"# Header
+        
+**Bold text** and *italic text* and `inline code`.
+
+- List item 1
+- List item 2
+
+> Blockquote text
+
+[Link text](https://example.com)
+
+```rust
+fn main() {
+    println!("code block");
+}
+```"#;
+        
+        let formatted = formatter.format_markdown(markdown_text).unwrap();
+        
+        // Debug: print the formatted output
+        println!("Formatted output:\n{}", formatted);
+        
+        // Should format markdown nicely, not remove it
+        assert!(formatted.contains("HEADER"));  // Headers become uppercase
+        assert!(formatted.contains("===="));    // With underlines
+        assert!(formatted.contains("**BOLD TEXT**")); // Bold becomes uppercase
+        assert!(formatted.contains("/italic text/")); // Italic gets slashes
+        assert!(formatted.contains("‹inline code›")); // Code gets angle quotes
+        assert!(formatted.contains("  • List item 1")); // Lists get bullets
+        assert!(formatted.contains("    ❝ Blockquote text")); // Blockquotes get quotes
+        assert!(formatted.contains("Link text ⟨https://example.com⟩")); // Links show URL
+        assert!(formatted.contains("    CODE:")); // Code blocks labeled
+        assert!(formatted.contains("    │ fn main()")); // Code indented with pipe
+    }
+
+    #[test]
     fn test_format_for_neovim_without_diamond() {
         let mut formatter = TextFormatter::new();
         formatter.config.include_diamond = false;
@@ -291,18 +447,7 @@ mod tests {
         assert!(formatted.starts_with("   ")); // should start with indentation
     }
 
-    #[test]
-    fn test_strip_markdown() {
-        let formatter = TextFormatter::new();
-        let markdown = "# Title\n\nThis is **bold** and *italic* text with a [link](http://example.com).";
-        let plain = formatter.strip_markdown(markdown).unwrap();
-        
-        assert!(!plain.contains("**"));
-        assert!(!plain.contains("*"));
-        assert!(!plain.contains("["));
-        assert!(!plain.contains("]"));
-        assert!(!plain.contains("#"));
-    }
+
 
     #[test]
     fn test_format_with_timing() {

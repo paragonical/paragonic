@@ -1113,7 +1113,7 @@ function M:formatted_chat_completion(model, message, format_config)
             max_width = 80,
             include_diamond = true,
             continuation_indent = 3,
-            strip_markdown = true,
+            format_markdown = true,
             preserve_paragraphs = true
         }
     end
