@@ -73,10 +73,10 @@ impl MarkdownSourceFormatter {
         options.extension.tagfilter = false;
         options.extension.table = true;
         options.extension.autolink = true;
+        options.extension.description_lists = true; // Pandoc-style definition lists
         options.extension.tasklist = true;
         options.extension.superscript = true;
         options.extension.footnotes = true;
-        options.extension.description_lists = true; // Pandoc-style definition lists
 
         let root = parse_document(&arena, input, &options);
 
@@ -124,6 +124,15 @@ impl<'a> AstFormatter<'a> {
             }
             NodeValue::CodeBlock(_) => {
                 self.format_code_block(node)?;
+            }
+            NodeValue::Paragraph => {
+                self.format_paragraph(node)?;
+            }
+            NodeValue::DescriptionList => {
+                self.format_description_list(node)?;
+            }
+            NodeValue::DescriptionItem(_) => {
+                self.format_description_item(node)?;
             }
             _ => {
                 // TODO: Handle other node types
@@ -326,6 +335,78 @@ impl<'a> AstFormatter<'a> {
         // Add closing fence
         self.output.push_str("```\n");
         
+        Ok(())
+    }
+
+    fn format_paragraph(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Add spacing before paragraph - ensure we have proper spacing after headers
+        if !self.output.is_empty() {
+            if self.last_was_header {
+                // Add blank line after header
+                self.output.push('\n');
+                self.last_was_header = false;
+            } else if !self.output.ends_with("\n\n") {
+                // Ensure blank line between paragraphs  
+                if !self.output.ends_with('\n') {
+                    self.output.push('\n');
+                }
+                self.output.push('\n');
+            }
+        }
+        
+        // Collect text content from paragraph
+        self.collect_text_content(node)?;
+        self.output.push('\n');
+        
+        Ok(())
+    }
+
+    fn format_description_list(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Process description list items
+        let children: Vec<_> = node.children().collect();
+        for (i, child) in children.iter().enumerate() {
+            self.format_node(child)?;
+            
+            // Remove the trailing newline from the last item
+            if i == children.len() - 1 && self.output.ends_with("\n\n") {
+                self.output.pop(); // Remove the extra trailing newline
+            }
+        }
+        Ok(())
+    }
+
+    fn format_description_item(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Description items contain terms and descriptions as children
+        let mut has_processed_term = false;
+        
+        for child in node.children() {
+            match &child.data.borrow().value {
+                NodeValue::DescriptionTerm => {
+                    // Add spacing before term if this isn't the first definition item
+                    if !self.output.is_empty() && !self.output.ends_with("\n\n") && has_processed_term {
+                        self.output.push('\n');
+                    }
+                    
+                    // Format the term
+                    self.collect_text_content(child)?;
+                    self.output.push('\n');
+                    has_processed_term = true;
+                }
+                NodeValue::DescriptionDetails => {
+                    // Format the definition with `:   ` prefix
+                    self.output.push_str(":   ");
+                    self.collect_text_content(child)?;
+                    self.output.push('\n');
+                }
+                _ => {
+                    // Process other children
+                    self.format_node(child)?;
+                }
+            }
+        }
+        
+        // Add blank line after each definition item for proper spacing
+        self.output.push('\n');
         Ok(())
     }
 
@@ -593,6 +674,32 @@ mod tests {
         
         // Should have 2 blank lines before the code block
         let expected = "\n\n```typescript\ninterface User {\n  name: string;\n}\n```\n";
+        assert_eq!(result, expected);
+    }
+
+    // === Definition List Tests (Pandoc syntax) ===
+    
+    #[test]
+    fn test_format_simple_definition_list() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "Term 1\n:   Definition for term 1\n\nTerm 2\n:   Definition for term 2";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format definition lists with proper spacing
+        let expected = "Term 1\n:   Definition for term 1\n\nTerm 2\n:   Definition for term 2\n";
+        assert_eq!(result, expected);
+    }
+
+    // === Mixed Content Tests (improve text handling) ===
+    
+    #[test]
+    fn test_format_mixed_content_with_paragraphs() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "# Header\n\nSome text paragraph.\n\n```rust\ncode here\n```\n\nAnother paragraph.";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should handle mixed content properly
+        let expected = "\n\n\n\n# Header\n\nSome text paragraph.\n\n```rust\ncode here\n```\n\nAnother paragraph.\n";
         assert_eq!(result, expected);
     }
 }
