@@ -731,18 +731,47 @@ function M.send_debug_markdown_test()
         return
     end
 
+    -- Parse JSON response using enhanced parser (same as formatted_chat_completion)
+    local utils = require("paragonic.utils")
+    local parsed_response = utils.parse_json_response_enhanced(response)
+    if not parsed_response then
+        vim.notify("Failed to parse debug test response", vim.log.levels.ERROR)
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"🛔 Debug test failed: Failed to parse response"})
+        return
+    end
+
+    -- Check for error in response
+    if parsed_response.error then
+        local error_msg = parsed_response.error.message or "Unknown error"
+        vim.notify("Debug test error: " .. error_msg, vim.log.levels.ERROR)
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"🛔 Debug test error: " .. error_msg})
+        return
+    end
+
+    -- Extract formatted content from response
+    local formatted_content = nil
+    if parsed_response.result then
+        formatted_content = parsed_response.result
+    end
+
+    if not formatted_content then
+        vim.notify("Debug test response missing result", vim.log.levels.ERROR)
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"🛔 Debug test failed: Missing result"})
+        return
+    end
+
     -- Add debug test header
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"", "=== DEBUG MARKDOWN TEST RESPONSE ==="})
 
-    -- Add the response to the buffer
+    -- Split the formatted content into lines
     local response_lines = {}
-    for line in response:gmatch("[^\r\n]+") do
+    for line in formatted_content:gmatch("[^\r\n]+") do
         table.insert(response_lines, line)
     end
 
     -- If no lines were extracted, add the original response as a single line
     if #response_lines == 0 then
-        table.insert(response_lines, response)
+        table.insert(response_lines, formatted_content)
     end
 
     -- Add response to buffer
