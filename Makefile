@@ -41,6 +41,8 @@ test-unit-rpc:
 	@$(NEOVIM_LUA) $(UNIT_DIR)/rpc/test_rpc_standalone.lua
 	@echo "Testing RPC model listing..."
 	@$(NEOVIM_LUA) $(UNIT_DIR)/rpc/test_rpc_standalone_list_models.lua
+	@echo "Testing RPC timeout and retry behavior..."
+	@$(NEOVIM_LUA) $(UNIT_DIR)/rpc/test_timeout_retry_simple.lua
 	@echo "✓ RPC unit tests completed (connection tests temporarily disabled)"
 
 test-unit-utils:
@@ -70,6 +72,8 @@ test-integration-chat:
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/chat/test_chat_backend.lua
 	@echo "Testing interactive chat..."
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/chat/test_chat_interactive.lua
+	@echo "Testing chat visual feedback..."
+	@$(NEOVIM_LUA) $(UNIT_DIR)/chat/test_chat_visual_feedback_simple.lua
 	@echo "✓ Chat integration tests completed"
 
 test-integration-search:
@@ -138,6 +142,15 @@ test-dev: test-unit test-integration-search
 	@echo ""
 	@echo "✓ Development test completed"
 
+# Timeout and retry behavior tests
+.PHONY: test-timeout-retry
+
+test-timeout-retry:
+	@echo "=== Running Timeout and Retry Behavior Tests ==="
+	@echo "Testing comprehensive timeout/retry behavior..."
+	@$(NEOVIM_LUA) $(UNIT_DIR)/test_timeout_retry_suite.lua
+	@echo "✓ Timeout and retry tests completed"
+
 # Test with backend running
 .PHONY: test-with-backend
 
@@ -169,6 +182,7 @@ help:
 	@echo "  test-e2e          - All E2E tests (full Neovim environment)"
 	@echo "  test-all          - All tests (unit + e2e, integration requires backend)"
 	@echo "  test-dev          - Development test (unit + search)"
+	@echo "  test-timeout-retry - Timeout and retry behavior tests"
 	@echo "  test-with-backend - Integration tests (requires backend running)"
 	@echo ""
 	@echo "Unit test categories:"

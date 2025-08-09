@@ -21,7 +21,7 @@ impl Default for OllamaConfig {
     fn default() -> Self {
         Self {
             base_url: "http://localhost:11434".to_string(),
-            timeout_seconds: 30,
+            timeout_seconds: 120, // Increased to 2 minutes for complex requests
         }
     }
 }
