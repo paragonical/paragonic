@@ -181,6 +181,8 @@ struct AstFormatter<'a> {
     output: String,
     current_indent: usize,
     last_was_header: bool,
+    blockquote_depth: usize,
+    prev_blockquote_depth: usize,
 }
 
 impl<'a> AstFormatter<'a> {
@@ -190,7 +192,53 @@ impl<'a> AstFormatter<'a> {
             output: String::new(),
             current_indent: 0,
             last_was_header: false,
+            blockquote_depth: 0,
+            prev_blockquote_depth: 0,
         }
+    }
+
+    /// Get the current blockquote nesting depth
+    fn get_blockquote_depth(&self) -> usize {
+        self.blockquote_depth
+    }
+
+    /// Increment the blockquote nesting depth
+    fn increment_blockquote_depth(&mut self) {
+        self.prev_blockquote_depth = self.blockquote_depth;
+        self.blockquote_depth += 1;
+    }
+
+    /// Decrement the blockquote nesting depth
+    fn decrement_blockquote_depth(&mut self) {
+        self.prev_blockquote_depth = self.blockquote_depth;
+        if self.blockquote_depth > 0 {
+            self.blockquote_depth -= 1;
+        }
+    }
+
+    /// Add the appropriate blockquote prefix based on current depth
+    fn add_blockquote_prefix(&mut self) {
+        for i in 0..self.blockquote_depth {
+            self.output.push('>');
+            if i < self.blockquote_depth - 1 {
+                // Add space between '>' markers for nested levels
+                self.output.push(' ');
+            }
+        }
+        if self.blockquote_depth > 0 {
+            self.output.push(' ');
+        }
+    }
+
+    /// Add an empty blockquote line at the current depth
+    fn add_empty_blockquote_line(&mut self) {
+        for i in 0..self.blockquote_depth.max(1) {
+            self.output.push('>');
+            if i < self.blockquote_depth.max(1) - 1 {
+                self.output.push(' ');
+            }
+        }
+        self.output.push('\n');
     }
 
     fn format_node(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
@@ -262,6 +310,9 @@ impl<'a> AstFormatter<'a> {
     }
 
     fn format_blockquote(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Increment depth when entering a blockquote
+        self.increment_blockquote_depth();
+        
         // Process children and format as blockquote
         for child in node.children() {
             match &child.data.borrow().value {
@@ -270,11 +321,14 @@ impl<'a> AstFormatter<'a> {
                     self.format_blockquote_paragraph(child)?;
                 }
                 _ => {
-                    // Handle other node types within blockquotes
+                    // Handle other node types within blockquotes (including nested blockquotes)
                     self.format_node(child)?;
                 }
             }
         }
+        
+        // Decrement depth when exiting a blockquote
+        self.decrement_blockquote_depth();
         Ok(())
     }
 
@@ -289,8 +343,7 @@ impl<'a> AstFormatter<'a> {
                 NodeValue::SoftBreak | NodeValue::LineBreak => {
                     // End current line and start a new blockquote line
                     if !current_line.is_empty() {
-                        self.output.push('>');
-                        self.output.push(' ');
+                        self.add_blockquote_prefix();
                         self.output.push_str(&current_line);
                         self.output.push('\n');
                         current_line.clear();
@@ -305,8 +358,7 @@ impl<'a> AstFormatter<'a> {
         
         // Handle the last line if there's content
         if !current_line.is_empty() {
-            self.output.push('>');
-            self.output.push(' ');
+            self.add_blockquote_prefix();
             self.output.push_str(&current_line);
             self.output.push('\n');
         }
@@ -669,6 +721,80 @@ mod tests {
         // Should format with proper nesting levels and spacing
         let expected = "> Outer quote\n>\n> > Nested quote\n>\n> Back to outer\n";
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_ast_formatter_with_blockquote_depth_tracking() {
+        let config = MarkdownFormatConfig::default();
+        let mut formatter = AstFormatter::new(&config);
+        
+        // Test that blockquote depth tracking works correctly
+        assert_eq!(formatter.get_blockquote_depth(), 0);
+        
+        formatter.increment_blockquote_depth();
+        assert_eq!(formatter.get_blockquote_depth(), 1);
+        
+        formatter.increment_blockquote_depth();
+        assert_eq!(formatter.get_blockquote_depth(), 2);
+        
+        formatter.decrement_blockquote_depth();
+        assert_eq!(formatter.get_blockquote_depth(), 1);
+        
+        formatter.decrement_blockquote_depth();
+        assert_eq!(formatter.get_blockquote_depth(), 0);
+    }
+
+    #[test]
+    fn test_debug_ast_structure_for_nested_blockquotes() {
+        use comrak::nodes::{AstNode, NodeValue};
+        use comrak::{parse_document, Arena, ComrakOptions};
+        
+        let arena = Arena::new();
+        let mut options = ComrakOptions::default();
+        options.extension.strikethrough = true;
+        options.extension.tagfilter = false;
+        options.extension.table = true;
+        options.extension.autolink = true;
+        options.extension.description_lists = true;
+        options.extension.tasklist = true;
+        options.extension.superscript = true;
+        options.extension.footnotes = true;
+
+        let input = "> Outer quote\n>> Nested quote\n> Back to outer";
+        let root = parse_document(&arena, input, &options);
+        
+        // This test will help us understand how comrak parses nested blockquotes
+        // We expect nested BlockQuote nodes, not text with >> markers
+        let mut found_nested = false;
+        fn visit_node<'a>(node: &'a AstNode<'a>, depth: usize, found_nested: &mut bool) {
+            let indent = "  ".repeat(depth);
+            match &node.data.borrow().value {
+                NodeValue::BlockQuote => {
+                    println!("{}BlockQuote", indent);
+                    if depth > 1 {
+                        *found_nested = true;
+                    }
+                }
+                NodeValue::Paragraph => {
+                    println!("{}Paragraph", indent);
+                }
+                NodeValue::Text(text) => {
+                    println!("{}Text: '{}'", indent, text);
+                }
+                _ => {
+                    println!("{}Other: {:?}", indent, node.data.borrow().value);
+                }
+            }
+            for child in node.children() {
+                visit_node(child, depth + 1, found_nested);
+            }
+        }
+        
+        visit_node(root, 0, &mut found_nested);
+        
+        // For now, just check that we have blockquotes in the AST
+        // The real implementation will handle the nesting properly
+        assert!(found_nested, "Should find nested blockquote structure");
     }
 
     #[test]
