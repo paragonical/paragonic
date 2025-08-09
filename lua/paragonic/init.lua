@@ -61,6 +61,8 @@ function M.setup(opts)
         M.chat.send_message_command()
         M.debug.debug_print("WRAPPER: send_message_command completed", "debug")
         end, opts = {}},
+        {name = "ParagonicSendBackward", func = M.chat.send_message_backward_only, opts = {}},
+        {name = "ParagonicSendForward", func = M.chat.send_message_forward_only, opts = {}},
         {name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {}},
         {name = "ParagonicDebugMarkdown", func = M.chat.send_debug_markdown_test, opts = {}},
                 {name = "ParagonicTest", func = function()

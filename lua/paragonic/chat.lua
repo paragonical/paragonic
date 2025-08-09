@@ -282,7 +282,11 @@ function M.open_chat()
         -- Add initial content with default model information
         vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
             "# Paragonic Chat",
-            "Type your message below and use :ParagonicSend or <ESC><CR> to send:",
+            "Multi-line input extraction modes:",
+            "• <CR>: Send complete range (backward + forward to tombstones)",
+            "• <leader>b: Send backward only (cursor to previous ∎)",
+            "• <leader>f: Send forward only (cursor to next ∎ or end)",
+            "• <leader><CR>: Send with debug output",
             "∎",
             ""
         })
@@ -293,9 +297,11 @@ function M.open_chat()
         -- Set filetype for syntax highlighting
         vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
 
-        -- Set up buffer-local commands
-        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true})
-        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader><CR>", ":ParagonicSendDebug<CR>", {noremap = true, silent = true})
+        -- Set up buffer-local commands for different extraction modes
+        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true, desc = "Send message (complete range)"})
+        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader>b", ":ParagonicSendBackward<CR>", {noremap = true, silent = true, desc = "Send backward to tombstone"})
+        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader>f", ":ParagonicSendForward<CR>", {noremap = true, silent = true, desc = "Send forward to tombstone"})
+        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader><CR>", ":ParagonicSendDebug<CR>", {noremap = true, silent = true, desc = "Send with debug output"})
 
     end
 
@@ -328,7 +334,7 @@ function M.send_message_command_legacy()
     debug.debug_print("✅ Buffer check passed", "debug")
     
     -- Extract multi-line message from cursor to previous tombstone
-    local message, start_line = extract_message_from_cursor_to_tombstone(current_buf)
+    local message, start_line = extract_backward_to_tombstone(current_buf)
     local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
     
     debug.debug_print("📝 Message: " .. message:sub(1, 50), "debug")
@@ -503,7 +509,7 @@ function M.send_message_command_debug()
     end
     
     -- Extract multi-line message from cursor to previous tombstone
-    local message, start_line = extract_message_from_cursor_to_tombstone(current_buf)
+    local message, start_line = extract_backward_to_tombstone(current_buf)
     local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
     
     -- Skip empty lines or lines that start with #
@@ -785,10 +791,10 @@ function M.send_debug_markdown_test()
     vim.notify("Debug markdown test completed - check formatting above", vim.log.levels.INFO)
 end
 
--- Helper function to extract text from cursor to previous tombstone
+-- Helper function to extract text backward from cursor to previous tombstone
 -- This enables multi-line input by capturing all lines from the cursor 
 -- position back to the previous ∎ tombstone marker
-local function extract_message_from_cursor_to_tombstone(current_buf)
+local function extract_backward_to_tombstone(current_buf)
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
     local cursor_line = cursor_pos[1] - 1  -- Convert to 0-indexed
     
@@ -825,6 +831,73 @@ local function extract_message_from_cursor_to_tombstone(current_buf)
     return message, start_line
 end
 
+-- Helper function to extract text forward from cursor to next tombstone or end of buffer
+local function extract_forward_to_tombstone(current_buf)
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local cursor_line = cursor_pos[1] - 1  -- Convert to 0-indexed
+    local total_lines = vim.api.nvim_buf_line_count(current_buf)
+    
+    -- Get all lines from cursor to end of buffer
+    local all_lines = vim.api.nvim_buf_get_lines(current_buf, cursor_line, total_lines, false)
+    
+    -- Find the next tombstone marker
+    local end_line = #all_lines
+    for i = 1, #all_lines do
+        if all_lines[i]:match("^%s*∎%s*$") then
+            end_line = i - 1  -- Stop before the tombstone
+            break
+        end
+    end
+    
+    -- Extract lines from cursor to next tombstone (or end of buffer)
+    local message_lines = {}
+    for i = 1, end_line do
+        table.insert(message_lines, all_lines[i])
+    end
+    
+    return table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+-- Helper function to extract complete range from previous tombstone to next tombstone
+local function extract_complete_range(current_buf)
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local cursor_line = cursor_pos[1] - 1  -- Convert to 0-indexed
+    local total_lines = vim.api.nvim_buf_line_count(current_buf)
+    
+    -- Get all lines in buffer
+    local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, total_lines, false)
+    
+    -- Find previous tombstone (search backward from cursor)
+    local start_line = 1  -- Default to start of buffer (1-indexed for line extraction)
+    for i = cursor_line, 1, -1 do
+        if all_lines[i] and all_lines[i]:match("^%s*∎%s*$") then
+            start_line = i + 1  -- Start after the tombstone
+            break
+        end
+    end
+    
+    -- Find next tombstone (search forward from cursor)
+    local end_line = #all_lines  -- Default to end of buffer
+    for i = cursor_line + 1, #all_lines do
+        if all_lines[i] and all_lines[i]:match("^%s*∎%s*$") then
+            end_line = i - 1  -- Stop before the tombstone
+            break
+        end
+    end
+    
+    -- Extract lines in the range
+    local message_lines = {}
+    for i = start_line, end_line do
+        if all_lines[i] then
+            table.insert(message_lines, all_lines[i])
+        end
+    end
+    
+    local result = table.concat(message_lines, "\n")
+    -- Only trim trailing whitespace, preserve leading structure and empty lines
+    return result:gsub("%s+$", "")
+end
+
 function M.send_message_command()
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
@@ -836,7 +909,7 @@ function M.send_message_command()
     end
     
     -- Extract multi-line message from cursor to previous tombstone
-    local message, start_line = extract_message_from_cursor_to_tombstone(current_buf)
+    local message, start_line = extract_backward_to_tombstone(current_buf)
     local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
     
     -- Debug: Show what was extracted
@@ -912,5 +985,79 @@ function M.send_message_command()
     -- Notify success
     vim.notify("Message sent successfully (server-formatted)", vim.log.levels.INFO)
 end
+
+-- Alternative send functions for different extraction modes
+function M.send_message_backward_only()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Extract only backward from cursor to previous tombstone
+    local message, start_line = extract_backward_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
+    
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    vim.notify("📤 Sending (backward only): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""), vim.log.levels.INFO)
+    
+    -- Get and send to backend
+    local backend = require("paragonic.backend")
+    local success, response = backend.send_message(message, "llama2")
+    
+    if success then
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"", "∎"})
+        local new_line_num = line_num + 3
+        vim.api.nvim_win_set_cursor(0, {new_line_num, 0})
+        vim.notify("Message sent successfully (backward extraction)", vim.log.levels.INFO)
+    else
+        vim.notify("Failed to send message: " .. (response or "unknown error"), vim.log.levels.ERROR)
+    end
+end
+
+function M.send_message_forward_only()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Extract only forward from cursor to next tombstone or end
+    local message = extract_forward_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
+    
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    vim.notify("📤 Sending (forward only): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""), vim.log.levels.INFO)
+    
+    -- Get and send to backend
+    local backend = require("paragonic.backend")
+    local success, response = backend.send_message(message, "llama2")
+    
+    if success then
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"", "∎"})
+        local new_line_num = line_num + 3
+        vim.api.nvim_win_set_cursor(0, {new_line_num, 0})
+        vim.notify("Message sent successfully (forward extraction)", vim.log.levels.INFO)
+    else
+        vim.notify("Failed to send message: " .. (response or "unknown error"), vim.log.levels.ERROR)
+    end
+end
+
+-- Test functions for unit testing (only expose when testing)
+M._test_extract_backward_to_tombstone = extract_backward_to_tombstone
+M._test_extract_forward_to_tombstone = extract_forward_to_tombstone
+M._test_extract_complete_range = extract_complete_range
 
 return M
