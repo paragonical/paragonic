@@ -85,6 +85,94 @@ impl MarkdownSourceFormatter {
         
         Ok(formatter.finish())
     }
+
+    /// Detect the nesting level of a blockquote line
+    /// Returns 0 for non-blockquote lines, 1+ for blockquote nesting levels
+    fn detect_blockquote_nesting_level(&self, line: &str) -> usize {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with('>') {
+            return 0;
+        }
+        
+        let mut level = 0;
+        let mut chars = trimmed.chars();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '>' {
+                level += 1;
+            } else if ch.is_whitespace() {
+                // Skip whitespace between > markers
+                continue;
+            } else {
+                // Hit non-whitespace, non->, we're done counting
+                break;
+            }
+        }
+        
+        level
+    }
+
+    /// Format blockquote lines with proper nesting level detection and spacing
+    /// Handles complex nested blockquotes with empty line separators between different levels
+    fn format_blockquote_with_nesting_levels(&self, lines: &[&str]) -> ParagonicResult<String> {
+        let mut result = String::new();
+        let mut prev_level = 0;
+        
+        for line in lines {
+            let current_level = self.detect_blockquote_nesting_level(line);
+            
+            // Add empty line when transitioning between nesting levels
+            if prev_level > 0 && current_level != prev_level {
+                result.push_str(">\n");
+            }
+            
+            // Format the current line based on its nesting level
+            if current_level > 0 {
+                // Extract the content after the '>' markers
+                let content = self.extract_blockquote_content(line);
+                
+                // Build the proper number of '>' markers with correct spacing
+                for i in 0..current_level {
+                    result.push('>');
+                    if i < current_level - 1 {
+                        // Add space between '>' markers for nested levels
+                        result.push(' ');
+                    }
+                }
+                
+                if !content.is_empty() {
+                    result.push(' ');
+                    result.push_str(&content);
+                }
+                result.push('\n');
+                
+                prev_level = current_level;
+            }
+        }
+        
+        Ok(result)
+    }
+
+    /// Extract the text content from a blockquote line, removing the '>' markers
+    fn extract_blockquote_content(&self, line: &str) -> String {
+        let trimmed = line.trim_start();
+        let mut chars = trimmed.chars();
+        
+        // Skip past all '>' markers and whitespace
+        while let Some(ch) = chars.next() {
+            if ch == '>' {
+                continue;
+            } else if ch.is_whitespace() {
+                continue;
+            } else {
+                // Found first non-'>' non-whitespace char, reconstruct from here
+                let remaining: String = chars.collect();
+                return format!("{}{}", ch, remaining);
+            }
+        }
+        
+        String::new()
+    }
 }
 
 /// Internal AST formatter that walks the tree and builds formatted output
@@ -541,6 +629,44 @@ mod tests {
         let result = formatter.format_markdown_source(input).unwrap();
         
         // Should handle nested blockquotes with correct indentation levels
+        let expected = "> Outer quote\n>\n> > Nested quote\n>\n> Back to outer\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_detect_blockquote_nesting_level() {
+        let formatter = MarkdownSourceFormatter::new();
+        
+        // Test single level
+        assert_eq!(formatter.detect_blockquote_nesting_level("> Simple quote"), 1);
+        
+        // Test nested level
+        assert_eq!(formatter.detect_blockquote_nesting_level(">> Nested quote"), 2);
+        
+        // Test deeply nested
+        assert_eq!(formatter.detect_blockquote_nesting_level(">>> Deep quote"), 3);
+        
+        // Test with spaces between markers
+        assert_eq!(formatter.detect_blockquote_nesting_level("> > Spaced quote"), 2);
+        
+        // Test non-blockquote
+        assert_eq!(formatter.detect_blockquote_nesting_level("Regular text"), 0);
+    }
+
+    #[test]
+    fn test_format_blockquote_with_nesting_levels() {
+        let formatter = MarkdownSourceFormatter::new();
+        
+        // Test that nested blockquotes are properly formatted with spacing and correct nesting
+        let lines = vec![
+            "> Outer quote",
+            ">> Nested quote", 
+            "> Back to outer"
+        ];
+        
+        let result = formatter.format_blockquote_with_nesting_levels(&lines).unwrap();
+        
+        // Should format with proper nesting levels and spacing
         let expected = "> Outer quote\n>\n> > Nested quote\n>\n> Back to outer\n";
         assert_eq!(result, expected);
     }
