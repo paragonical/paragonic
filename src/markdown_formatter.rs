@@ -116,6 +116,9 @@ impl<'a> AstFormatter<'a> {
             NodeValue::BlockQuote => {
                 self.format_blockquote(node)?;
             }
+            NodeValue::List(_) => {
+                self.format_list(node)?;
+            }
             _ => {
                 // TODO: Handle other node types
                 // For now, just process children
@@ -205,6 +208,87 @@ impl<'a> AstFormatter<'a> {
             self.output.push('\n');
         }
         
+        Ok(())
+    }
+
+    fn format_list(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Get the list data from the node
+        let borrowed = node.data.borrow();
+        let list_data = match &borrowed.value {
+            NodeValue::List(data) => data,
+            _ => return Err(crate::error::ParagonicError::Internal("Expected List node".to_string())),
+        };
+        
+        let mut item_number = list_data.start;
+        
+        // Process each list item
+        for child in node.children() {
+            match &child.data.borrow().value {
+                NodeValue::Item(_) => {
+                    let is_ordered = matches!(list_data.list_type, comrak::nodes::ListType::Ordered);
+                    self.format_list_item(child, is_ordered, item_number)?;
+                    if is_ordered {
+                        item_number += 1;
+                    }
+                }
+                _ => {
+                    // Handle other node types within lists
+                    self.format_node(child)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn format_list_item(&mut self, node: &'a AstNode<'a>, is_ordered: bool, item_number: usize) -> ParagonicResult<()> {
+        // Add appropriate indentation based on current nesting level
+        for _ in 0..self.current_indent {
+            self.output.push(' ');
+        }
+        
+        // Add list marker
+        if is_ordered {
+            self.output.push_str(&format!("{}. ", item_number));
+        } else {
+            self.output.push_str("- ");
+        }
+        
+        // Increase indentation for nested content
+        let old_indent = self.current_indent;
+        self.current_indent += self.config.base_indent;
+        
+        // Process item content (usually paragraphs)
+        let mut first_child = true;
+        for child in node.children() {
+            match &child.data.borrow().value {
+                NodeValue::Paragraph => {
+                    if first_child {
+                        // For the first paragraph, collect text on the same line as the marker
+                        self.collect_text_content(child)?;
+                        self.output.push('\n');
+                        first_child = false;
+                    } else {
+                        // For subsequent paragraphs, add proper indentation
+                        for _ in 0..self.current_indent {
+                            self.output.push(' ');
+                        }
+                        self.collect_text_content(child)?;
+                        self.output.push('\n');
+                    }
+                }
+                NodeValue::List(_) => {
+                    // Handle nested lists
+                    self.format_node(child)?;
+                }
+                _ => {
+                    // Handle other node types
+                    self.format_node(child)?;
+                }
+            }
+        }
+        
+        // Restore previous indentation
+        self.current_indent = old_indent;
         Ok(())
     }
 
@@ -355,6 +439,61 @@ mod tests {
         
         // Should format with custom base indentation
         let expected = "> Custom indent quote\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_simple_unordered_list() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "- First item\n- Second item\n- Third item";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format unordered list with proper spacing
+        let expected = "- First item\n- Second item\n- Third item\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_simple_ordered_list() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "1. First item\n2. Second item\n3. Third item";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format ordered list with proper numbering
+        let expected = "1. First item\n2. Second item\n3. Third item\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_nested_unordered_list() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "- Top level\n  - Nested item\n  - Another nested\n- Back to top";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format nested list with proper indentation (3 spaces default)
+        let expected = "- Top level\n   - Nested item\n   - Another nested\n- Back to top\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_nested_ordered_list() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "1. Top level\n   1. Nested item\n   2. Another nested\n2. Back to top";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format nested ordered list with proper indentation
+        let expected = "1. Top level\n   1. Nested item\n   2. Another nested\n2. Back to top\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_mixed_nested_lists() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should handle mixed list types with proper indentation
+        let expected = "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered\n";
         assert_eq!(result, expected);
     }
 }
