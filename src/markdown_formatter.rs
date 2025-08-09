@@ -25,6 +25,8 @@ pub struct MarkdownFormatConfig {
     pub h3_spacing: usize,
     /// Lines before other headers (default: 1)
     pub other_header_spacing: usize,
+    /// Lines before code blocks (default: 1)
+    pub code_block_spacing: usize,
     /// Whether to format code blocks with language-specific handling
     pub format_code_blocks: bool,
 }
@@ -37,6 +39,7 @@ impl Default for MarkdownFormatConfig {
             h2_spacing: 3,
             h3_spacing: 2,
             other_header_spacing: 1,
+            code_block_spacing: 1,
             format_code_blocks: true,
         }
     }
@@ -118,6 +121,9 @@ impl<'a> AstFormatter<'a> {
             }
             NodeValue::List(_) => {
                 self.format_list(node)?;
+            }
+            NodeValue::CodeBlock(_) => {
+                self.format_code_block(node)?;
             }
             _ => {
                 // TODO: Handle other node types
@@ -289,6 +295,37 @@ impl<'a> AstFormatter<'a> {
         
         // Restore previous indentation
         self.current_indent = old_indent;
+        Ok(())
+    }
+
+    fn format_code_block(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Get the code block data from the node
+        let borrowed = node.data.borrow();
+        let code_block = match &borrowed.value {
+            NodeValue::CodeBlock(data) => data,
+            _ => return Err(crate::error::ParagonicError::Internal("Expected CodeBlock node".to_string())),
+        };
+
+        // Add spacing before code block
+        for _ in 0..self.config.code_block_spacing {
+            self.output.push('\n');
+        }
+
+        // Add opening fence
+        self.output.push_str("```");
+        
+        // Add language if specified
+        if !code_block.info.is_empty() {
+            self.output.push_str(&code_block.info);
+        }
+        self.output.push('\n');
+
+        // Add code content - the literal content is stored in the code_block
+        self.output.push_str(&code_block.literal);
+
+        // Add closing fence
+        self.output.push_str("```\n");
+        
         Ok(())
     }
 
@@ -494,6 +531,68 @@ mod tests {
         
         // Should handle mixed list types with proper indentation
         let expected = "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered\n";
+        assert_eq!(result, expected);
+    }
+
+    // ========================================
+    // FENCED CODE BLOCK TESTS
+    // ========================================
+
+    #[test]
+    fn test_format_simple_fenced_code_block() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format with proper spacing before the code block
+        let expected = "\n```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_fenced_code_block_without_language() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "```\necho \"Hello, world!\"\n```";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format without language specification
+        let expected = "\n```\necho \"Hello, world!\"\n```\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_fenced_code_block_with_bash() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "```bash\n#!/bin/bash\necho \"Script started\"\nls -la\n```";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        let expected = "\n```bash\n#!/bin/bash\necho \"Script started\"\nls -la\n```\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_multiple_fenced_code_blocks() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "```rust\nfn hello() {}\n```\n\nSome text\n\n```python\ndef world():\n    pass\n```";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should properly space multiple code blocks
+        let expected = "\n```rust\nfn hello() {}\n```\n\nSome text\n\n```python\ndef world():\n    pass\n```\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_fenced_code_block_with_custom_spacing() {
+        let config = MarkdownFormatConfig {
+            code_block_spacing: 2, // 2 lines before code blocks
+            ..Default::default()
+        };
+        let formatter = MarkdownSourceFormatter::with_config(config);
+        let input = "```typescript\ninterface User {\n  name: string;\n}\n```";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should have 2 blank lines before the code block
+        let expected = "\n\n```typescript\ninterface User {\n  name: string;\n}\n```\n";
         assert_eq!(result, expected);
     }
 }
