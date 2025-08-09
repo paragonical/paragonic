@@ -18,6 +18,7 @@ pub mod operations;
 pub mod iragl;
 pub mod patterns;
 pub mod text;
+pub mod markdown_formatter;
 
 pub use error::{ParagonicError, ParagonicResult};
 
