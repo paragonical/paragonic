@@ -62,6 +62,7 @@ function M.setup(opts)
         M.debug.debug_print("WRAPPER: send_message_command completed", "debug")
         end, opts = {}},
         {name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {}},
+        {name = "ParagonicDebugMarkdown", func = M.chat.send_debug_markdown_test, opts = {}},
                 {name = "ParagonicTest", func = function()
         M.debug.debug_print("TEST COMMAND WORKING", "debug")
         vim.notify("TEST COMMAND WORKING", vim.log.levels.INFO)

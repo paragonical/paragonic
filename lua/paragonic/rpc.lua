@@ -450,6 +450,11 @@ function M:formatted_chat_completion(model, message, format_config)
     return self:call("formatted_chat_completion", {message, model, format_config})
 end
 
+-- Send debug markdown test request to verify server-side formatting
+function M:debug_markdown_test(format_config)
+    return self:call("debug_markdown_test", format_config or {})
+end
+
 -- List available models
 function M:list_models()
     return self:call("list_models", {})

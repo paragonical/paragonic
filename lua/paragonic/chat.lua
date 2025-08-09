@@ -677,6 +677,87 @@ function M.send_message_command_debug()
 end
 
 -- Send message command with server-side formatting
+-- Send debug markdown test command
+function M.send_debug_markdown_test()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+
+    -- Only work in chat buffer
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+
+    -- Get current cursor position
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
+
+    -- Initialize backend if not available
+    local backend = require("paragonic.backend")
+    if not backend._rpc_client then
+        if not backend.initialize_backend() then
+            vim.notify("Failed to send debug test: Backend initialization failed", vim.log.levels.ERROR)
+            return
+        end
+    end
+
+    -- Get buffer width for formatting
+    local buf_width = vim.api.nvim_win_get_width(0)
+
+    -- Get RPC client
+    local rpc_client = backend._get_rpc_client()
+    if not rpc_client then
+        vim.notify("Failed to send debug test: RPC client not available", vim.log.levels.ERROR)
+        return
+    end
+
+    -- Add indicator that test is being sent
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"🧪 Sending debug markdown test..."})
+
+    -- Send the debug markdown test request
+    local response, err = rpc_client:debug_markdown_test({
+        max_width = buf_width - 5,  -- Leave some margin
+        include_diamond = true,
+        continuation_indent = 3,
+        format_markdown = true,
+        preserve_paragraphs = true
+    })
+
+    -- Remove the indicator line
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 2, false, {})
+
+    if not response then
+        vim.notify("Failed to send debug test: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"🛔 Debug test failed: " .. (err or "unknown error")})
+        return
+    end
+
+    -- Add debug test header
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"", "=== DEBUG MARKDOWN TEST RESPONSE ==="})
+
+    -- Add the response to the buffer
+    local response_lines = {}
+    for line in response:gmatch("[^\r\n]+") do
+        table.insert(response_lines, line)
+    end
+
+    -- If no lines were extracted, add the original response as a single line
+    if #response_lines == 0 then
+        table.insert(response_lines, response)
+    end
+
+    -- Add response to buffer
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 3, line_num + 3, false, response_lines)
+
+    -- Add footer
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 3 + #response_lines, line_num + 3 + #response_lines, false, {"=== END DEBUG TEST ===", ""})
+
+    -- Move cursor to end of added content
+    local new_line_num = line_num + #response_lines + 6
+    vim.api.nvim_win_set_cursor(0, {new_line_num, 0})
+
+    vim.notify("Debug markdown test completed - check formatting above", vim.log.levels.INFO)
+end
+
 function M.send_message_command()
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)

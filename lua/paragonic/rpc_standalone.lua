@@ -1089,6 +1089,40 @@ function M:chat_completion(model, message)
     end
 end
 
+-- Send debug markdown test request to verify server-side formatting
+function M:debug_markdown_test(format_config)
+    -- Parameter validation
+    if format_config and type(format_config) ~= "table" then
+        log_message(self, "error", "format_config must be a table")
+        return nil, "format_config must be a table"
+    end
+    
+    -- Default format config if not provided
+    format_config = format_config or {
+        max_width = 80,
+        include_diamond = true,
+        continuation_indent = 3,
+        format_markdown = true,
+        preserve_paragraphs = true
+    }
+    
+    -- Test mode simulation
+    if self.test_mode then
+        log_message(self, "info", "Test mode: simulating debug markdown test")
+        return "🮮   **TEST MARKDOWN**\n   This is a simulated test response", nil
+    end
+    
+    log_message(self, "info", "Sending debug markdown test request to " .. self.server_address)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "debug_markdown_test", format_config, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
+    if result then
+        log_message(self, "info", "Debug markdown test response received")
+        return result
+    else
+        log_message(self, "error", "Debug markdown test failed: " .. tostring(error_msg))
+        return nil, error_msg
+    end
+end
+
 -- Send formatted chat completion request to server with server-side formatting
 function M:formatted_chat_completion(model, message, format_config)
     -- Parameter validation

@@ -130,6 +130,10 @@ function M:formatted_chat_completion(model, message, format_config)
     return self:call("formatted_chat_completion", {message, model, format_config})
 end
 
+function M:debug_markdown_test(format_config)
+    return self:call("debug_markdown_test", format_config or {})
+end
+
 function M:disconnect()
     print("🔧 Simple RPC: disconnect() called")
     self.connected = false

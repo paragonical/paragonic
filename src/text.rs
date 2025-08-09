@@ -186,22 +186,46 @@ impl TextFormatter {
     fn format_inline_markdown(&self, text: &str) -> ParagonicResult<String> {
         let mut result = text.to_string();
         
-        // Bold text (**text** or __text__) - use Unicode bold-like chars or CAPS
-        result = regex::Regex::new(r"\*\*([^*]+)\*\*")
+        // Use placeholders to avoid conflicts between bold and italic
+        
+        // 1. Links first [text](url) - show both text and URL
+        result = regex::Regex::new(r"\[([^\]]+)\]\(([^)]+)\)")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                format!("**{}**", caps[1].to_uppercase())
-            })
-            .to_string();
-        result = regex::Regex::new(r"__([^_]+)__")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                format!("**{}**", caps[1].to_uppercase())
-            })
+            .replace_all(&result, "$1 ⟨$2⟩")
             .to_string();
         
-        // Italic text (*text* or _text_) - use surrounding chars
-        // Note: We need to handle these after bold to avoid conflicts
+        // 2. Inline code (`code`) - use different quotes
+        result = regex::Regex::new(r"`([^`]+)`")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "‹$1›")
+            .to_string();
+        
+        // 3. Bold text first - replace with placeholder to avoid conflicts
+        let mut bold_placeholders = Vec::new();
+        
+        // Process **bold** 
+        let bold_re = regex::Regex::new(r"\*\*([^*]+)\*\*")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?;
+        result = bold_re.replace_all(&result, |caps: &regex::Captures| {
+            let content = caps[1].to_uppercase();
+            let formatted = format!("**{}**", content);
+            let placeholder = format!("§§§BOLD〈{}〉§§§", bold_placeholders.len());
+            bold_placeholders.push(formatted);
+            placeholder
+        }).to_string();
+        
+        // Process __bold__
+        let bold_underscore_re = regex::Regex::new(r"__([^_]+)__")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?;
+        result = bold_underscore_re.replace_all(&result, |caps: &regex::Captures| {
+            let content = caps[1].to_uppercase();
+            let formatted = format!("**{}**", content);
+            let placeholder = format!("§§§BOLD〈{}〉§§§", bold_placeholders.len());
+            bold_placeholders.push(formatted);
+            placeholder
+        }).to_string();
+        
+        // 4. Now process italic safely (no more ** or __ to conflict with)
         result = regex::Regex::new(r"\*([^*]+)\*")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&result, "/$1/")
@@ -211,17 +235,11 @@ impl TextFormatter {
             .replace_all(&result, "/$1/")
             .to_string();
         
-        // Inline code (`code`) - use different quotes
-        result = regex::Regex::new(r"`([^`]+)`")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "‹$1›")
-            .to_string();
-        
-        // Links [text](url) - show both text and URL
-        result = regex::Regex::new(r"\[([^\]]+)\]\(([^)]+)\)")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "$1 ⟨$2⟩")
-            .to_string();
+        // 5. Restore bold placeholders
+        for (i, bold_text) in bold_placeholders.iter().enumerate() {
+            let placeholder = format!("§§§BOLD〈{}〉§§§", i);
+            result = result.replace(&placeholder, bold_text);
+        }
         
         Ok(result)
     }

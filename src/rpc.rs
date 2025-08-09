@@ -1849,6 +1849,90 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
         }
     }
     
+    /// Handle debug markdown test requests
+    /// 
+    /// This debugging method sends a pre-formatted test markdown document to verify
+    /// server-side formatting is working correctly. Useful for testing without LLM dependency.
+    pub fn handle_debug_markdown_test(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        tracing::debug!("Debug markdown test request started");
+        
+        // Read format configuration from params
+        let default_map = serde_json::Map::new();
+        let config_obj = params.as_ref()
+            .and_then(|p| p.as_object())
+            .unwrap_or(&default_map);
+            
+        let max_width = config_obj.get("max_width")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(80) as usize;
+            
+        let include_diamond = config_obj.get("include_diamond")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+            
+        let continuation_indent = config_obj.get("continuation_indent")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3) as usize;
+            
+        let format_markdown = config_obj.get("format_markdown")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+            
+        let preserve_paragraphs = config_obj.get("preserve_paragraphs")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        // Read the test markdown file
+        let markdown_content = std::fs::read_to_string("test_markdown_sample.md")
+            .unwrap_or_else(|_| {
+                // Fallback content if file doesn't exist
+                r#"# Debug Markdown Test
+
+This is a **test document** with *various* formatting elements.
+
+## Code Example
+```rust
+fn main() {
+    println!("Hello from debug test!");
+}
+```
+
+## List Example
+- First item with **bold text**
+- Second item with *italic text*  
+- Third item with `inline code`
+
+> This is a blockquote for testing
+
+Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
+
+**Note**: This is a fallback test document since test_markdown_sample.md was not found."#.to_string()
+            });
+
+        // Create text formatter with specified config
+        let config = crate::text::FormatConfig {
+            max_width,
+            include_diamond,
+            continuation_indent,
+            format_markdown,
+            preserve_paragraphs,
+        };
+        
+        let formatter = crate::text::TextFormatter::with_config(config);
+        
+        // Format the markdown content
+        match formatter.format_for_neovim(&markdown_content) {
+            Ok(formatted_text) => {
+                tracing::debug!("Debug markdown test completed successfully");
+                Ok(formatted_text)
+            }
+            Err(e) => {
+                tracing::error!("Debug markdown test failed: {}", e);
+                Err(RpcError::server_error(Some(format!("Failed to format markdown: {}", e))))
+            }
+        }
+    }
+    
     /// Handle content association requests
     /// 
     /// This function creates associations between content items in the knowledge base.
@@ -2193,6 +2277,8 @@ impl Server for ParagonicServer {
             "chat_completion" => Some(self.handle_chat_completion(params)),
             // Handle formatted chat completion with server-side formatting
             "formatted_chat_completion" => Some(self.handle_formatted_chat_completion(params)),
+            // Handle debug markdown test for server-side formatting verification
+            "debug_markdown_test" => Some(self.handle_debug_markdown_test(params)),
             // Handle agent chat completion with tool calling
             "agent_chat_completion" => Some(self.handle_agent_chat_completion(params)),
             // Handle list models requests
