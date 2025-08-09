@@ -308,7 +308,7 @@ function M.open_chat()
 end
 
 -- Send message command
-function M.send_message_command()
+function M.send_message_command_legacy()
     -- Immediate debugging at function entry
     local debug = require("paragonic.debug")
     debug.debug_print("🚀 send_message_command() called", "debug")
@@ -677,7 +677,7 @@ function M.send_message_command_debug()
 end
 
 -- Send message command with server-side formatting
-function M.send_message_command_formatted()
+function M.send_message_command()
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
     

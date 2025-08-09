@@ -14,7 +14,6 @@ function M._setup_keymaps()
     vim.api.nvim_set_keymap("n", "<leader>pd", ":ParagonicDebug<CR>", {noremap = true, silent = true, desc = "Open Paragonic Debug"})
     vim.api.nvim_set_keymap("n", "<leader>ps", ":ParagonicSend<CR>", {noremap = true, silent = true, desc = "Send Paragonic Message"})
     vim.api.nvim_set_keymap("n", "<leader>pS", ":ParagonicSendDebug<CR>", {noremap = true, silent = true, desc = "Send Paragonic Message (Debug)"})
-    vim.api.nvim_set_keymap("n", "<leader>PF", ":ParagonicSendFormatted<CR>", {noremap = true, silent = true, desc = "Send Paragonic Message (Server Formatted)"})
     
     -- Search keymaps
     vim.api.nvim_set_keymap("n", "<leader>psb", ":ParagonicSearch ", {noremap = true, silent = false, desc = "Paragonic Basic Search"})
