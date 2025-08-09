@@ -113,6 +113,9 @@ impl<'a> AstFormatter<'a> {
             NodeValue::Heading(heading) => {
                 self.format_heading(node, heading.level)?;
             }
+            NodeValue::BlockQuote => {
+                self.format_blockquote(node)?;
+            }
             _ => {
                 // TODO: Handle other node types
                 // For now, just process children
@@ -152,6 +155,59 @@ impl<'a> AstFormatter<'a> {
         Ok(())
     }
 
+    fn format_blockquote(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        // Process children and format as blockquote
+        for child in node.children() {
+            match &child.data.borrow().value {
+                NodeValue::Paragraph => {
+                    // Format paragraph content as blockquote, handling line breaks
+                    self.format_blockquote_paragraph(child)?;
+                }
+                _ => {
+                    // Handle other node types within blockquotes
+                    self.format_node(child)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn format_blockquote_paragraph(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
+        let mut current_line = String::new();
+        
+        for child in node.children() {
+            match &child.data.borrow().value {
+                NodeValue::Text(text) => {
+                    current_line.push_str(text);
+                }
+                NodeValue::SoftBreak | NodeValue::LineBreak => {
+                    // End current line and start a new blockquote line
+                    if !current_line.is_empty() {
+                        self.output.push('>');
+                        self.output.push(' ');
+                        self.output.push_str(&current_line);
+                        self.output.push('\n');
+                        current_line.clear();
+                    }
+                }
+                _ => {
+                    // For other node types, collect their text content
+                    self.collect_text_content_into_string(child, &mut current_line)?;
+                }
+            }
+        }
+        
+        // Handle the last line if there's content
+        if !current_line.is_empty() {
+            self.output.push('>');
+            self.output.push(' ');
+            self.output.push_str(&current_line);
+            self.output.push('\n');
+        }
+        
+        Ok(())
+    }
+
     fn collect_text_content(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
         match &node.data.borrow().value {
             NodeValue::Text(text) => {
@@ -161,6 +217,21 @@ impl<'a> AstFormatter<'a> {
                 // Process children to collect text
                 for child in node.children() {
                     self.collect_text_content(child)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn collect_text_content_into_string(&self, node: &'a AstNode<'a>, output: &mut String) -> ParagonicResult<()> {
+        match &node.data.borrow().value {
+            NodeValue::Text(text) => {
+                output.push_str(text);
+            }
+            _ => {
+                // Process children to collect text
+                for child in node.children() {
+                    self.collect_text_content_into_string(child, output)?;
                 }
             }
         }
@@ -236,6 +307,54 @@ mod tests {
         
         // Should have 2 blank lines before H1 with custom config
         let expected = "\n\n# Custom Title\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_simple_blockquote() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "> This is a quote";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format as blockquote with proper indentation
+        let expected = "> This is a quote\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_multi_line_blockquote() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "> First line of quote\n> Second line of quote";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format multi-line blockquote with proper indentation
+        let expected = "> First line of quote\n> Second line of quote\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_nested_blockquote() {
+        let formatter = MarkdownSourceFormatter::new();
+        let input = "> Outer quote\n>> Nested quote\n> Back to outer";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should handle nested blockquotes with correct indentation levels
+        let expected = "> Outer quote\n>\n> > Nested quote\n>\n> Back to outer\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_format_blockquote_with_custom_indent() {
+        let config = MarkdownFormatConfig {
+            base_indent: 2,
+            ..Default::default()
+        };
+        let formatter = MarkdownSourceFormatter::with_config(config);
+        let input = "> Custom indent quote";
+        let result = formatter.format_markdown_source(input).unwrap();
+        
+        // Should format with custom base indentation
+        let expected = "> Custom indent quote\n";
         assert_eq!(result, expected);
     }
 }
