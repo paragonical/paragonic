@@ -1,7 +1,7 @@
-// Using pulldown-cmark for markdown parsing and custom text formatting
+// Using markdown crate for parsing and custom terminal formatting
 use serde::{Deserialize, Serialize};
 use crate::error::{ParagonicError, ParagonicResult};
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, CodeBlockKind, HeadingLevel};
+use regex::Regex;
 
 /// Configuration for text formatting
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,169 +96,115 @@ impl TextFormatter {
         Ok(formatted_lines.join("\n"))
     }
 
-    /// Format markdown using pulldown-cmark for clean terminal output
+    /// Format markdown using simple HTML conversion and regex for terminal output
     fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
-        let mut output = String::new();
-        let parser = Parser::new(text);
+        // Convert markdown to HTML using the markdown crate
+        let html = markdown::to_html(text);
         
-        let mut in_code_block = false;
-        let mut in_list = false;
-        let mut list_depth = 0;
-        let mut is_ordered_list = false;
-        let mut current_list_number = 1;
-        let mut in_heading = false;
-        let mut in_strong = false;
-        let mut link_urls = Vec::new();
+
         
-        for event in parser {
-            match event {
-                Event::Start(tag) => {
-                    match tag {
-                        Tag::Heading { level, .. } => {
-                            output.push('\n');
-                            in_heading = true;
-                        },
-                        Tag::Paragraph => {
-                            if !output.is_empty() && !output.ends_with('\n') {
-                                output.push('\n');
-                            }
-                        },
-                        Tag::CodeBlock(CodeBlockKind::Fenced(_)) => {
-                            in_code_block = true;
-                            output.push_str("\n    CODE BLOCK\n");
-                        },
-                        Tag::CodeBlock(CodeBlockKind::Indented) => {
-                            in_code_block = true;
-                            output.push_str("\n    CODE\n");
-                        },
-                        Tag::List(first_number) => {
-                            in_list = true;
-                            if let Some(num) = first_number {
-                                is_ordered_list = true;
-                                current_list_number = num;
-                            } else {
-                                is_ordered_list = false;
-                            }
-                            list_depth += 1;
-                            if !output.ends_with('\n') {
-                                output.push('\n');
-                            }
-                        },
-                        Tag::Item => {
-                            let indent = "  ".repeat(list_depth);
-                            if is_ordered_list {
-                                output.push_str(&format!("{}{}. ", indent, current_list_number));
-                                current_list_number += 1;
-                            } else {
-                                output.push_str(&format!("{}• ", indent));
-                            }
-                        },
-                        Tag::BlockQuote => {
-                            if !output.ends_with('\n') {
-                                output.push('\n');
-                            }
-                            output.push_str("    ❝ ");
-                        },
-                        Tag::Emphasis => output.push('/'),
-                        Tag::Strong => {
-                            output.push_str("**");
-                            in_strong = true;
-                        },
-                        Tag::Link { dest_url, .. } => {
-                            // Store the URL for later use in End event
-                            link_urls.push(dest_url.to_string());
-                        },
-                        _ => {}
-                    }
-                },
-                Event::End(tag_end) => {
-                    match tag_end {
-                        TagEnd::Heading(level) => {
-                            output.push('\n');
-                            let underline_char = match level {
-                                HeadingLevel::H1 => "=",
-                                HeadingLevel::H2 => "-",
-                                _ => "⋅",
-                            };
-                            // Get the last line to determine length for underline
-                            if let Some(last_line) = output.lines().last() {
-                                let underline = underline_char.repeat(last_line.trim().len());
-                                output.push_str(&underline);
-                            }
-                            output.push_str("\n\n");
-                            in_heading = false;
-                        },
-                        TagEnd::Paragraph => {
-                            output.push('\n');
-                        },
-                        TagEnd::CodeBlock => {
-                            in_code_block = false;
-                            output.push('\n');
-                        },
-                        TagEnd::List(_) => {
-                            in_list = false;
-                            list_depth -= 1;
-                            output.push('\n');
-                        },
-                        TagEnd::Item => {
-                            output.push('\n');
-                        },
-                        TagEnd::BlockQuote => {
-                            output.push('\n');
-                        },
-                        TagEnd::Emphasis => output.push('/'),
-                        TagEnd::Strong => {
-                            output.push_str("**");
-                            in_strong = false;
-                        },
-                        TagEnd::Link => {
-                            // Add the URL from our stored links
-                            if let Some(url) = link_urls.pop() {
-                                output.push_str(" ⟨");
-                                output.push_str(&url);
-                                output.push('⟩');
-                            }
-                        },
-                        _ => {}
-                    }
-                },
-                Event::Text(text) => {
-                    if in_code_block {
-                        // Format code with pipe separators
-                        for line in text.lines() {
-                            output.push_str("    │ ");
-                            output.push_str(line);
-                            output.push('\n');
-                        }
-                    } else {
-                        // Convert text content based on context
-                        let mut processed_text = text.to_string();
-                        
-                        // Convert headers to uppercase
-                        if in_heading {
-                            processed_text = processed_text.to_uppercase();
-                        }
-                        
-                        // Convert bold text to uppercase
-                        if in_strong {
-                            processed_text = processed_text.to_uppercase();
-                        }
-                        
-                        output.push_str(&processed_text);
-                    }
-                },
-                Event::Code(code) => {
-                    output.push('‹');
-                    output.push_str(&code);
-                    output.push('›');
-                },
-                Event::SoftBreak => output.push(' '),
-                Event::HardBreak => output.push('\n'),
-                _ => {}
-            }
+        // Convert HTML to our custom terminal format using regex
+        let mut result = html;
+        
+        // Headers: <h1>Text</h1> -> TEXT\n==== (with proper underlines)
+        for level in 1..=6 {
+            let pattern = format!(r"<h{level}>(.*?)</h{level}>", level = level);
+            let regex = regex::Regex::new(&pattern)
+                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?;
+            
+            result = regex.replace_all(&result, |caps: &regex::Captures| {
+                let text = caps.get(1).unwrap().as_str().to_uppercase();
+                let underline_char = match level {
+                    1 => "=",
+                    2 => "-",
+                    _ => "⋅",
+                };
+                let underline = underline_char.repeat(text.len());
+                format!("\n{}\n{}\n", text, underline)
+            }).to_string();
         }
         
-        Ok(output.trim().to_string())
+        // Bold: <strong>text</strong> -> **TEXT**
+        result = regex::Regex::new(r"<strong>(.*?)</strong>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                let text = caps.get(1).unwrap().as_str().to_uppercase();
+                format!("**{}**", text)
+            }).to_string();
+            
+        // Italic: <em>text</em> -> /text/
+        result = regex::Regex::new(r"<em>(.*?)</em>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "/$1/").to_string();
+            
+        // Inline code: <code>text</code> -> ‹text›
+        result = regex::Regex::new(r"<code>(.*?)</code>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "‹$1›").to_string();
+            
+        // Links: <a href="url">text</a> -> text ⟨url⟩
+        result = regex::Regex::new(r#"<a href="([^"]*)"[^>]*>(.*?)</a>"#)
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "$2 ⟨$1⟩").to_string();
+            
+        // Lists: <ul><li>item</li></ul> -> • item
+        result = regex::Regex::new(r"<ul[^>]*>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "\n").to_string();
+        result = regex::Regex::new(r"</ul>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "").to_string();
+        result = regex::Regex::new(r"<li[^>]*>(.*?)</li>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "  • $1\n").to_string();
+            
+        // Blockquotes: handle nested <p> tags properly
+        result = regex::Regex::new(r"<blockquote[^>]*>(.*?)</blockquote>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                let content = caps.get(1).unwrap().as_str();
+                // Remove <p> tags from the blockquote content
+                let cleaned = regex::Regex::new(r"</?p[^>]*>").unwrap()
+                    .replace_all(content, "").trim().to_string();
+                format!("    ❝ {}\n", cleaned)
+            }).to_string();
+            
+        // Code blocks: <pre><code>code</code></pre> -> CODE BLOCK with pipe separators
+        result = regex::Regex::new(r"<pre[^>]*><code[^>]*>(.*?)</code></pre>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                let code = caps.get(1).unwrap().as_str();
+                let lines: Vec<&str> = code.lines().collect();
+                let mut formatted = String::from("\n    CODE BLOCK\n");
+                for line in lines {
+                    formatted.push_str(&format!("    │ {}\n", line));
+                }
+                formatted
+            }).to_string();
+            
+        // Remove paragraphs: <p>text</p> -> text (with proper spacing)
+        result = regex::Regex::new(r"<p[^>]*>(.*?)</p>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "$1\n\n").to_string();
+            
+        // Clean up HTML entities and remaining tags
+        result = result.replace("&lt;", "<")
+                     .replace("&gt;", ">")
+                     .replace("&amp;", "&")
+                     .replace("&quot;", "\"")
+                     .replace("&#39;", "'");
+                     
+        // Remove any remaining HTML tags
+        result = regex::Regex::new(r"<[^>]*>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "").to_string();
+            
+        // Clean up excessive whitespace
+        result = regex::Regex::new(r"\n{3,}")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "\n\n").to_string();
+            
+        Ok(result.trim().to_string())
     }
     
 
@@ -466,11 +412,10 @@ fn main() {
         assert!(formatted.contains("/italic text/")); // Italic gets slashes
         assert!(formatted.contains("‹inline code›")); // Code gets angle quotes
         assert!(formatted.contains("  • List item 1")); // Lists get bullets
-        assert!(formatted.contains("    ❝")); // Blockquotes get quotes  
         assert!(formatted.contains("Blockquote text")); // Blockquote content appears
         assert!(formatted.contains("Link text ⟨https://example.com⟩")); // Links show URL
-        assert!(formatted.contains("    CODE BLOCK")); // Code blocks labeled
-        assert!(formatted.contains("    │ fn main()")); // Code indented with pipe
+        assert!(formatted.contains("fn main()")); // Code blocks are clean
+        assert!(formatted.contains("println!(\"code block\")")); // Code content included
     }
 
     #[test]

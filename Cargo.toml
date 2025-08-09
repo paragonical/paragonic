@@ -58,8 +58,8 @@ tantivy = "0.24"
 
 # Regular expressions for tool calling and text processing
 regex = "1.0"
-# Markdown to text conversion
-pulldown-cmark = "0.10"
+# Markdown parsing and formatting
+markdown = "1.0"
 
 # CLI argument parsing (for development/testing)
 clap = { version = "4.0", features = ["derive"] }
