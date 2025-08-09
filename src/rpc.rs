@@ -188,6 +188,9 @@ impl ParagonicServer {
                 if let Some(preserve_paragraphs) = config_obj.get("preserve_paragraphs").and_then(|v| v.as_bool()) {
                     config.preserve_paragraphs = preserve_paragraphs;
                 }
+                if let Some(enhanced_spacing) = config_obj.get("enhanced_structural_spacing").and_then(|v| v.as_bool()) {
+                    config.enhanced_structural_spacing = enhanced_spacing;
+                }
                 
                 config
             } else {
@@ -1916,6 +1919,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
             continuation_indent,
             format_markdown,
             preserve_paragraphs,
+            enhanced_structural_spacing: true,
         };
         
         let formatter = crate::text::TextFormatter::with_config(config);

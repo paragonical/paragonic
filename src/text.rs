@@ -16,6 +16,8 @@ pub struct FormatConfig {
     pub format_markdown: bool,
     /// Whether to preserve paragraph breaks
     pub preserve_paragraphs: bool,
+    /// Whether to add extra spacing around structural elements (headers, code blocks, lists)
+    pub enhanced_structural_spacing: bool,
 }
 
 impl Default for FormatConfig {
@@ -26,6 +28,7 @@ impl Default for FormatConfig {
             continuation_indent: 3,
             format_markdown: true,
             preserve_paragraphs: true,
+            enhanced_structural_spacing: true,
         }
     }
 }
@@ -96,17 +99,42 @@ impl TextFormatter {
         Ok(formatted_lines.join("\n"))
     }
 
-    /// Format markdown using simple HTML conversion and regex for terminal output
+    /// Format markdown using HTML conversion with improved structural spacing
     fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
         // Convert markdown to HTML using the markdown crate
         let html = markdown::to_html(text);
         
-
-        
-        // Convert HTML to our custom terminal format using regex
+        // Convert HTML to our custom terminal format with better spacing control
         let mut result = html;
         
-        // Headers: <h1>Text</h1> -> TEXT\n==== (with proper underlines)
+        // Capture config values to use in closures
+        let enhanced_spacing = self.config.enhanced_structural_spacing;
+        
+        // Blockquotes: handle with blank lines around (process before other elements)
+        result = regex::Regex::new(r"<blockquote[^>]*>(.*?)</blockquote>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                let content = caps.get(1).unwrap().as_str();
+                // Remove <p> tags from the blockquote content but preserve text
+                let cleaned = regex::Regex::new(r"</?p[^>]*>").unwrap()
+                    .replace_all(content, "").trim().to_string();
+                // Clean up extra whitespace within the blockquote
+                let cleaned = regex::Regex::new(r"\s+").unwrap()
+                    .replace_all(&cleaned, " ").trim().to_string();
+                let (pre_spacing, post_spacing) = if enhanced_spacing {
+                    ("\n\n", "\n\n")
+                } else {
+                    ("\n", "\n")
+                };
+                // Format with quote symbol - handle multi-line content
+                let quote_lines = cleaned.lines()
+                    .map(|line| format!("    ❝ {}", line.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{}{}{}", pre_spacing, quote_lines, post_spacing)
+            }).to_string();
+
+        // Headers: <h1>Text</h1> -> TEXT\n==== (with proper spacing)
         for level in 1..=6 {
             let pattern = format!(r"<h{level}>(.*?)</h{level}>", level = level);
             let regex = regex::Regex::new(&pattern)
@@ -120,10 +148,56 @@ impl TextFormatter {
                     _ => "⋅",
                 };
                 let underline = underline_char.repeat(text.len());
-                format!("\n{}\n{}\n", text, underline)
+                // Headers get spacing based on configuration
+                if enhanced_spacing {
+                    format!("\n\n{}\n{}\n\n", text, underline)
+                } else {
+                    format!("\n{}\n{}\n", text, underline)
+                }
             }).to_string();
         }
         
+        // Code blocks: <pre><code>code</code></pre> -> CODE BLOCK with blank lines around
+        result = regex::Regex::new(r"<pre[^>]*><code[^>]*>(.*?)</code></pre>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, |caps: &regex::Captures| {
+                let code = caps.get(1).unwrap().as_str();
+                let lines: Vec<&str> = code.lines().collect();
+                let (pre_spacing, post_spacing) = if enhanced_spacing {
+                    ("\n\n", "\n\n")
+                } else {
+                    ("\n", "\n")
+                };
+                let mut formatted = format!("{}    CODE BLOCK\n", pre_spacing);
+                for line in lines {
+                    formatted.push_str(&format!("    │ {}\n", line));
+                }
+                formatted.push_str(post_spacing);
+                formatted
+            }).to_string();
+            
+        // Lists: handle with proper spacing
+        let list_spacing = if enhanced_spacing { "\n\n" } else { "\n" };
+        
+        // Unordered lists
+        result = regex::Regex::new(r"<ul[^>]*>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, list_spacing).to_string();
+        result = regex::Regex::new(r"</ul>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "\n").to_string();
+        result = regex::Regex::new(r"<li[^>]*>(.*?)</li>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "  • $1\n").to_string();
+            
+        // Ordered lists
+        result = regex::Regex::new(r"<ol[^>]*>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, list_spacing).to_string();
+        result = regex::Regex::new(r"</ol>")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "\n").to_string();
+            
         // Bold: <strong>text</strong> -> **TEXT**
         result = regex::Regex::new(r"<strong>(.*?)</strong>")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
@@ -147,42 +221,7 @@ impl TextFormatter {
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&result, "$2 ⟨$1⟩").to_string();
             
-        // Lists: <ul><li>item</li></ul> -> • item
-        result = regex::Regex::new(r"<ul[^>]*>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "\n").to_string();
-        result = regex::Regex::new(r"</ul>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "").to_string();
-        result = regex::Regex::new(r"<li[^>]*>(.*?)</li>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "  • $1\n").to_string();
-            
-        // Blockquotes: handle nested <p> tags properly
-        result = regex::Regex::new(r"<blockquote[^>]*>(.*?)</blockquote>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                let content = caps.get(1).unwrap().as_str();
-                // Remove <p> tags from the blockquote content
-                let cleaned = regex::Regex::new(r"</?p[^>]*>").unwrap()
-                    .replace_all(content, "").trim().to_string();
-                format!("    ❝ {}\n", cleaned)
-            }).to_string();
-            
-        // Code blocks: <pre><code>code</code></pre> -> CODE BLOCK with pipe separators
-        result = regex::Regex::new(r"<pre[^>]*><code[^>]*>(.*?)</code></pre>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                let code = caps.get(1).unwrap().as_str();
-                let lines: Vec<&str> = code.lines().collect();
-                let mut formatted = String::from("\n    CODE BLOCK\n");
-                for line in lines {
-                    formatted.push_str(&format!("    │ {}\n", line));
-                }
-                formatted
-            }).to_string();
-            
-        // Remove paragraphs: <p>text</p> -> text (with proper spacing)
+        // Remove paragraphs: <p>text</p> -> text (with controlled spacing)
         result = regex::Regex::new(r"<p[^>]*>(.*?)</p>")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&result, "$1\n\n").to_string();
@@ -199,10 +238,22 @@ impl TextFormatter {
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&result, "").to_string();
             
-        // Clean up excessive whitespace
+        // Smart whitespace cleanup: preserve intentional double newlines but remove excess
+        // First normalize multiple consecutive newlines to at most 2
         result = regex::Regex::new(r"\n{3,}")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&result, "\n\n").to_string();
+            
+        // Clean up spaces before newlines
+        result = regex::Regex::new(r" +\n")
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
+            .replace_all(&result, "\n").to_string();
+            
+        // Clean up leading/trailing whitespace on each line
+        let lines: Vec<String> = result.lines()
+            .map(|line| line.trim_end().to_string())
+            .collect();
+        result = lines.join("\n");
             
         Ok(result.trim().to_string())
     }
@@ -342,12 +393,14 @@ mod tests {
             continuation_indent: 2,
             format_markdown: false,
             preserve_paragraphs: false,
+            enhanced_structural_spacing: false,
         };
         
         let formatter = TextFormatter::with_config(config);
         assert_eq!(formatter.config.max_width, 60);
         assert!(!formatter.config.include_diamond);
         assert_eq!(formatter.config.continuation_indent, 2);
+        assert!(!formatter.config.enhanced_structural_spacing);
     }
 
     #[test]
@@ -405,17 +458,34 @@ fn main() {
         // Debug: print the formatted output
         println!("Formatted output:\n{}", formatted);
         
-        // Should format markdown nicely, not remove it
+        // Should format markdown nicely with proper spacing
         assert!(formatted.contains("HEADER"));  // Headers become uppercase
         assert!(formatted.contains("===="));    // With underlines
         assert!(formatted.contains("**BOLD TEXT**")); // Bold becomes uppercase
         assert!(formatted.contains("/italic text/")); // Italic gets slashes
         assert!(formatted.contains("‹inline code›")); // Code gets angle quotes
         assert!(formatted.contains("  • List item 1")); // Lists get bullets
-        assert!(formatted.contains("Blockquote text")); // Blockquote content appears
+        assert!(formatted.contains("❝ Blockquote text"), "Expected blockquote symbol but formatted output was:\n{}", formatted); // Blockquote with quote symbol
         assert!(formatted.contains("Link text ⟨https://example.com⟩")); // Links show URL
         assert!(formatted.contains("fn main()")); // Code blocks are clean
         assert!(formatted.contains("println!(\"code block\")")); // Code content included
+        assert!(formatted.contains("CODE BLOCK")); // Code block header
+        assert!(formatted.contains("│")); // Code block border character
+        
+        // Test that proper spacing exists around structural elements
+        let lines: Vec<&str> = formatted.lines().collect();
+        
+        // Headers should have blank lines around them
+        let header_line_idx = lines.iter().position(|&line| line.contains("HEADER")).unwrap();
+        if header_line_idx > 0 {
+            assert!(lines[header_line_idx - 1].trim().is_empty(), "Should have blank line before header");
+        }
+        
+        // Code blocks should have proper spacing
+        let code_line_idx = lines.iter().position(|&line| line.contains("CODE BLOCK")).unwrap();
+        if code_line_idx > 0 {
+            assert!(lines[code_line_idx - 1].trim().is_empty(), "Should have blank line before code block");
+        }
     }
 
     #[test]
