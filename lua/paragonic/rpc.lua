@@ -445,6 +445,11 @@ function M:chat_completion(model, message)
     return self:call("chat_completion", {message, model})
 end
 
+-- Send formatted chat completion request to server with server-side formatting
+function M:formatted_chat_completion(model, message, format_config)
+    return self:call("formatted_chat_completion", {message, model, format_config})
+end
+
 -- List available models
 function M:list_models()
     return self:call("list_models", {})

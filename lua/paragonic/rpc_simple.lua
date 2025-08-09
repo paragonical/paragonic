@@ -126,6 +126,10 @@ function M:chat_completion(message, model)
     return self:call("chat_completion", {message = message, model = model or "llama2"})
 end
 
+function M:formatted_chat_completion(model, message, format_config)
+    return self:call("formatted_chat_completion", {message, model, format_config})
+end
+
 function M:disconnect()
     print("🔧 Simple RPC: disconnect() called")
     self.connected = false
