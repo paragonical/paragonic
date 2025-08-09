@@ -327,10 +327,9 @@ function M.send_message_command_legacy()
     
     debug.debug_print("✅ Buffer check passed", "debug")
     
-    -- Get the current line as the message
-    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
-    local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
-    local message = lines[1] or ""
+    -- Extract multi-line message from cursor to previous tombstone
+    local message, start_line = extract_message_from_cursor_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
     
     debug.debug_print("📝 Message: " .. message:sub(1, 50), "debug")
     
@@ -503,10 +502,9 @@ function M.send_message_command_debug()
         return
     end
     
-    -- Get the current line as the message
-    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
-    local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
-    local message = lines[1] or ""
+    -- Extract multi-line message from cursor to previous tombstone
+    local message, start_line = extract_message_from_cursor_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
     
     -- Skip empty lines or lines that start with #
     if message == "" or message:match("^%s*#") then
@@ -787,6 +785,46 @@ function M.send_debug_markdown_test()
     vim.notify("Debug markdown test completed - check formatting above", vim.log.levels.INFO)
 end
 
+-- Helper function to extract text from cursor to previous tombstone
+-- This enables multi-line input by capturing all lines from the cursor 
+-- position back to the previous ∎ tombstone marker
+local function extract_message_from_cursor_to_tombstone(current_buf)
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local cursor_line = cursor_pos[1] - 1  -- Convert to 0-indexed
+    
+    -- Get all lines from start of buffer to cursor line
+    local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, cursor_line + 1, false)
+    
+    -- Find the last tombstone marker (∎) before the cursor
+    local tombstone_line = -1
+    for i = cursor_line, 0, -1 do
+        local line = all_lines[i + 1]  -- Convert back to 1-indexed for array access
+        if line and line:match("^%s*∎%s*$") then
+            tombstone_line = i
+            break
+        end
+    end
+    
+    -- Extract lines from after the tombstone to the cursor
+    local message_lines = {}
+    local start_line = tombstone_line + 1
+    
+    for i = start_line, cursor_line do
+        local line = all_lines[i + 1]  -- Convert to 1-indexed for array access
+        if line then
+            -- Skip empty lines at the beginning but include them in the middle/end
+            if #message_lines > 0 or line:match("%S") then
+                table.insert(message_lines, line)
+            end
+        end
+    end
+    
+    -- Join the lines and trim leading/trailing whitespace
+    local message = table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+    
+    return message, start_line
+end
+
 function M.send_message_command()
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
@@ -797,10 +835,12 @@ function M.send_message_command()
         return
     end
     
-    -- Get the current line as the message
-    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
-    local lines = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)
-    local message = lines[1] or ""
+    -- Extract multi-line message from cursor to previous tombstone
+    local message, start_line = extract_message_from_cursor_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
+    
+    -- Debug: Show what was extracted
+    vim.notify("Extracted message: " .. string.format("%q", message), vim.log.levels.INFO)
     
     -- Skip empty lines or lines that start with #
     if message == "" or message:match("^%s*#") then
