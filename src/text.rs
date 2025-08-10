@@ -1,7 +1,6 @@
 // Using markdown crate for parsing and custom terminal formatting
 use serde::{Deserialize, Serialize};
 use crate::error::{ParagonicError, ParagonicResult};
-use regex::Regex;
 
 /// Configuration for text formatting
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,210 +47,68 @@ impl TextFormatter {
         Self { config }
     }
 
-    /// Format text for Neovim display with diamond prefix and indentation
+    /// Format text for Neovim display with basic formatting
     pub fn format_for_neovim(&self, text: &str) -> ParagonicResult<String> {
-        // First, format markdown if configured
-        let formatted_text = if self.config.format_markdown {
-            self.format_markdown(text)?
+        // Format markdown if configured, otherwise return text as-is
+        if self.config.format_markdown {
+            self.format_markdown(text)
         } else {
-            text.to_string()
-        };
-
-        // Split into paragraphs
-        let paragraphs = if self.config.preserve_paragraphs {
-            self.split_paragraphs(&formatted_text)
-        } else {
-            vec![formatted_text]
-        };
-
-        let mut formatted_lines = Vec::new();
-
-        for (para_idx, paragraph) in paragraphs.iter().enumerate() {
-            if paragraph.trim().is_empty() {
-                formatted_lines.push("".to_string());
-                continue;
-            }
-
-            // Word wrap the paragraph
-            let wrapped_lines = self.word_wrap(paragraph)?;
-
-            // Apply formatting to each line with 3-space gutter design
-            for (line_idx, line) in wrapped_lines.iter().enumerate() {
-                let formatted_line = if para_idx == 0 && line_idx == 0 {
-                    // First line gets 3-space gutter + content
-                    format!("   {}", line)
-                } else {
-                    // Other lines get 3-space gutter + continuation indentation + content
-                    format!("{}   {}", " ".repeat(3), line)
-                };
-                formatted_lines.push(formatted_line);
-            }
-
-            // Add blank line between paragraphs (except after the last one)
-            if para_idx < paragraphs.len() - 1 && self.config.preserve_paragraphs {
-                formatted_lines.push("".to_string());
-            }
+            Ok(text.to_string())
         }
-
-        Ok(formatted_lines.join("\n"))
     }
 
-    /// Format markdown using HTML conversion with improved structural spacing
+    /// Format markdown source for specified line width with basic formatting
     fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
-        // Convert markdown to HTML using the markdown crate
-        let html = markdown::to_html(text);
+        // Calculate target line width: 65% of max_width - 3 characters
+        let target_width = ((self.config.max_width as f64 * 0.65) as usize).saturating_sub(3);
         
-        // Convert HTML to our custom terminal format with better spacing control
-        let mut result = html;
+        let mut result = String::new();
+        let lines: Vec<&str> = text.lines().collect();
         
-        // Capture config values to use in closures
-        let enhanced_spacing = self.config.enhanced_structural_spacing;
-        
-        // Blockquotes: handle with blank lines around (process before other elements)
-        result = regex::Regex::new(r"<blockquote[^>]*>(.*?)</blockquote>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                let content = caps.get(1).unwrap().as_str();
-                // Remove <p> tags from the blockquote content but preserve text
-                let cleaned = regex::Regex::new(r"</?p[^>]*>").unwrap()
-                    .replace_all(content, "").trim().to_string();
-                // Clean up extra whitespace within the blockquote
-                let cleaned = regex::Regex::new(r"\s+").unwrap()
-                    .replace_all(&cleaned, " ").trim().to_string();
-                let (pre_spacing, post_spacing) = if enhanced_spacing {
-                    ("\n\n", "\n\n")
-                } else {
-                    ("\n", "\n")
-                };
-                // Format with quote symbol - handle multi-line content
-                let quote_lines = cleaned.lines()
-                    .map(|line| format!("    ❝ {}", line.trim()))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                format!("{}{}{}", pre_spacing, quote_lines, post_spacing)
-            }).to_string();
-
-        // Headers: <h1>Text</h1> -> TEXT\n==== (with proper spacing)
-        for level in 1..=6 {
-            let pattern = format!(r"<h{level}>(.*?)</h{level}>", level = level);
-            let regex = regex::Regex::new(&pattern)
-                .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?;
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                result.push_str("\n");
+                continue;
+            }
             
-            result = regex.replace_all(&result, |caps: &regex::Captures| {
-                let text = caps.get(1).unwrap().as_str().to_uppercase();
-                let underline_char = match level {
-                    1 => "=",
-                    2 => "-",
-                    _ => "⋅",
-                };
-                let underline = underline_char.repeat(text.len());
-                // Headers get spacing based on configuration
-                if enhanced_spacing {
-                    format!("\n\n{}\n{}\n\n", text, underline)
+            // Handle different markdown elements
+            if trimmed.starts_with('#') {
+                // Headers - keep as-is but ensure proper spacing
+                result.push_str(trimmed);
+                result.push_str("\n\n");
+            } else if trimmed.starts_with('>') {
+                // Blockquotes - keep as-is
+                result.push_str(trimmed);
+                result.push_str("\n");
+            } else if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                // Unordered lists - keep as-is
+                result.push_str(trimmed);
+                result.push_str("\n");
+            } else if let Some(_) = trimmed.chars().next().and_then(|c| c.to_digit(10)) {
+                // Check if this looks like a numbered list item (number followed by .)
+                if trimmed.contains('.') && trimmed.chars().nth(1) == Some('.') {
+                    // Numbered lists - keep as-is
+                    result.push_str(trimmed);
+                    result.push_str("\n");
                 } else {
-                    format!("\n{}\n{}\n", text, underline)
+                    // Regular text - word wrap
+                    let wrapped = self.word_wrap_to_width(trimmed, target_width)?;
+                    result.push_str(&wrapped);
+                    result.push_str("\n");
                 }
-            }).to_string();
+            } else if trimmed.starts_with("```") {
+                // Code blocks - keep as-is
+                result.push_str(trimmed);
+                result.push_str("\n");
+            } else {
+                // Regular text - word wrap
+                let wrapped = self.word_wrap_to_width(trimmed, target_width)?;
+                result.push_str(&wrapped);
+                result.push_str("\n");
+            }
         }
         
-        // Code blocks: <pre><code>code</code></pre> -> CODE BLOCK with blank lines around
-        result = regex::Regex::new(r"<pre[^>]*><code[^>]*>(.*?)</code></pre>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                let code = caps.get(1).unwrap().as_str();
-                let lines: Vec<&str> = code.lines().collect();
-                let (pre_spacing, post_spacing) = if enhanced_spacing {
-                    ("\n\n", "\n\n")
-                } else {
-                    ("\n", "\n")
-                };
-                let mut formatted = format!("{}    CODE BLOCK\n", pre_spacing);
-                for line in lines {
-                    formatted.push_str(&format!("    │ {}\n", line));
-                }
-                formatted.push_str(post_spacing);
-                formatted
-            }).to_string();
-            
-        // Lists: handle with proper spacing
-        let list_spacing = if enhanced_spacing { "\n\n" } else { "\n" };
-        
-        // Unordered lists
-        result = regex::Regex::new(r"<ul[^>]*>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, list_spacing).to_string();
-        result = regex::Regex::new(r"</ul>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "\n").to_string();
-        result = regex::Regex::new(r"<li[^>]*>(.*?)</li>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "  • $1\n").to_string();
-            
-        // Ordered lists
-        result = regex::Regex::new(r"<ol[^>]*>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, list_spacing).to_string();
-        result = regex::Regex::new(r"</ol>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "\n").to_string();
-            
-        // Bold: <strong>text</strong> -> **TEXT**
-        result = regex::Regex::new(r"<strong>(.*?)</strong>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, |caps: &regex::Captures| {
-                let text = caps.get(1).unwrap().as_str().to_uppercase();
-                format!("**{}**", text)
-            }).to_string();
-            
-        // Italic: <em>text</em> -> /text/
-        result = regex::Regex::new(r"<em>(.*?)</em>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "/$1/").to_string();
-            
-        // Inline code: <code>text</code> -> ‹text›
-        result = regex::Regex::new(r"<code>(.*?)</code>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "‹$1›").to_string();
-            
-        // Links: <a href="url">text</a> -> text ⟨url⟩
-        result = regex::Regex::new(r#"<a href="([^"]*)"[^>]*>(.*?)</a>"#)
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "$2 ⟨$1⟩").to_string();
-            
-        // Remove paragraphs: <p>text</p> -> text (with controlled spacing)
-        result = regex::Regex::new(r"<p[^>]*>(.*?)</p>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "$1\n\n").to_string();
-            
-        // Clean up HTML entities and remaining tags
-        result = result.replace("&lt;", "<")
-                     .replace("&gt;", ">")
-                     .replace("&amp;", "&")
-                     .replace("&quot;", "\"")
-                     .replace("&#39;", "'");
-                     
-        // Remove any remaining HTML tags
-        result = regex::Regex::new(r"<[^>]*>")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "").to_string();
-            
-        // Smart whitespace cleanup: preserve intentional double newlines but remove excess
-        // First normalize multiple consecutive newlines to at most 2
-        result = regex::Regex::new(r"\n{3,}")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "\n\n").to_string();
-            
-        // Clean up spaces before newlines
-        result = regex::Regex::new(r" +\n")
-            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
-            .replace_all(&result, "\n").to_string();
-            
-        // Clean up leading/trailing whitespace on each line
-        let lines: Vec<String> = result.lines()
-            .map(|line| line.trim_end().to_string())
-            .collect();
-        result = lines.join("\n");
-            
         Ok(result.trim().to_string())
     }
     
@@ -339,6 +196,48 @@ impl TextFormatter {
         Ok(lines)
     }
 
+    /// Word wrap text to a specific width and return as a single string
+    fn word_wrap_to_width(&self, text: &str, width: usize) -> ParagonicResult<String> {
+        if text.is_empty() {
+            return Ok(String::new());
+        }
+
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if words.is_empty() {
+            return Ok(String::new());
+        }
+
+        let mut result = String::new();
+        let mut current_line = String::new();
+        let mut current_length = 0;
+
+        for word in words {
+            let word_length = word.len();
+            
+            // If adding this word would exceed the line limit
+            if current_length + word_length + 1 > width && !current_line.is_empty() {
+                result.push_str(&current_line.trim());
+                result.push('\n');
+                current_line = word.to_string();
+                current_length = word_length;
+            } else {
+                if !current_line.is_empty() {
+                    current_line.push(' ');
+                    current_length += 1;
+                }
+                current_line.push_str(word);
+                current_length += word_length;
+            }
+        }
+
+        // Add the last line if it has content
+        if !current_line.is_empty() {
+            result.push_str(&current_line.trim());
+        }
+
+        Ok(result)
+    }
+
     /// Format text with timing information using 3-space gutter design
     pub fn format_with_timing(&self, text: &str, duration_sec: f64) -> ParagonicResult<String> {
         let mut formatted = self.format_for_neovim(text)?;
@@ -410,36 +309,32 @@ mod tests {
     }
 
     #[test]
-    fn test_format_for_neovim_with_gutter_and_wrapping() {
+    fn test_format_for_neovim_basic() {
         let formatter = TextFormatter::new();
-        let text = "This is a test message that should be formatted with a 3-space gutter and should wrap to multiple lines to test continuation indentation.";
+        let text = "This is a test message that should be formatted with basic markdown formatting.";
         let formatted = formatter.format_for_neovim(text).unwrap();
         
-        assert!(formatted.starts_with("   ")); // should start with 3-space gutter
-        // Check that there are lines with continuation indentation
-        let lines: Vec<&str> = formatted.split('\n').collect();
-        assert!(lines.len() > 1, "Text should wrap to multiple lines");
-        
-        // Check that continuation lines start with proper indentation
-        let continuation_lines: Vec<&str> = lines.iter().skip(1).filter(|line| !line.is_empty()).cloned().collect();
-        if !continuation_lines.is_empty() {
-            assert!(continuation_lines[0].starts_with("      "), "Continuation lines should start with 6 spaces (3 gutter + 3 continuation)");
-        }
+        // Should return the text as-is when format_markdown is false
+        assert!(formatted.contains("This is a test message"));
     }
 
     #[test]
     fn test_format_markdown() {
-        let formatter = TextFormatter::new();
-        let markdown_text = r#"# Header
+        let mut formatter = TextFormatter::new();
+        // Set a small max_width for testing
+        formatter.config.max_width = 30;
         
-**Bold text** and *italic text* and `inline code`.
+        let markdown_text = r#"# Header
+
+This is a long paragraph that should be wrapped to fit within the specified line width.
 
 - List item 1
 - List item 2
 
 > Blockquote text
 
-[Link text](https://example.com)
+1. Numbered item 1
+2. Numbered item 2
 
 ```rust
 fn main() {
@@ -452,45 +347,43 @@ fn main() {
         // Debug: print the formatted output
         println!("Formatted output:\n{}", formatted);
         
-        // Should format markdown nicely with proper spacing
-        assert!(formatted.contains("HEADER"));  // Headers become uppercase
-        assert!(formatted.contains("===="));    // With underlines
-        assert!(formatted.contains("**BOLD TEXT**")); // Bold becomes uppercase
-        assert!(formatted.contains("/italic text/")); // Italic gets slashes
-        assert!(formatted.contains("‹inline code›")); // Code gets angle quotes
-        assert!(formatted.contains("  • List item 1")); // Lists get bullets
-        assert!(formatted.contains("Blockquote text"), "Expected blockquote text but formatted output was:\n{}", formatted); // Blockquote text
-        assert!(formatted.contains("Link text ⟨https://example.com⟩")); // Links show URL
-        assert!(formatted.contains("fn main()")); // Code blocks are clean
-        assert!(formatted.contains("println!(\"code block\")")); // Code content included
+        // Should preserve markdown structure
+        assert!(formatted.contains("# Header"));  // Headers preserved
+        assert!(formatted.contains("- List item 1")); // Lists preserved
+        assert!(formatted.contains("> Blockquote text")); // Blockquotes preserved
+        assert!(formatted.contains("1. Numbered item 1")); // Numbered lists preserved
+        assert!(formatted.contains("```rust")); // Code blocks preserved
+        assert!(formatted.contains("fn main()")); // Code content preserved
         
-        // Test that proper spacing exists around structural elements
+        // Should wrap long lines
         let lines: Vec<&str> = formatted.lines().collect();
-        
-        // Headers should have blank lines around them
-        let header_line_idx = lines.iter().position(|&line| line.contains("HEADER")).unwrap();
-        if header_line_idx > 0 {
-            assert!(lines[header_line_idx - 1].trim().is_empty(), "Should have blank line before header");
-        }
-        
-        // Code blocks should have proper spacing
-        let code_line_idx = lines.iter().position(|&line| line.contains("fn main()"));
-        if let Some(idx) = code_line_idx {
-            if idx > 0 {
-                assert!(lines[idx - 1].trim().is_empty(), "Should have blank line before code block");
+        for line in &lines {
+            if !line.starts_with('#') && !line.starts_with('-') && !line.starts_with('>') && 
+               !line.starts_with('1') && !line.starts_with('2') && !line.starts_with('`') {
+                // Regular text lines should be wrapped
+                assert!(line.len() <= 30, "Line '{}' exceeds max width of 30", line);
             }
         }
     }
 
     #[test]
-    fn test_format_for_neovim_with_gutter() {
-        let formatter = TextFormatter::new();
+    fn test_format_for_neovim_with_markdown() {
+        let mut formatter = TextFormatter::new();
+        formatter.config.format_markdown = true;
+        formatter.config.max_width = 30;
         
-        let text = "This is a test message with 3-space gutter.";
+        let text = "This is a long test message that should be wrapped when markdown formatting is enabled.";
         let formatted = formatter.format_for_neovim(text).unwrap();
         
-        assert!(formatted.starts_with("   ")); // should start with 3-space gutter
-        assert!(formatted.contains("   ")); // should contain continuation indentation
+        // Should wrap the text when format_markdown is true
+        let lines: Vec<&str> = formatted.split('\n').collect();
+        assert!(lines.len() > 1, "Text should be wrapped to multiple lines");
+        
+        for line in &lines {
+            if !line.trim().is_empty() {
+                assert!(line.len() <= 30, "Line '{}' exceeds max width of 30", line);
+            }
+        }
     }
 
 

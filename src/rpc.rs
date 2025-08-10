@@ -220,15 +220,20 @@ impl ParagonicServer {
             if let Some(config_obj) = params[2].as_object() {
                 let mut config = FormatConfig::default();
                 
-                if let Some(max_width) = config_obj.get("max_width").and_then(|v| v.as_u64()) {
-                    config.max_width = max_width as usize;
-                }
+                // Get max_line_length from client, default to 80 if not provided
+                let max_line_length = config_obj.get("max_line_length")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(80) as usize;
+                
+                // Set max_width to 65% of max_line_length - 3 characters
+                config.max_width = ((max_line_length as f64 * 0.65) as usize).saturating_sub(3);
+                
                 // include_diamond removed - now handled by Lua client
                 if let Some(continuation_indent) = config_obj.get("continuation_indent").and_then(|v| v.as_u64()) {
                     config.continuation_indent = continuation_indent as usize;
                 }
-                if let Some(strip_markdown) = config_obj.get("strip_markdown").and_then(|v| v.as_bool()) {
-                    config.format_markdown = strip_markdown;
+                if let Some(format_markdown) = config_obj.get("format_markdown").and_then(|v| v.as_bool()) {
+                    config.format_markdown = format_markdown;
                 }
                 if let Some(preserve_paragraphs) = config_obj.get("preserve_paragraphs").and_then(|v| v.as_bool()) {
                     config.preserve_paragraphs = preserve_paragraphs;
