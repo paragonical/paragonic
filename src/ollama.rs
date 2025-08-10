@@ -552,12 +552,16 @@ impl OllamaClient {
                                     full_response.push_str(&response_text);
                                 }
                                 if let Some(message) = stream_response.message {
+                                    // For streaming, each message contains the current piece of content
+                                    // We need to append just the content, not replace the entire message
                                     full_response.push_str(&message.content);
                                 }
                                 
                                 // Check if we're done
                                 if stream_response.done {
                                     info!("Streaming chat completion completed for model: {}", model);
+                                    info!("Final accumulated response length: {} chars", full_response.len());
+                                    info!("Final accumulated response: '{}'", full_response);
                                     
                                     // Construct the final response
                                     let final_message = ChatMessage {
