@@ -1313,6 +1313,11 @@ impl PatternExecutionEngine {
             return Self::execute_self_reflection(pattern, context);
         }
 
+        // Handle Context Summarization pattern specifically
+        if pattern.name == "Context Summarization" {
+            return Self::execute_context_summarization(pattern, context);
+        }
+
         let mut result = json!({
             "pattern_name": pattern.name,
             "executed_at": chrono::Utc::now().to_rfc3339(),
@@ -1655,6 +1660,181 @@ impl PatternExecutionEngine {
         // Limit to top 5 actions
         next_actions.truncate(5);
         Ok(next_actions)
+    }
+
+    /// Extracts relevant context from session data
+    fn extract_session_context(session_data: &Value) -> ParagonicResult<Value> {
+        let empty_vec = Vec::new();
+        let messages = session_data.get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let files_modified = session_data.get("files_modified")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let technologies = session_data.get("technologies")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = session_data.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let context = json!({
+            "messages": messages,
+            "files_modified": files_modified,
+            "technologies": technologies,
+            "duration_minutes": duration_minutes,
+            "message_count": message_count,
+            "has_technical_content": session_data.get("has_technical_content").unwrap_or(&json!(false))
+        });
+
+        Ok(context)
+    }
+
+    /// Identifies key points from session context
+    fn identify_context_key_points(session_data: &Value, extracted_context: &Value) -> ParagonicResult<Vec<String>> {
+        let mut key_points = Vec::new();
+
+        // Extract key points from messages
+        if let Some(messages) = session_data.get("messages").and_then(|v| v.as_array()) {
+            for message in messages {
+                if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
+                    if content.contains("implement") || content.contains("add") || content.contains("create") {
+                        key_points.push(format!("Development task: {}", content.split_whitespace().take(5).collect::<Vec<_>>().join(" ")));
+                    }
+                    if content.contains("test") || content.contains("debug") {
+                        key_points.push(format!("Testing/debugging: {}", content.split_whitespace().take(5).collect::<Vec<_>>().join(" ")));
+                    }
+                }
+            }
+        }
+
+        // Add technology-related key points
+        if let Some(technologies) = session_data.get("technologies").and_then(|v| v.as_array()) {
+            for tech in technologies {
+                if let Some(tech_str) = tech.as_str() {
+                    key_points.push(format!("Technology used: {}", tech_str));
+                }
+            }
+        }
+
+        // Add file modification key points
+        if let Some(files) = session_data.get("files_modified").and_then(|v| v.as_array()) {
+            for file in files {
+                if let Some(file_str) = file.as_str() {
+                    key_points.push(format!("File modified: {}", file_str));
+                }
+            }
+        }
+
+        // Limit to reasonable number of key points
+        key_points.truncate(10);
+        Ok(key_points)
+    }
+
+    /// Categorizes information by type
+    fn categorize_context_information(session_data: &Value, _extracted_context: &Value) -> ParagonicResult<Value> {
+        let mut technical = Vec::new();
+        let mut business = Vec::new();
+        let mut decisions = Vec::new();
+
+        // Categorize based on content
+        if let Some(messages) = session_data.get("messages").and_then(|v| v.as_array()) {
+            for message in messages {
+                if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
+                    if content.contains("Rust") || content.contains("code") || content.contains("implementation") {
+                        technical.push(content.to_string());
+                    } else if content.contains("business") || content.contains("user") || content.contains("requirement") {
+                        business.push(content.to_string());
+                    } else if content.contains("decide") || content.contains("choose") || content.contains("select") {
+                        decisions.push(content.to_string());
+                    }
+                }
+            }
+        }
+
+        let categories = json!({
+            "technical": technical,
+            "business": business,
+            "decisions": decisions
+        });
+
+        Ok(categories)
+    }
+
+    /// Generates a concise context summary
+    fn generate_context_summary(extracted_context: &Value, key_points: &[String], categories: &Value) -> ParagonicResult<String> {
+        let duration_minutes = extracted_context.get("duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = extracted_context.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let has_technical_content = extracted_context.get("has_technical_content")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let mut summary_parts = Vec::new();
+
+        // Basic session info
+        summary_parts.push(format!(
+            "{} minute session with {} messages",
+            duration_minutes, message_count
+        ));
+
+        // Content type
+        if has_technical_content {
+            summary_parts.push("Technical development work".to_string());
+        }
+
+        // Key activities
+        if !key_points.is_empty() {
+            summary_parts.push(format!("Key activities: {}", key_points.len()));
+        }
+
+        // Categories summary
+        if let Some(categories_obj) = categories.as_object() {
+            if let Some(technical) = categories_obj.get("technical").and_then(|v| v.as_array()) {
+                if !technical.is_empty() {
+                    summary_parts.push(format!("Technical items: {}", technical.len()));
+                }
+            }
+        }
+
+        let summary = summary_parts.join(". ");
+        Ok(summary)
+    }
+
+    /// Validates the clarity of the context summary
+    fn validate_context_clarity(summary: &str, key_points: &[String]) -> ParagonicResult<f64> {
+        let mut clarity_score: f64 = 1.0;
+
+        // Penalize if summary is too short
+        if summary.len() < 50 {
+            clarity_score -= 0.2;
+        }
+
+        // Penalize if summary is too long
+        if summary.len() > 500 {
+            clarity_score -= 0.3;
+        }
+
+        // Penalize if no key points
+        if key_points.is_empty() {
+            clarity_score -= 0.4;
+        }
+
+        // Ensure score is between 0.0 and 1.0
+        clarity_score = clarity_score.max(0.0).min(1.0);
+        Ok(clarity_score)
     }
 
     /// Analyzes performance metrics from session data
@@ -2172,6 +2352,44 @@ impl PatternExecutionEngine {
             "insights": insights,
             "improvements": improvements,
             "reflection_summary": reflection_summary
+        });
+
+        Ok(result)
+    }
+
+    /// Executes the Context Summarization pattern
+    fn execute_context_summarization(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // Extract session data from context
+        let session_data = context.as_ref()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Session data context is required for Context Summarization".to_string()
+            ))?;
+
+        // Step 1: Extract context
+        let extracted_context = Self::extract_session_context(session_data)?;
+
+        // Step 2: Identify key points
+        let key_points = Self::identify_context_key_points(session_data, &extracted_context)?;
+
+        // Step 3: Categorize information
+        let categories = Self::categorize_context_information(session_data, &extracted_context)?;
+
+        // Step 4: Generate summary
+        let summary = Self::generate_context_summary(&extracted_context, &key_points, &categories)?;
+
+        // Step 5: Validate clarity
+        let clarity_score = Self::validate_context_clarity(&summary, &key_points)?;
+
+        let result = json!({
+            "summary": summary,
+            "key_points": key_points,
+            "categories": categories,
+            "context_metadata": {
+                "session_duration": session_data.get("session_duration_minutes").unwrap_or(&json!(0)),
+                "participants": session_data.get("participants").unwrap_or(&json!([])),
+                "topics_covered": session_data.get("topics_covered").unwrap_or(&json!([])),
+                "clarity_score": clarity_score
+            }
         });
 
         Ok(result)
@@ -5770,6 +5988,262 @@ mod tests {
         assert!(result_obj.contains_key("insights"));
         assert!(result_obj.contains_key("improvements"));
         assert!(result_obj.contains_key("reflection_summary"));
+    }
+
+    #[test]
+    fn test_context_summarization_pattern_creation() {
+        let pattern = SystemPattern::new(
+            "Context Summarization".to_string(),
+            PatternCategory::ContextSummarization,
+            MetaLevel::System,
+            "Create concise summaries of session context and key information".to_string(),
+            json!([
+                {"step": 1, "action": "extract_context", "description": "Extract relevant context from session"},
+                {"step": 2, "action": "identify_key_points", "description": "Identify key points and insights"},
+                {"step": 3, "action": "categorize_information", "description": "Categorize information by type"},
+                {"step": 4, "action": "generate_summary", "description": "Generate concise summary"},
+                {"step": 5, "action": "validate_clarity", "description": "Validate summary clarity and completeness"}
+            ]),
+            json!({
+                "summary": "string",
+                "key_points": ["string"],
+                "categories": {
+                    "technical": ["string"],
+                    "business": ["string"],
+                    "decisions": ["string"]
+                },
+                "context_metadata": {
+                    "session_duration": "number",
+                    "participants": ["string"],
+                    "topics_covered": ["string"]
+                }
+            }),
+            Some(json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 10},
+                "has_technical_content": true
+            })),
+            Some(json!({
+                "summary_length": {"lte": 500},
+                "key_points_count": {"gte": 3, "lte": 10},
+                "clarity_score": {"gte": 0.8}
+            }))
+        ).unwrap();
+
+        assert_eq!(pattern.name, "Context Summarization");
+        assert_eq!(pattern.category, PatternCategory::ContextSummarization);
+        assert_eq!(pattern.meta_level, MetaLevel::System);
+        assert!(pattern.description.contains("concise summaries"));
+    }
+
+    #[test]
+    fn test_context_summarization_workflow_steps() {
+        let pattern = SystemPattern::new(
+            "Context Summarization".to_string(),
+            PatternCategory::ContextSummarization,
+            MetaLevel::System,
+            "Create concise summaries of session context and key information".to_string(),
+            json!([
+                {"step": 1, "action": "extract_context", "description": "Extract relevant context from session"},
+                {"step": 2, "action": "identify_key_points", "description": "Identify key points and insights"},
+                {"step": 3, "action": "categorize_information", "description": "Categorize information by type"},
+                {"step": 4, "action": "generate_summary", "description": "Generate concise summary"},
+                {"step": 5, "action": "validate_clarity", "description": "Validate summary clarity and completeness"}
+            ]),
+            json!({
+                "summary": "string",
+                "key_points": ["string"],
+                "categories": {
+                    "technical": ["string"],
+                    "business": ["string"],
+                    "decisions": ["string"]
+                },
+                "context_metadata": {
+                    "session_duration": "number",
+                    "participants": ["string"],
+                    "topics_covered": ["string"]
+                }
+            }),
+            Some(json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 10},
+                "has_technical_content": true
+            })),
+            Some(json!({
+                "summary_length": {"lte": 500},
+                "key_points_count": {"gte": 3, "lte": 10},
+                "clarity_score": {"gte": 0.8}
+            }))
+        ).unwrap();
+
+        let workflow_steps = pattern.workflow_steps.as_array().unwrap();
+        assert_eq!(workflow_steps.len(), 5);
+        
+        assert_eq!(workflow_steps[0]["action"], "extract_context");
+        assert_eq!(workflow_steps[1]["action"], "identify_key_points");
+        assert_eq!(workflow_steps[2]["action"], "categorize_information");
+        assert_eq!(workflow_steps[3]["action"], "generate_summary");
+        assert_eq!(workflow_steps[4]["action"], "validate_clarity");
+    }
+
+    #[test]
+    fn test_context_summarization_trigger_conditions() {
+        let pattern = SystemPattern::new(
+            "Context Summarization".to_string(),
+            PatternCategory::ContextSummarization,
+            MetaLevel::System,
+            "Create concise summaries of session context and key information".to_string(),
+            json!([
+                {"step": 1, "action": "extract_context", "description": "Extract relevant context from session"},
+                {"step": 2, "action": "identify_key_points", "description": "Identify key points and insights"},
+                {"step": 3, "action": "categorize_information", "description": "Categorize information by type"},
+                {"step": 4, "action": "generate_summary", "description": "Generate concise summary"},
+                {"step": 5, "action": "validate_clarity", "description": "Validate summary clarity and completeness"}
+            ]),
+            json!({
+                "summary": "string",
+                "key_points": ["string"],
+                "categories": {
+                    "technical": ["string"],
+                    "business": ["string"],
+                    "decisions": ["string"]
+                },
+                "context_metadata": {
+                    "session_duration": "number",
+                    "participants": ["string"],
+                    "topics_covered": ["string"]
+                }
+            }),
+            Some(json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 10},
+                "has_technical_content": true
+            })),
+            Some(json!({
+                "summary_length": {"lte": 500},
+                "key_points_count": {"gte": 3, "lte": 10},
+                "clarity_score": {"gte": 0.8}
+            }))
+        ).unwrap();
+
+        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap();
+        assert!(trigger_conditions.get("session_duration_minutes").is_some());
+        assert!(trigger_conditions.get("message_count").is_some());
+        assert!(trigger_conditions.get("has_technical_content").is_some());
+    }
+
+    #[test]
+    fn test_context_summarization_output_format() {
+        let pattern = SystemPattern::new(
+            "Context Summarization".to_string(),
+            PatternCategory::ContextSummarization,
+            MetaLevel::System,
+            "Create concise summaries of session context and key information".to_string(),
+            json!([
+                {"step": 1, "action": "extract_context", "description": "Extract relevant context from session"},
+                {"step": 2, "action": "identify_key_points", "description": "Identify key points and insights"},
+                {"step": 3, "action": "categorize_information", "description": "Categorize information by type"},
+                {"step": 4, "action": "generate_summary", "description": "Generate concise summary"},
+                {"step": 5, "action": "validate_clarity", "description": "Validate summary clarity and completeness"}
+            ]),
+            json!({
+                "summary": "string",
+                "key_points": ["string"],
+                "categories": {
+                    "technical": ["string"],
+                    "business": ["string"],
+                    "decisions": ["string"]
+                },
+                "context_metadata": {
+                    "session_duration": "number",
+                    "participants": ["string"],
+                    "topics_covered": ["string"]
+                }
+            }),
+            Some(json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 10},
+                "has_technical_content": true
+            })),
+            Some(json!({
+                "summary_length": {"lte": 500},
+                "key_points_count": {"gte": 3, "lte": 10},
+                "clarity_score": {"gte": 0.8}
+            }))
+        ).unwrap();
+
+        let output_format = pattern.output_format.as_object().unwrap();
+        assert!(output_format.contains_key("summary"));
+        assert!(output_format.contains_key("key_points"));
+        assert!(output_format.contains_key("categories"));
+        assert!(output_format.contains_key("context_metadata"));
+    }
+
+    #[test]
+    fn test_context_summarization_pattern_execution() {
+        let pattern = SystemPattern::new(
+            "Context Summarization".to_string(),
+            PatternCategory::ContextSummarization,
+            MetaLevel::System,
+            "Create concise summaries of session context and key information".to_string(),
+            json!([
+                {"step": 1, "action": "extract_context", "description": "Extract relevant context from session"},
+                {"step": 2, "action": "identify_key_points", "description": "Identify key points and insights"},
+                {"step": 3, "action": "categorize_information", "description": "Categorize information by type"},
+                {"step": 4, "action": "generate_summary", "description": "Generate concise summary"},
+                {"step": 5, "action": "validate_clarity", "description": "Validate summary clarity and completeness"}
+            ]),
+            json!({
+                "summary": "string",
+                "key_points": ["string"],
+                "categories": {
+                    "technical": ["string"],
+                    "business": ["string"],
+                    "decisions": ["string"]
+                },
+                "context_metadata": {
+                    "session_duration": "number",
+                    "participants": ["string"],
+                    "topics_covered": ["string"]
+                }
+            }),
+            Some(json!({
+                "session_duration_minutes": {"gte": 30},
+                "message_count": {"gte": 10},
+                "has_technical_content": true
+            })),
+            Some(json!({
+                "summary_length": {"lte": 500},
+                "key_points_count": {"gte": 3, "lte": 10},
+                "clarity_score": {"gte": 0.8}
+            }))
+        ).unwrap();
+
+        let context = Some(json!({
+            "session_duration_minutes": 45,
+            "message_count": 15,
+            "has_technical_content": true,
+            "messages": [
+                {"role": "user", "content": "Let's work on the Rust backend"},
+                {"role": "assistant", "content": "I'll help you implement the patterns system"},
+                {"role": "user", "content": "We need to add context summarization"}
+            ],
+            "files_modified": ["src/patterns.rs"],
+            "technologies": ["Rust", "Diesel", "PostgreSQL"]
+        }));
+
+        let mut registry = PatternRegistry::new();
+        registry.register_pattern(pattern).unwrap();
+        let result = registry.execute_pattern("Context Summarization", context).unwrap();
+        
+        assert!(result.output_result.is_some());
+        let output_result = result.output_result.unwrap();
+        let result_obj = output_result.as_object().unwrap();
+        
+        assert!(result_obj.contains_key("summary"));
+        assert!(result_obj.contains_key("key_points"));
+        assert!(result_obj.contains_key("categories"));
+        assert!(result_obj.contains_key("context_metadata"));
     }
 }
 
