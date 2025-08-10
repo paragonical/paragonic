@@ -223,9 +223,7 @@ impl ParagonicServer {
                 if let Some(max_width) = config_obj.get("max_width").and_then(|v| v.as_u64()) {
                     config.max_width = max_width as usize;
                 }
-                if let Some(include_diamond) = config_obj.get("include_diamond").and_then(|v| v.as_bool()) {
-                    config.include_diamond = include_diamond;
-                }
+                // include_diamond removed - now handled by Lua client
                 if let Some(continuation_indent) = config_obj.get("continuation_indent").and_then(|v| v.as_u64()) {
                     config.continuation_indent = continuation_indent as usize;
                 }
@@ -1938,9 +1936,7 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .and_then(|v| v.as_u64())
             .unwrap_or(80) as usize;
             
-        let include_diamond = config_obj.get("include_diamond")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+                    // include_diamond removed - now handled by Lua client
             
         let continuation_indent = config_obj.get("continuation_indent")
             .and_then(|v| v.as_u64())
@@ -1984,7 +1980,6 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
         // Create text formatter with specified config
         let config = crate::text::FormatConfig {
             max_width,
-            include_diamond,
             continuation_indent,
             format_markdown,
             preserve_paragraphs,
