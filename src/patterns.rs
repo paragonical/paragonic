@@ -1323,6 +1323,11 @@ impl PatternExecutionEngine {
             return Self::execute_progress_tracking(pattern, context);
         }
 
+        // Handle Knowledge Extraction pattern specifically
+        if pattern.name == "Knowledge Extraction" {
+            return Self::execute_knowledge_extraction(pattern, context);
+        }
+
         let mut result = json!({
             "pattern_name": pattern.name,
             "executed_at": chrono::Utc::now().to_rfc3339(),
@@ -2629,6 +2634,264 @@ impl PatternExecutionEngine {
         });
 
         Ok(result)
+    }
+
+    /// Executes the Knowledge Extraction pattern
+    fn execute_knowledge_extraction(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // Extract session data from context
+        let session_data = context.as_ref()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Session data context is required for Knowledge Extraction".to_string()
+            ))?;
+
+        // Step 1: Identify knowledge patterns
+        let knowledge_patterns = Self::identify_knowledge_patterns(session_data)?;
+
+        // Step 2: Extract reusable content
+        let reusable_content = Self::extract_reusable_content(session_data)?;
+
+        // Step 3: Categorize knowledge
+        let categories = Self::categorize_knowledge(session_data)?;
+
+        // Step 4: Apply tags
+        let tags = Self::apply_knowledge_tags(session_data, &knowledge_patterns)?;
+
+        // Step 5: Assess reusability
+        let reusability_score = Self::assess_knowledge_reusability(session_data, &reusable_content)?;
+
+        let result = json!({
+            "knowledge_patterns": knowledge_patterns,
+            "reusable_content": reusable_content,
+            "categories": categories,
+            "tags": tags,
+            "reusability_score": reusability_score
+        });
+
+        Ok(result)
+    }
+
+    /// Identifies knowledge patterns from session data
+    fn identify_knowledge_patterns(session_data: &Value) -> ParagonicResult<Vec<String>> {
+        let mut patterns = Vec::new();
+        let empty_vec = Vec::new();
+        let messages = session_data.get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        // Look for common knowledge patterns
+        for message in messages {
+            if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                let content_lower = content.to_lowercase();
+                
+                // Identify solution patterns
+                if content_lower.contains("solution") || content_lower.contains("fix") || content_lower.contains("resolve") {
+                    patterns.push("Problem-Solution Pattern".to_string());
+                }
+                
+                // Identify best practice patterns
+                if content_lower.contains("best practice") || content_lower.contains("recommended") || content_lower.contains("should") {
+                    patterns.push("Best Practice Pattern".to_string());
+                }
+                
+                // Identify workflow patterns
+                if content_lower.contains("workflow") || content_lower.contains("process") || content_lower.contains("steps") {
+                    patterns.push("Workflow Pattern".to_string());
+                }
+                
+                // Identify configuration patterns
+                if content_lower.contains("config") || content_lower.contains("setup") || content_lower.contains("installation") {
+                    patterns.push("Configuration Pattern".to_string());
+                }
+            }
+        }
+
+        // Remove duplicates
+        patterns.sort();
+        patterns.dedup();
+        
+        Ok(patterns)
+    }
+
+    /// Extracts reusable content from session data
+    fn extract_reusable_content(session_data: &Value) -> ParagonicResult<Vec<String>> {
+        let mut reusable_content = Vec::new();
+        let empty_vec = Vec::new();
+        let messages = session_data.get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        for message in messages {
+            if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                // Extract code snippets
+                if content.contains("```") {
+                    let code_blocks: Vec<&str> = content.split("```")
+                        .filter(|block| !block.trim().is_empty())
+                        .collect();
+                    
+                    for block in code_blocks {
+                        if !block.starts_with("rust") && !block.starts_with("lua") && !block.starts_with("json") {
+                            reusable_content.push(format!("Code snippet: {}", block.trim()));
+                        }
+                    }
+                }
+                
+                // Extract command examples
+                if content.contains("cargo") || content.contains("git") || content.contains("make") {
+                    let lines: Vec<&str> = content.split('\n').collect();
+                    for line in lines {
+                        if line.trim().starts_with("cargo") || line.trim().starts_with("git") || line.trim().starts_with("make") {
+                            reusable_content.push(format!("Command: {}", line.trim()));
+                        }
+                    }
+                }
+                
+                // Extract configuration examples
+                if content.contains("config") || content.contains("settings") || content.contains("options") {
+                    reusable_content.push(format!("Configuration: {}", content.split('\n').next().unwrap_or("").trim()));
+                }
+            }
+        }
+
+        // Limit to reasonable number of items
+        reusable_content.truncate(10);
+        Ok(reusable_content)
+    }
+
+    /// Categorizes knowledge by domain and type
+    fn categorize_knowledge(session_data: &Value) -> ParagonicResult<Vec<String>> {
+        let mut categories = Vec::new();
+        let empty_vec = Vec::new();
+        let messages = session_data.get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        for message in messages {
+            if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                let content_lower = content.to_lowercase();
+                
+                // Technical categories
+                if content_lower.contains("rust") || content_lower.contains("cargo") {
+                    categories.push("Rust Development".to_string());
+                }
+                if content_lower.contains("lua") || content_lower.contains("neovim") {
+                    categories.push("Neovim/Lua Development".to_string());
+                }
+                if content_lower.contains("database") || content_lower.contains("sql") {
+                    categories.push("Database Management".to_string());
+                }
+                if content_lower.contains("api") || content_lower.contains("http") {
+                    categories.push("API Development".to_string());
+                }
+                
+                // Process categories
+                if content_lower.contains("test") || content_lower.contains("testing") {
+                    categories.push("Testing & Quality Assurance".to_string());
+                }
+                if content_lower.contains("debug") || content_lower.contains("error") {
+                    categories.push("Debugging & Troubleshooting".to_string());
+                }
+                if content_lower.contains("deploy") || content_lower.contains("production") {
+                    categories.push("Deployment & Operations".to_string());
+                }
+            }
+        }
+
+        // Remove duplicates
+        categories.sort();
+        categories.dedup();
+        
+        Ok(categories)
+    }
+
+    /// Applies tags to knowledge for organization
+    fn apply_knowledge_tags(session_data: &Value, patterns: &[String]) -> ParagonicResult<Vec<String>> {
+        let mut tags = Vec::new();
+        
+        // Add tags based on patterns
+        for pattern in patterns {
+            match pattern.as_str() {
+                "Problem-Solution Pattern" => tags.push("problem-solving".to_string()),
+                "Best Practice Pattern" => tags.push("best-practices".to_string()),
+                "Workflow Pattern" => tags.push("workflow".to_string()),
+                "Configuration Pattern" => tags.push("configuration".to_string()),
+                _ => tags.push("general".to_string()),
+            }
+        }
+        
+        // Add technology tags
+        let empty_vec = Vec::new();
+        let technologies = session_data.get("technologies")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+            
+        for tech in technologies {
+            if let Some(tech_str) = tech.as_str() {
+                tags.push(format!("tech:{}", tech_str));
+            }
+        }
+        
+        // Add complexity tags
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+            
+        if duration_minutes > 60 {
+            tags.push("complex".to_string());
+        } else if duration_minutes > 30 {
+            tags.push("moderate".to_string());
+        } else {
+            tags.push("simple".to_string());
+        }
+        
+        Ok(tags)
+    }
+
+    /// Assesses the reusability of extracted knowledge
+    fn assess_knowledge_reusability(session_data: &Value, reusable_content: &[String]) -> ParagonicResult<f64> {
+        let mut score = 0.0;
+        let mut factors = 0;
+        
+        // Factor 1: Amount of reusable content
+        if !reusable_content.is_empty() {
+            score += (reusable_content.len() as f64).min(5.0) / 5.0;
+            factors += 1;
+        }
+        
+        // Factor 2: Session duration (longer sessions may have more valuable knowledge)
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        if duration_minutes > 0 {
+            score += (duration_minutes as f64).min(120.0) / 120.0;
+            factors += 1;
+        }
+        
+        // Factor 3: File modifications (indicates practical work)
+        let empty_vec = Vec::new();
+        let files_modified = session_data.get("files_modified")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+        if !files_modified.is_empty() {
+            score += (files_modified.len() as f64).min(10.0) / 10.0;
+            factors += 1;
+        }
+        
+        // Factor 4: Message count (indicates detailed discussion)
+        let message_count = session_data.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        if message_count > 0 {
+            score += (message_count as f64).min(20.0) / 20.0;
+            factors += 1;
+        }
+        
+        // Calculate average score
+        if factors > 0 {
+            score = score / factors as f64;
+        }
+        
+        // Ensure score is between 0.0 and 1.0
+        Ok(score.max(0.0).min(1.0))
     }
 }
 
@@ -4980,10 +5243,18 @@ mod tests {
         assert!(result.is_ok());
         
         let patterns = result.unwrap();
-        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns.len(), 6);
         
-        let pattern = &patterns[0];
-        assert_eq!(pattern.name, "Session Summary Generation");
+        // Check that all expected patterns are present
+        assert!(patterns.iter().any(|p| p.name == "Session Summary Generation"));
+        assert!(patterns.iter().any(|p| p.name == "Activity Labeling"));
+        assert!(patterns.iter().any(|p| p.name == "Self-Reflection"));
+        assert!(patterns.iter().any(|p| p.name == "Context Summarization"));
+        assert!(patterns.iter().any(|p| p.name == "Progress Tracking"));
+        assert!(patterns.iter().any(|p| p.name == "Knowledge Extraction"));
+        
+        // Get the Session Summary Generation pattern for detailed testing
+        let pattern = patterns.iter().find(|p| p.name == "Session Summary Generation").unwrap();
         assert_eq!(pattern.category, PatternCategory::SessionManagement);
         assert_eq!(pattern.meta_level, MetaLevel::System);
         assert!(pattern.description.contains("comprehensive summary"));
@@ -5084,8 +5355,13 @@ mod tests {
         
         // Verify patterns were loaded
         let patterns = registry.list_patterns(None, None);
-        assert_eq!(patterns.len(), 1);
-        assert_eq!(patterns[0].name, "Session Summary Generation");
+        assert_eq!(patterns.len(), 6);
+        assert!(patterns.iter().any(|p| p.name == "Session Summary Generation"));
+        assert!(patterns.iter().any(|p| p.name == "Activity Labeling"));
+        assert!(patterns.iter().any(|p| p.name == "Self-Reflection"));
+        assert!(patterns.iter().any(|p| p.name == "Context Summarization"));
+        assert!(patterns.iter().any(|p| p.name == "Progress Tracking"));
+        assert!(patterns.iter().any(|p| p.name == "Knowledge Extraction"));
         
         // Verify relationships were loaded (we can't directly access them yet)
         // The registry should have relationships internally
@@ -6676,7 +6952,7 @@ mod tests {
 
         let result = registry.execute_pattern("Progress Tracking", Some(session_data)).unwrap();
         assert!(result.success);
-        
+
         let output_result = result.output_result.unwrap();
         let result_obj = output_result.as_object().unwrap();
         
