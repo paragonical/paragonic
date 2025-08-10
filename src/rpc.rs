@@ -38,7 +38,7 @@ impl ParagonicServer {
         }
     }
     
-    /// Format Markdown response with proper indentation and list handling
+    /// Format Markdown response with clean, high-quality source formatting
     fn format_markdown_response(&self, content: &str) -> String {
         let mut formatted = String::new();
         let lines: Vec<&str> = content.lines().collect();
@@ -56,7 +56,6 @@ impl ParagonicServer {
                 .and_then(|s| s.strip_prefix(' '))
             {
                 // Format numbered list item with proper indentation
-                formatted.push_str("🮮   ");
                 formatted.push_str(&trimmed[..trimmed.find('.').unwrap() + 1]); // Include the number and period
                 formatted.push_str(" ");
                 formatted.push_str(captures);
@@ -70,8 +69,7 @@ impl ParagonicServer {
                     }
                 }
             } else {
-                // Regular text - just add diamond prefix and content
-                formatted.push_str("🮮   ");
+                // Regular text - just add content
                 formatted.push_str(trimmed);
                 formatted.push_str("\n");
             }
@@ -298,16 +296,16 @@ impl ParagonicServer {
                     RpcError::invalid_params(Some(format!("Failed to format response: {e}")))
                 })?;
                 
-                // Format the response with proper Markdown formatting
+                // Format the response with clean Markdown source formatting
                 let formatted_content = self.format_markdown_response(&chat_response.message.content);
-                println!("{}", formatted_content);
+                println!("🮮   {}", formatted_content);
                 println!(" ⏱️   {:.2}s", ollama_duration.as_secs_f64());
                 println!("");
                 println!("∎");
                 
                 // Return the formatted response as JSON
                 serde_json::to_string(&json!({
-                    "formatted_content": formatted_response,
+                    "formatted_content": formatted_content,
                     "original_content": chat_response.message.content,
                     "model": model,
                     "duration_sec": ollama_duration.as_secs_f64()

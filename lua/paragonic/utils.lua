@@ -102,7 +102,7 @@ function M.wrap_text(text, max_width, indent)
     return lines
 end
 
--- Simple word wrapping helper function for first line with diamond
+-- Format clean Markdown source with diamond prefix and 3-space gutter
 function M.wrap_text_with_diamond(text, max_width)
     if not text or text == "" then
         return {"🮮   "}
@@ -116,48 +116,70 @@ function M.wrap_text_with_diamond(text, max_width)
         table.insert(text_lines, line)
     end
     
-    -- Process each line with simple 3-space indentation
+    -- Process each line with diamond prefix and proper indentation
     for i, line in ipairs(text_lines) do
         if line:match("%S") then  -- Only process non-empty lines
             -- Strip leading spaces from the line
             local clean_line = line:match("^%s*(.+)$")
             
-            -- Simple word wrapping with 3-space indentation
-            local words = {}
-            for word in clean_line:gmatch("[^%s]+") do
-                table.insert(words, word)
-            end
-            
-            local current_line = "🮮   "
-            local current_length = 4  -- Length of diamond + three spaces
-            
-            for j, word in ipairs(words) do
-                local word_length = #word
+            -- Check if this is a numbered list item
+            local number_match = clean_line:match("^(%d+)%.%s*(.+)")
+            if number_match then
+                local number = number_match
+                local content = clean_line:sub(#number + 3) -- Skip "number. "
                 
-                -- If adding this word would exceed the line limit
-                if current_length + word_length > max_width then
-                    -- Add current line to lines (if not empty)
-                    if current_line ~= "🮮   " then
-                        table.insert(lines, current_line)
-                    end
-                    -- Start new line with six spaces (3-space gutter + 3-space continuation)
-                    current_line = "      " .. word
-                    current_length = 6 + word_length
-                else
-                    -- Add word to current line (with space if not first word)
-                    if current_line ~= "🮮   " then
-                        current_line = current_line .. " " .. word
-                        current_length = current_length + 1 + word_length
-                    else
-                        current_line = current_line .. word
-                        current_length = current_length + word_length
+                -- Format numbered list item with diamond prefix and proper indentation
+                local list_item = "🮮   " .. number .. ". " .. content
+                table.insert(lines, list_item)
+                
+                -- Add blank line after numbered list item if next line is not a list item
+                if i < #text_lines then
+                    local next_line = text_lines[i + 1]
+                    if next_line and next_line:match("%S") then
+                        local next_clean = next_line:match("^%s*(.+)$")
+                        if not next_clean:match("^%d+%.") then
+                            table.insert(lines, "")
+                        end
                     end
                 end
-            end
-            
-            -- Add the last line if it has content
-            if current_line ~= "🮮   " then
-                table.insert(lines, current_line)
+            else
+                -- Regular text - simple word wrapping with diamond prefix
+                local words = {}
+                for word in clean_line:gmatch("[^%s]+") do
+                    table.insert(words, word)
+                end
+                
+                local current_line = "🮮   "
+                local current_length = 4  -- Length of diamond + three spaces
+                
+                for j, word in ipairs(words) do
+                    local word_length = #word
+                    
+                    -- If adding this word would exceed the line limit
+                    if current_length + word_length > max_width then
+                        -- Add current line to lines (if not empty)
+                        if current_line ~= "🮮   " then
+                            table.insert(lines, current_line)
+                        end
+                        -- Start new line with six spaces (3-space gutter + 3-space continuation)
+                        current_line = "      " .. word
+                        current_length = 6 + word_length
+                    else
+                        -- Add word to current line (with space if not first word)
+                        if current_line ~= "🮮   " then
+                            current_line = current_line .. " " .. word
+                            current_length = current_length + 1 + word_length
+                        else
+                            current_line = current_line .. word
+                            current_length = current_length + word_length
+                        end
+                    end
+                end
+                
+                -- Add the last line if it has content
+                if current_line ~= "🮮   " then
+                    table.insert(lines, current_line)
+                end
             end
         end
     end
