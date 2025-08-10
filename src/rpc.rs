@@ -256,8 +256,11 @@ impl ParagonicServer {
                     RpcError::invalid_params(Some(format!("Failed to format response: {e}")))
                 })?;
                 
-                // Print the formatted response to stdout
-                println!("{}", formatted_response);
+                // Print the original Markdown source to stdout
+                println!("🮮   {}", chat_response.message.content);
+                println!(" ⏱️   {:.2}s", ollama_duration.as_secs_f64());
+                println!("");
+                println!("∎");
                 
                 // Return the formatted response as JSON
                 serde_json::to_string(&json!({
