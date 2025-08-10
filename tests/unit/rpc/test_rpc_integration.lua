@@ -122,13 +122,25 @@ function M.test_list_models()
         return false
     end
     
-    if not parsed.result or not parsed.result.models then
-        print("❌ Unexpected list_models response format")
+    if not parsed.result then
+        print("❌ Unexpected list_models response format - missing result")
+        return false
+    end
+    
+    -- The result is a JSON string that needs to be parsed again
+    local success3, models = pcall(vim.json.decode, parsed.result)
+    if not success3 then
+        print("❌ Failed to parse models array from result:", models)
+        return false
+    end
+    
+    if not models or type(models) ~= "table" then
+        print("❌ Unexpected list_models response format - result is not an array")
         return false
     end
     
     print("✅ List models working correctly")
-    print("   Found " .. #parsed.result.models .. " models")
+    print("   Found " .. #models .. " models")
     return true
 end
 
