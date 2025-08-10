@@ -2335,6 +2335,139 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
         }
     }
 
+    /// Handle streaming chat completion with real-time updates
+    pub fn handle_streaming_chat_completion(&self, params: Value) -> Result<String, RpcError> {
+        let model = params["model"]
+            .as_str()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'model' parameter".to_string())))?;
+        
+        let message = params["message"]
+            .as_str()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'message' parameter".to_string())))?;
+        
+        let chunk_size = params["chunk_size"]
+            .as_u64()
+            .unwrap_or(50) as usize; // Default to 50 characters per chunk
+        
+        tracing::info!("Starting streaming chat completion for model: {} with chunk_size: {}", model, chunk_size);
+        
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message.to_string(),
+        };
+        
+        // Record start time
+        let start_time = std::time::Instant::now();
+        
+        // Get the full response first
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
+                })
+        };
+        
+        match response {
+            Ok(chat_response) => {
+                let ollama_duration = start_time.elapsed();
+                let content = chat_response.message.content;
+                tracing::info!("Streaming chat completion successful: response_length={}", content.len());
+                
+                // Split content into chunks and return as a series of chunked responses
+                let chunks: Vec<String> = content
+                    .chars()
+                    .collect::<Vec<char>>()
+                    .chunks(chunk_size)
+                    .map(|chunk| chunk.iter().collect::<String>())
+                    .collect();
+                
+                // Return the first chunk with metadata
+                let first_chunk = chunks.first().unwrap_or(&String::new()).clone();
+                let total_chunks = chunks.len();
+                
+                serde_json::to_string(&json!({
+                    "type": "streaming_chunk",
+                    "chunk": first_chunk,
+                    "chunk_index": 0,
+                    "total_chunks": total_chunks,
+                    "model": model,
+                    "duration_sec": ollama_duration.as_secs_f64(),
+                    "remaining_chunks": chunks[1..].to_vec()
+                }))
+                .map_err(|e| {
+                    tracing::error!("Failed to serialize streaming chunk response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to serialize streaming chunk response: {e}")))
+                })
+            }
+            Err(e) => {
+                tracing::error!("Streaming chat completion failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Chat completion failed: {e}"))))
+            }
+        }
+    }
+
+    /// Get the next chunk from a streaming session
+    pub fn handle_get_next_chunk(&self, params: Value) -> Result<String, RpcError> {
+        let chunk_index = params["chunk_index"]
+            .as_u64()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'chunk_index' parameter".to_string())))? as usize;
+        
+        let remaining_chunks = params["remaining_chunks"]
+            .as_array()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'remaining_chunks' parameter".to_string())))?;
+        
+        let total_chunks = params["total_chunks"]
+            .as_u64()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'total_chunks' parameter".to_string())))? as usize;
+        
+        if chunk_index >= remaining_chunks.len() {
+            // No more chunks, return completion signal
+            return serde_json::to_string(&json!({
+                "type": "streaming_complete",
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks
+            }))
+            .map_err(|e| {
+                tracing::error!("Failed to serialize streaming completion response: {}", e);
+                RpcError::invalid_params(Some(format!("Failed to serialize streaming completion response: {e}")))
+            });
+        }
+        
+        // Get the next chunk
+        let next_chunk = remaining_chunks[chunk_index]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        
+        // Prepare remaining chunks for next call
+        let next_remaining: Vec<String> = remaining_chunks
+            .iter()
+            .skip(chunk_index + 1)
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        
+        serde_json::to_string(&json!({
+            "type": "streaming_chunk",
+            "chunk": next_chunk,
+            "chunk_index": chunk_index + 1,
+            "total_chunks": total_chunks,
+            "remaining_chunks": next_remaining
+        }))
+        .map_err(|e| {
+            tracing::error!("Failed to serialize streaming chunk response: {}", e);
+            RpcError::invalid_params(Some(format!("Failed to serialize streaming chunk response: {e}")))
+        })
+    }
 }
 
 impl Server for ParagonicServer {
@@ -2428,6 +2561,10 @@ impl Server for ParagonicServer {
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
             // Handle knowledge stream ingestion requests
             "ingest_knowledge_stream" => Some(self.handle_ingest_knowledge_stream(params)),
+            // Handle streaming chat completion requests
+            "streaming_chat_completion" => Some(self.handle_streaming_chat_completion(params.clone().unwrap())),
+            // Handle getting next chunk from streaming session
+            "get_next_chunk" => Some(self.handle_get_next_chunk(params.clone().unwrap())),
             _ => None
         };
         

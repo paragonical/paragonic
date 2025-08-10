@@ -580,6 +580,77 @@ impl OllamaClient {
         Err(ParagonicError::Ollama("Stream ended unexpectedly without completion signal".to_string()))
     }
 
+    /// Stream chat completion chunks for real-time updates
+    /// 
+    /// This method returns a stream of individual chunks that can be sent
+    /// to the client as they arrive from Ollama.
+    pub async fn stream_chat_completion_chunks(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+    ) -> ParagonicResult<impl futures_util::Stream<Item = ParagonicResult<StreamChatCompletionResponse>>> {
+        let url = format!("{}/api/chat", self.config.base_url);
+        
+        let request_body = ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: Some(true),
+            options: None,
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to send streaming chat completion to Ollama: {e}");
+                ParagonicError::Ollama(format!("Streaming chat completion failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama streaming chat API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+        }
+
+        let stream = response
+            .bytes_stream()
+            .flat_map(|chunk_result| {
+                match chunk_result {
+                    Ok(chunk) => {
+                        let chunk_str = String::from_utf8_lossy(&chunk);
+                        let lines: Vec<&str> = chunk_str.lines().collect();
+                        
+                        let mut responses = Vec::new();
+                        for line in lines {
+                            if line.trim().is_empty() {
+                                continue;
+                            }
+                            
+                            match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                                Ok(stream_response) => responses.push(Ok(stream_response)),
+                                Err(e) => {
+                                    error!("Failed to parse streaming response: {}", e);
+                                    responses.push(Err(ParagonicError::Ollama(format!("Response parsing failed: {e}"))));
+                                }
+                            }
+                        }
+                        
+                        futures_util::stream::iter(responses)
+                    }
+                    Err(e) => {
+                        error!("Failed to read streaming chunk: {}", e);
+                        futures_util::stream::iter(vec![Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")))])
+                    }
+                }
+            });
+
+        info!("Successfully started streaming chat completion chunks from Ollama model: {}", model);
+        Ok(stream)
+    }
+
     /// Get the progress timeout configuration
     pub fn get_progress_timeout_seconds(&self) -> u64 {
         self.config.progress_timeout_seconds

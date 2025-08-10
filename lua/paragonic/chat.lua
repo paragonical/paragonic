@@ -798,6 +798,154 @@ function M.send_debug_markdown_test()
     vim.notify("Debug markdown test completed - check formatting above", vim.log.levels.INFO)
 end
 
+-- Send a streaming message with real-time updates using brain symbol
+function M.send_message_streaming(message, model, on_chunk, on_complete)
+    local backend = require("paragonic.backend")
+    local rpc_client = backend._get_rpc_client()
+    if not rpc_client then
+        -- Try to initialize backend if not available
+        if not backend.initialize_backend() then
+            return nil, "Backend not available"
+        end
+        rpc_client = backend._get_rpc_client()
+    end
+    
+    -- Use default model if not specified
+    local config = require("paragonic.config")
+    model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
+    
+    -- Start streaming chat completion
+    local response = rpc_client:streaming_chat_completion({
+        model = model,
+        message = message,
+        chunk_size = 30 -- Small chunks for smooth streaming
+    })
+    
+    if not response then
+        return nil, "Failed to start streaming"
+    end
+    
+    -- Parse the initial response
+    local utils = require("paragonic.utils")
+    local parsed_response = utils.parse_json_response_enhanced(response)
+    if not parsed_response then
+        return nil, "Failed to parse streaming response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "Streaming error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract streaming data
+    local result = parsed_response.result
+    if type(result) == "string" then
+        -- Try to parse JSON string
+        local success, parsed = pcall(vim.json.decode, result)
+        if success then
+            result = parsed
+        else
+            return nil, "Failed to parse streaming result"
+        end
+    end
+    
+    if not result or result.type ~= "streaming_chunk" then
+        return nil, "Unexpected streaming response format"
+    end
+    
+    -- Call on_chunk for the first chunk
+    if on_chunk then
+        on_chunk(result.chunk, result.chunk_index, result.total_chunks)
+    end
+    
+    -- Process remaining chunks
+    local remaining_chunks = result.remaining_chunks or {}
+    local current_chunk_index = result.chunk_index or 0
+    local total_chunks = result.total_chunks or 1
+    
+    -- Function to process next chunk
+    local function process_next_chunk()
+        if #remaining_chunks == 0 then
+            -- All chunks processed, call completion
+            if on_complete then
+                on_complete()
+            end
+            return
+        end
+        
+        -- Get next chunk
+        local next_response = rpc_client:get_next_chunk({
+            chunk_index = current_chunk_index,
+            remaining_chunks = remaining_chunks,
+            total_chunks = total_chunks
+        })
+        
+        if not next_response then
+            if on_complete then
+                on_complete()
+            end
+            return
+        end
+        
+        -- Parse next chunk response
+        local next_parsed = utils.parse_json_response_enhanced(next_response)
+        if not next_parsed or not next_parsed.result then
+            if on_complete then
+                on_complete()
+            end
+            return
+        end
+        
+        local next_result = next_parsed.result
+        if type(next_result) == "string" then
+            local success, parsed = pcall(vim.json.decode, next_result)
+            if success then
+                next_result = parsed
+            else
+                if on_complete then
+                    on_complete()
+                end
+                return
+            end
+        end
+        
+        if next_result.type == "streaming_complete" then
+            -- Streaming finished
+            if on_complete then
+                on_complete()
+            end
+            return
+        elseif next_result.type == "streaming_chunk" then
+            -- Process this chunk
+            if on_chunk then
+                on_chunk(next_result.chunk, next_result.chunk_index, next_result.total_chunks)
+            end
+            
+            -- Update for next iteration
+            remaining_chunks = next_result.remaining_chunks or {}
+            current_chunk_index = next_result.chunk_index or 0
+            
+            -- Schedule next chunk with a small delay for smooth animation
+            vim.defer_fn(process_next_chunk, 50) -- 50ms delay between chunks
+        else
+            if on_complete then
+                on_complete()
+            end
+        end
+    end
+    
+    -- Start processing remaining chunks
+    if #remaining_chunks > 0 then
+        vim.defer_fn(process_next_chunk, 100) -- Start after 100ms
+    else
+        if on_complete then
+            on_complete()
+        end
+    end
+    
+    return true
+end
+
 -- Helper function to extract text backward from cursor to previous tombstone
 -- This enables multi-line input by capturing all lines from the cursor 
 -- position back to the previous ∎ tombstone marker
@@ -993,6 +1141,207 @@ function M.send_message_command()
     
     -- Notify success
     vim.notify("Message sent successfully (server-formatted)", vim.log.levels.INFO)
+end
+
+-- Send message with streaming updates using brain symbol
+function M.send_message_command_streaming()
+    local debug = require("paragonic.debug")
+    debug.debug_print("🚀 send_message_command_streaming() called", "debug")
+    
+    -- Get current buffer and cursor position
+    local current_buf = vim.api.nvim_get_current_buf()
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local line_num = cursor_pos[1] - 1 -- Convert to 0-based index
+    
+    -- Extract message from current line
+    local line_content = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)[1] or ""
+    local message = line_content:match("^%s*(.+)%s*$") -- Trim whitespace
+    
+    if not message or message == "" then
+        vim.notify("No message to send", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Add immediate visual feedback that the chat is being sent
+    debug.debug_print("🔧 Calling append_debug_message...", "debug")
+    local success, err = debug.append_debug_message(current_buf, "Starting streaming message to AI...", "info")
+    
+    if not success then
+        debug.debug_print("❌ append_debug_message failed: " .. tostring(err), "error")
+        return
+    else
+        debug.debug_print("✅ append_debug_message succeeded", "debug")
+    end
+    
+    -- Initialize backend if not available
+    local backend = require("paragonic.backend")
+    if not backend._rpc_client then
+        debug.append_debug_message(current_buf, "🔧 Backend not available, starting initialization...", "info")
+        
+        local success = backend._initialize_backend()
+        
+        if not success then
+            debug.append_debug_message(current_buf, "❌ Backend initialization failed", "error")
+            vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
+            return
+        else
+            debug.append_debug_message(current_buf, "✅ Backend initialization completed", "success")
+        end
+    else
+        debug.append_debug_message(current_buf, "✅ Backend already available", "info")
+    end
+    
+    -- Record start time for timing information
+    local start_time = vim.uv.now()
+    
+    -- Add brain symbol to indicate streaming is starting
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"󰧑"})
+    
+    -- Force buffer update to show brain symbol immediately
+    vim.api.nvim_buf_call(current_buf, function()
+        vim.cmd("redraw!")
+    end)
+    
+    -- Initialize response buffer
+    local response_buffer = ""
+    local response_line_start = line_num + 2
+    
+    -- Callback for each chunk
+    local function on_chunk(chunk, chunk_index, total_chunks)
+        -- Append chunk to response buffer
+        response_buffer = response_buffer .. chunk
+        
+        -- Update the response line with current content and brain symbol
+        local response_lines = {}
+        for line in response_buffer:gmatch("[^\r\n]+") do
+            if line:match("%S") then  -- Only add non-empty lines
+                table.insert(response_lines, line)
+            end
+        end
+        
+        -- If no lines were extracted, add the current buffer as a single line
+        if #response_lines == 0 then
+            table.insert(response_lines, response_buffer)
+        end
+        
+        -- Format with brain symbol for progress and diamond for final
+        local formatted_lines = {}
+        local utils = require("paragonic.utils")
+        
+        -- Get buffer width for word wrapping
+        local full_buffer_width = vim.api.nvim_win_get_width(0)
+        local base_width = math.floor(full_buffer_width * 0.7)
+        if base_width < 20 then base_width = 20 end
+        
+        if #response_lines > 0 then
+            -- First line with brain symbol (progress indicator)
+            local wrapped_first = utils.wrap_text_with_diamond(response_lines[1], base_width)
+            for _, line in ipairs(wrapped_first) do
+                -- Replace diamond with brain symbol for progress
+                line = line:gsub("🮮", "󰧑")
+                table.insert(formatted_lines, line)
+            end
+            
+            -- Remaining lines with six spaces indentation
+            for i = 2, #response_lines do
+                local wrapped_lines = utils.wrap_text(response_lines[i], base_width, "      ")
+                for _, line in ipairs(wrapped_lines) do
+                    table.insert(formatted_lines, line)
+                end
+            end
+        else
+            -- If no content, just add the brain symbol with proper gutter spacing
+            table.insert(formatted_lines, "󰧑   ")
+        end
+        
+        -- Update the buffer with current progress
+        vim.api.nvim_buf_set_lines(current_buf, response_line_start, response_line_start + #formatted_lines, false, formatted_lines)
+        
+        -- Force buffer update
+        vim.api.nvim_buf_call(current_buf, function()
+            vim.cmd("redraw!")
+        end)
+    end
+    
+    -- Callback for completion
+    local function on_complete()
+        -- Calculate timing information
+        local end_time = vim.uv.now()
+        local duration_ms = end_time - start_time
+        local duration_sec = duration_ms / 1000
+        
+        -- Replace brain symbol with diamond for final result
+        local final_lines = {}
+        for line in response_buffer:gmatch("[^\r\n]+") do
+            if line:match("%S") then
+                table.insert(final_lines, line)
+            end
+        end
+        
+        if #final_lines == 0 then
+            table.insert(final_lines, response_buffer)
+        end
+        
+        -- Format with diamond symbol for final result
+        local utils = require("paragonic.utils")
+        local full_buffer_width = vim.api.nvim_win_get_width(0)
+        local base_width = math.floor(full_buffer_width * 0.7)
+        if base_width < 20 then base_width = 20 end
+        
+        local formatted_lines = {}
+        if #final_lines > 0 then
+            -- First line with diamond symbol (final result)
+            local wrapped_first = utils.wrap_text_with_diamond(final_lines[1], base_width)
+            for _, line in ipairs(wrapped_first) do
+                table.insert(formatted_lines, line)
+            end
+            
+            -- Remaining lines with six spaces indentation
+            for i = 2, #final_lines do
+                local wrapped_lines = utils.wrap_text(final_lines[i], base_width, "      ")
+                for _, line in ipairs(wrapped_lines) do
+                    table.insert(formatted_lines, line)
+                end
+            end
+        else
+            table.insert(formatted_lines, "🮮   ")
+        end
+        
+        -- Add timing information
+        table.insert(formatted_lines, "")
+        table.insert(formatted_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
+        
+        -- Add closing lines
+        table.insert(formatted_lines, "")
+        table.insert(formatted_lines, "∎")
+        
+        -- Update the buffer with final result
+        vim.api.nvim_buf_set_lines(current_buf, response_line_start, response_line_start + #formatted_lines, false, formatted_lines)
+        
+        -- Move cursor to the end of the buffer
+        local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+        vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+        
+        -- Notify success
+        vim.notify("Streaming message completed successfully", vim.log.levels.INFO)
+        debug.append_debug_message(current_buf, "✅ Streaming message completed", "success")
+    end
+    
+    -- Send the streaming message
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local success, err = M.send_message_streaming(message, default_model, on_chunk, on_complete)
+    
+    if not success then
+        debug.append_debug_message(current_buf, "Failed to start streaming: " .. (err or "unknown error"), "error")
+        vim.notify("Failed to start streaming: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        
+        -- Add error message to chat buffer
+        local error_lines = {
+            "🛔  " .. (err or "unknown error")
+        }
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
+    end
 end
 
 -- Alternative send functions for different extraction modes
