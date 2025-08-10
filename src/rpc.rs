@@ -124,6 +124,13 @@ impl ParagonicServer {
         match response {
             Ok(chat_response) => {
                 tracing::info!("Chat completion successful: response_length={}", chat_response.message.content.len());
+                
+                // Print the raw response content to stdout
+                println!("🮮   {}", chat_response.message.content);
+                println!(" ⏱️   {:.2}s", ollama_duration.as_secs_f64());
+                println!("");
+                println!("∎");
+                
                 // Return the response as JSON
                 serde_json::to_string(&chat_response)
                     .map_err(|e| {
@@ -249,6 +256,9 @@ impl ParagonicServer {
                     RpcError::invalid_params(Some(format!("Failed to format response: {e}")))
                 })?;
                 
+                // Print the formatted response to stdout
+                println!("{}", formatted_response);
+                
                 // Return the formatted response as JSON
                 serde_json::to_string(&json!({
                     "formatted_content": formatted_response,
@@ -333,16 +343,31 @@ impl ParagonicServer {
                         // No more tool calls, return final response
                         let final_response = if tool_results.is_empty() {
                             // No tools were used, return original response
+                            
+                            // Print the final response to stdout
+                            println!("🮮   {}", response_content);
+                            println!(" ⚡   Agent response (no tools used)");
+                            println!("");
+                            println!("∎");
+                            
                             serde_json::to_string(&chat_response)
                                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
                         } else {
                             // Tools were used, create enhanced response
+                            let enhanced_content = format!("{}\n\nTool execution summary:\n{}", 
+                                response_content, 
+                                tool_results.join("\n"));
+                            
+                            // Print the enhanced response to stdout
+                            println!("🮮   {}", enhanced_content);
+                            println!(" ⚡   Agent response with {} tools executed", tool_results.len());
+                            println!("");
+                            println!("∎");
+                            
                             let enhanced_response = serde_json::json!({
                                 "message": {
                                     "role": "assistant",
-                                    "content": format!("{}\n\nTool execution summary:\n{}", 
-                                        response_content, 
-                                        tool_results.join("\n"))
+                                    "content": enhanced_content
                                 },
                                 "tool_calls_executed": tool_results.len(),
                                 "tool_results": tool_results,

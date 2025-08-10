@@ -78,14 +78,14 @@ impl TextFormatter {
             // Word wrap the paragraph
             let wrapped_lines = self.word_wrap(paragraph)?;
 
-            // Apply formatting to each line
+            // Apply formatting to each line with 3-space gutter design
             for (line_idx, line) in wrapped_lines.iter().enumerate() {
                 let formatted_line = if para_idx == 0 && line_idx == 0 && self.config.include_diamond {
-                    // First line of first paragraph gets diamond prefix
-                    format!("🮮  {}", line)
+                    // First line gets diamond in gutter (position 0) + 3 spaces + content
+                    format!("🮮   {}", line)
                 } else {
-                    // Other lines get continuation indentation
-                    format!("{}{}", " ".repeat(self.config.continuation_indent), line)
+                    // Other lines get 3-space gutter + continuation indentation + content
+                    format!("{}   {}", " ".repeat(3), line)
                 };
                 formatted_lines.push(formatted_line);
             }
@@ -342,13 +342,13 @@ impl TextFormatter {
         Ok(lines)
     }
 
-    /// Format text with timing information
+    /// Format text with timing information using 3-space gutter design
     pub fn format_with_timing(&self, text: &str, duration_sec: f64) -> ParagonicResult<String> {
         let mut formatted = self.format_for_neovim(text)?;
         
-        // Add timing information
+        // Add timing information with timer glyph in gutter
         formatted.push_str("\n");
-        formatted.push_str(&format!("   ⏱️  {:.2}s", duration_sec));
+        formatted.push_str(&format!(" ⏱️   {:.2}s", duration_sec));
         formatted.push_str("\n");
         formatted.push_str("\n");
         formatted.push_str("∎");
@@ -496,8 +496,8 @@ fn main() {
         let text = "This is a test message without diamond prefix.";
         let formatted = formatter.format_for_neovim(text).unwrap();
         
-        assert!(!formatted.starts_with("🮮  "));
-        assert!(formatted.starts_with("   ")); // should start with indentation
+        assert!(!formatted.starts_with("🮮   "));
+        assert!(formatted.starts_with("      ")); // should start with 6-space indentation (3-space gutter + 3-space continuation)
     }
 
 
@@ -508,7 +508,7 @@ fn main() {
         let text = "Test message";
         let formatted = formatter.format_with_timing(text, 1.23).unwrap();
         
-        assert!(formatted.contains("⏱️  1.23s"));
+        assert!(formatted.contains("⏱️   1.23s"));
         assert!(formatted.ends_with("∎"));
     }
 

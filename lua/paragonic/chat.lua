@@ -469,21 +469,21 @@ function M.send_message_command_legacy()
             table.insert(response_lines, line)
         end
         
-        -- Add remaining lines with three spaces indentation
+        -- Add remaining lines with six spaces indentation (3-space gutter + 3-space continuation)
         for i = 2, #response_content_lines do
-            local wrapped_lines = utils.wrap_text(response_content_lines[i], base_width, "   ")
+            local wrapped_lines = utils.wrap_text(response_content_lines[i], base_width, "      ")
             for _, line in ipairs(wrapped_lines) do
                 table.insert(response_lines, line)
             end
         end
     else
-        -- If no content, just add the diamond
-        table.insert(response_lines, "🮮")
+        -- If no content, just add the diamond with proper gutter spacing
+        table.insert(response_lines, "🮮   ")
     end
     
     -- Add timing information
     table.insert(response_lines, "")
-    table.insert(response_lines, "   ⏱️  " .. string.format("%.2fs", duration_sec))
+    table.insert(response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
     
     -- Add closing lines
     table.insert(response_lines, "")
@@ -646,21 +646,21 @@ function M.send_message_command_debug()
             table.insert(response_lines, line)
         end
         
-        -- Add remaining lines with three spaces indentation
+        -- Add remaining lines with six spaces indentation (3-space gutter + 3-space continuation)
         for i = 2, #response_content_lines do
-            local wrapped_lines = utils.wrap_text(response_content_lines[i], base_width, "   ")
+            local wrapped_lines = utils.wrap_text(response_content_lines[i], base_width, "      ")
             for _, line in ipairs(wrapped_lines) do
                 table.insert(response_lines, line)
             end
         end
     else
-        -- If no content, just add the diamond
-        table.insert(response_lines, "🮮")
+        -- If no content, just add the diamond with proper gutter spacing
+        table.insert(response_lines, "🮮   ")
     end
     
     -- Add timing information
     table.insert(response_lines, "")
-    table.insert(response_lines, "   ⏱️  " .. string.format("%.2fs", duration_sec))
+    table.insert(response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
     
     -- Add closing lines
     table.insert(response_lines, "")
