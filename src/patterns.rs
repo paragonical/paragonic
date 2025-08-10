@@ -556,21 +556,19 @@ impl PatternRegistry {
             pattern.id,
             None, // session_id will be set by caller if needed
             TriggerType::Manual,
-            context,
+            context.clone(),
         )?;
         
         // Start execution
         execution.start_execution()?;
         
-        // For now, we'll just mark it as completed with a basic result
-        // In a full implementation, this would execute the actual pattern logic
+        // Execute the actual pattern logic
+        let result = PatternExecutionEngine::execute_pattern_workflow_internal(&pattern, &context)?;
+        
+        // Complete execution with the actual result
         execution.complete_execution(
             true,
-            Some(json!({
-                "pattern_name": pattern_name,
-                "executed_at": chrono::Utc::now().to_rfc3339(),
-                "status": "completed"
-            })),
+            Some(result),
             None
         )?;
         
@@ -1310,6 +1308,11 @@ impl PatternExecutionEngine {
             return Self::execute_activity_labeling(pattern, context);
         }
 
+        // Handle Self-Reflection pattern specifically
+        if pattern.name == "Self-Reflection" {
+            return Self::execute_self_reflection(pattern, context);
+        }
+
         let mut result = json!({
             "pattern_name": pattern.name,
             "executed_at": chrono::Utc::now().to_rfc3339(),
@@ -1654,6 +1657,264 @@ impl PatternExecutionEngine {
         Ok(next_actions)
     }
 
+    /// Analyzes performance metrics from session data
+    fn analyze_performance_metrics(session_data: &Value) -> ParagonicResult<Value> {
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = session_data.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let empty_map = serde_json::Map::new();
+        let performance_metrics = session_data.get("performance_metrics")
+            .and_then(|v| v.as_object())
+            .unwrap_or(&empty_map);
+
+        let response_time_avg = performance_metrics.get("response_time_avg")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let accuracy_score = performance_metrics.get("accuracy_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let user_satisfaction = performance_metrics.get("user_satisfaction")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let analysis = json!({
+            "duration_minutes": duration_minutes,
+            "message_count": message_count,
+            "response_time_avg": response_time_avg,
+            "accuracy_score": accuracy_score,
+            "user_satisfaction": user_satisfaction,
+            "efficiency_score": if duration_minutes > 0 { message_count as f64 / duration_minutes as f64 } else { 0.0 },
+            "overall_performance": (accuracy_score + user_satisfaction) / 2.0
+        });
+
+        Ok(analysis)
+    }
+
+    /// Identifies strengths based on session data and performance analysis
+    fn identify_strengths(session_data: &Value, performance_analysis: &Value) -> ParagonicResult<Vec<String>> {
+        let mut strengths = Vec::new();
+
+        let overall_performance = performance_analysis.get("overall_performance")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let efficiency_score = performance_analysis.get("efficiency_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let accuracy_score = performance_analysis.get("accuracy_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let user_satisfaction = performance_analysis.get("user_satisfaction")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        if overall_performance > 0.8 {
+            strengths.push("High overall performance".to_string());
+        }
+
+        if efficiency_score > 0.5 {
+            strengths.push("Good communication efficiency".to_string());
+        }
+
+        if accuracy_score > 0.8 {
+            strengths.push("High accuracy in responses".to_string());
+        }
+
+        if user_satisfaction > 0.8 {
+            strengths.push("Excellent user satisfaction".to_string());
+        }
+
+        if strengths.is_empty() {
+            strengths.push("Consistent performance".to_string());
+        }
+
+        Ok(strengths)
+    }
+
+    /// Identifies weaknesses based on session data and performance analysis
+    fn identify_weaknesses(session_data: &Value, performance_analysis: &Value) -> ParagonicResult<Vec<String>> {
+        let mut weaknesses = Vec::new();
+
+        let overall_performance = performance_analysis.get("overall_performance")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let efficiency_score = performance_analysis.get("efficiency_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let accuracy_score = performance_analysis.get("accuracy_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let user_satisfaction = performance_analysis.get("user_satisfaction")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        if overall_performance < 0.6 {
+            weaknesses.push("Overall performance needs improvement".to_string());
+        }
+
+        if efficiency_score < 0.3 {
+            weaknesses.push("Communication efficiency could be improved".to_string());
+        }
+
+        if accuracy_score < 0.7 {
+            weaknesses.push("Response accuracy needs enhancement".to_string());
+        }
+
+        if user_satisfaction < 0.7 {
+            weaknesses.push("User satisfaction could be improved".to_string());
+        }
+
+        if weaknesses.is_empty() {
+            weaknesses.push("Minor areas for optimization".to_string());
+        }
+
+        Ok(weaknesses)
+    }
+
+    /// Generates insights based on session data, performance analysis, strengths, and weaknesses
+    fn generate_insights(session_data: &Value, performance_analysis: &Value, strengths: &[String], weaknesses: &[String]) -> ParagonicResult<Vec<String>> {
+        let mut insights = Vec::new();
+
+        let duration_minutes = performance_analysis.get("duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = performance_analysis.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let overall_performance = performance_analysis.get("overall_performance")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        if duration_minutes > 30 && message_count > 10 {
+            insights.push("Engaged in extended productive session".to_string());
+        }
+
+        if overall_performance > 0.8 {
+            insights.push("Demonstrated high-quality performance".to_string());
+        }
+
+        if strengths.len() > weaknesses.len() {
+            insights.push("Strengths outweigh areas for improvement".to_string());
+        } else {
+            insights.push("Focus on addressing identified weaknesses".to_string());
+        }
+
+        if message_count > 0 && duration_minutes > 0 {
+            let messages_per_minute = message_count as f64 / duration_minutes as f64;
+            if messages_per_minute > 0.5 {
+                insights.push("Maintained good communication pace".to_string());
+            }
+        }
+
+        if insights.is_empty() {
+            insights.push("Session completed successfully".to_string());
+        }
+
+        Ok(insights)
+    }
+
+    /// Suggests improvements based on session data, performance analysis, and weaknesses
+    fn suggest_improvements(session_data: &Value, performance_analysis: &Value, weaknesses: &[String]) -> ParagonicResult<Vec<String>> {
+        let mut improvements = Vec::new();
+
+        let overall_performance = performance_analysis.get("overall_performance")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let efficiency_score = performance_analysis.get("efficiency_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let accuracy_score = performance_analysis.get("accuracy_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        if overall_performance < 0.7 {
+            improvements.push("Focus on improving overall session quality".to_string());
+        }
+
+        if efficiency_score < 0.4 {
+            improvements.push("Work on more efficient communication".to_string());
+        }
+
+        if accuracy_score < 0.8 {
+            improvements.push("Enhance response accuracy and precision".to_string());
+        }
+
+        if weaknesses.contains(&"User satisfaction could be improved".to_string()) {
+            improvements.push("Prioritize user experience and satisfaction".to_string());
+        }
+
+        if improvements.is_empty() {
+            improvements.push("Continue current performance practices".to_string());
+        }
+
+        Ok(improvements)
+    }
+
+    /// Generates a comprehensive reflection summary
+    fn generate_reflection_summary(performance_analysis: &Value, strengths: &[String], weaknesses: &[String], insights: &[String], improvements: &[String]) -> ParagonicResult<String> {
+        let overall_performance = performance_analysis.get("overall_performance")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let duration_minutes = performance_analysis.get("duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = performance_analysis.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let mut summary_parts = Vec::new();
+
+        summary_parts.push(format!(
+            "Session reflection for {} minute session with {} messages",
+            duration_minutes, message_count
+        ));
+
+        if overall_performance > 0.8 {
+            summary_parts.push("Overall performance was excellent".to_string());
+        } else if overall_performance > 0.6 {
+            summary_parts.push("Overall performance was good".to_string());
+        } else {
+            summary_parts.push("Overall performance needs improvement".to_string());
+        }
+
+        if !strengths.is_empty() {
+            summary_parts.push(format!("Key strengths: {}", strengths.join(", ")));
+        }
+
+        if !weaknesses.is_empty() {
+            summary_parts.push(format!("Areas for improvement: {}", weaknesses.join(", ")));
+        }
+
+        if !insights.is_empty() {
+            summary_parts.push(format!("Key insights: {}", insights.join(", ")));
+        }
+
+        if !improvements.is_empty() {
+            summary_parts.push(format!("Recommended improvements: {}", improvements.join(", ")));
+        }
+
+        let summary = summary_parts.join(". ");
+        Ok(summary)
+    }
+
     /// Analyzes activity context from session data
     fn analyze_activity_context(session_data: &Value) -> ParagonicResult<Value> {
         let empty_vec = Vec::new();
@@ -1876,6 +2137,44 @@ impl PatternExecutionEngine {
 
         let label = label_parts.join(" ");
         Ok(label)
+    }
+
+    /// Executes the Self-Reflection pattern
+    fn execute_self_reflection(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // Extract session data from context
+        let session_data = context.as_ref()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Session data context is required for Self-Reflection".to_string()
+            ))?;
+
+        // Step 1: Analyze performance
+        let performance_analysis = Self::analyze_performance_metrics(session_data)?;
+
+        // Step 2: Identify strengths
+        let strengths = Self::identify_strengths(session_data, &performance_analysis)?;
+
+        // Step 3: Identify weaknesses
+        let weaknesses = Self::identify_weaknesses(session_data, &performance_analysis)?;
+
+        // Step 4: Generate insights
+        let insights = Self::generate_insights(session_data, &performance_analysis, &strengths, &weaknesses)?;
+
+        // Step 5: Suggest improvements
+        let improvements = Self::suggest_improvements(session_data, &performance_analysis, &weaknesses)?;
+
+        // Generate reflection summary
+        let reflection_summary = Self::generate_reflection_summary(&performance_analysis, &strengths, &weaknesses, &insights, &improvements)?;
+
+        let result = json!({
+            "performance_analysis": performance_analysis,
+            "strengths": strengths,
+            "weaknesses": weaknesses,
+            "insights": insights,
+            "improvements": improvements,
+            "reflection_summary": reflection_summary
+        });
+
+        Ok(result)
     }
 }
 
@@ -5269,6 +5568,208 @@ mod tests {
         
         assert!(output_format.contains_key("complexity"));
         assert_eq!(output_format["complexity"], "enum");
+    }
+
+    #[test]
+    fn test_self_reflection_pattern_creation() {
+        let pattern = SystemPattern::new(
+            "Self-Reflection".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Analyze session performance and identify improvement opportunities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_performance", "description": "Analyze session performance metrics"},
+                {"step": 2, "action": "identify_strengths", "description": "Identify areas of strength"},
+                {"step": 3, "action": "identify_weaknesses", "description": "Identify areas for improvement"},
+                {"step": 4, "action": "generate_insights", "description": "Generate actionable insights"},
+                {"step": 5, "action": "suggest_improvements", "description": "Suggest specific improvements"}
+            ]),
+            json!({
+                "output_format": "reflection_report",
+                "metadata_schema": {
+                    "performance_metrics": "object",
+                    "strengths": "array",
+                    "weaknesses": "array",
+                    "insights": "array",
+                    "improvements": "array"
+                }
+            }),
+            Some(json!(["session_end", "performance_threshold", "manual_trigger"])),
+            None
+        ).unwrap();
+
+        assert_eq!(pattern.name, "Self-Reflection");
+        assert_eq!(pattern.category, PatternCategory::SelfReflection);
+        assert_eq!(pattern.meta_level, MetaLevel::System);
+        assert!(pattern.description.contains("Analyze session performance"));
+    }
+
+    #[test]
+    fn test_self_reflection_workflow_steps() {
+        let pattern = SystemPattern::new(
+            "Self-Reflection".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Analyze session performance and identify improvement opportunities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_performance", "description": "Analyze session performance metrics"},
+                {"step": 2, "action": "identify_strengths", "description": "Identify areas of strength"},
+                {"step": 3, "action": "identify_weaknesses", "description": "Identify areas for improvement"},
+                {"step": 4, "action": "generate_insights", "description": "Generate actionable insights"},
+                {"step": 5, "action": "suggest_improvements", "description": "Suggest specific improvements"}
+            ]),
+            json!({
+                "output_format": "reflection_report",
+                "metadata_schema": {
+                    "performance_metrics": "object",
+                    "strengths": "array",
+                    "weaknesses": "array",
+                    "insights": "array",
+                    "improvements": "array"
+                }
+            }),
+            Some(json!(["session_end", "performance_threshold", "manual_trigger"])),
+            None
+        ).unwrap();
+
+        let workflow = pattern.workflow_steps.as_array().unwrap();
+        assert_eq!(workflow.len(), 5);
+        
+        assert_eq!(workflow[0]["action"], "analyze_performance");
+        assert_eq!(workflow[1]["action"], "identify_strengths");
+        assert_eq!(workflow[2]["action"], "identify_weaknesses");
+        assert_eq!(workflow[3]["action"], "generate_insights");
+        assert_eq!(workflow[4]["action"], "suggest_improvements");
+    }
+
+    #[test]
+    fn test_self_reflection_trigger_conditions() {
+        let pattern = SystemPattern::new(
+            "Self-Reflection".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Analyze session performance and identify improvement opportunities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_performance", "description": "Analyze session performance metrics"},
+                {"step": 2, "action": "identify_strengths", "description": "Identify areas of strength"},
+                {"step": 3, "action": "identify_weaknesses", "description": "Identify areas for improvement"},
+                {"step": 4, "action": "generate_insights", "description": "Generate actionable insights"},
+                {"step": 5, "action": "suggest_improvements", "description": "Suggest specific improvements"}
+            ]),
+            json!({
+                "output_format": "reflection_report",
+                "metadata_schema": {
+                    "performance_metrics": "object",
+                    "strengths": "array",
+                    "weaknesses": "array",
+                    "insights": "array",
+                    "improvements": "array"
+                }
+            }),
+            Some(json!(["session_end", "performance_threshold", "manual_trigger"])),
+            None
+        ).unwrap();
+
+        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap().as_array().unwrap();
+        
+        assert!(trigger_conditions.contains(&json!("session_end")));
+        assert!(trigger_conditions.contains(&json!("performance_threshold")));
+        assert!(trigger_conditions.contains(&json!("manual_trigger")));
+    }
+
+    #[test]
+    fn test_self_reflection_output_format() {
+        let pattern = SystemPattern::new(
+            "Self-Reflection".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Analyze session performance and identify improvement opportunities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_performance", "description": "Analyze session performance metrics"},
+                {"step": 2, "action": "identify_strengths", "description": "Identify areas of strength"},
+                {"step": 3, "action": "identify_weaknesses", "description": "Identify areas for improvement"},
+                {"step": 4, "action": "generate_insights", "description": "Generate actionable insights"},
+                {"step": 5, "action": "suggest_improvements", "description": "Suggest specific improvements"}
+            ]),
+            json!({
+                "output_format": "reflection_report",
+                "metadata_schema": {
+                    "performance_metrics": "object",
+                    "strengths": "array",
+                    "weaknesses": "array",
+                    "insights": "array",
+                    "improvements": "array"
+                }
+            }),
+            Some(json!(["session_end", "performance_threshold", "manual_trigger"])),
+            None
+        ).unwrap();
+
+        let output_format = pattern.output_format.as_object().unwrap();
+        assert_eq!(output_format["output_format"], "reflection_report");
+        
+        let schema = output_format["metadata_schema"].as_object().unwrap();
+        assert!(schema.contains_key("performance_metrics"));
+        assert!(schema.contains_key("strengths"));
+        assert!(schema.contains_key("weaknesses"));
+        assert!(schema.contains_key("insights"));
+        assert!(schema.contains_key("improvements"));
+    }
+
+    #[test]
+    fn test_self_reflection_pattern_execution() {
+        let pattern = SystemPattern::new(
+            "Self-Reflection".to_string(),
+            PatternCategory::SelfReflection,
+            MetaLevel::System,
+            "Analyze session performance and identify improvement opportunities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_performance", "description": "Analyze session performance metrics"},
+                {"step": 2, "action": "identify_strengths", "description": "Identify areas of strength"},
+                {"step": 3, "action": "identify_weaknesses", "description": "Identify areas for improvement"},
+                {"step": 4, "action": "generate_insights", "description": "Generate actionable insights"},
+                {"step": 5, "action": "suggest_improvements", "description": "Suggest specific improvements"}
+            ]),
+            json!({
+                "output_format": "reflection_report",
+                "metadata_schema": {
+                    "performance_metrics": "object",
+                    "strengths": "array",
+                    "weaknesses": "array",
+                    "insights": "array",
+                    "improvements": "array"
+                }
+            }),
+            Some(json!(["session_end", "performance_threshold", "manual_trigger"])),
+            None
+        ).unwrap();
+
+        let context = Some(json!({
+            "session_duration_minutes": 45,
+            "message_count": 12,
+            "files_modified": ["src/main.rs", "tests/test.rs"],
+            "activities": ["coding", "testing", "debugging"],
+            "performance_metrics": {
+                "response_time_avg": 2.5,
+                "accuracy_score": 0.85,
+                "user_satisfaction": 0.9
+            }
+        }));
+
+        let mut registry = PatternRegistry::new();
+        registry.register_pattern(pattern).unwrap();
+        let result = registry.execute_pattern("Self-Reflection", context).unwrap();
+        
+        assert!(result.output_result.is_some());
+        let output_result = result.output_result.unwrap();
+        let result_obj = output_result.as_object().unwrap();
+        
+        assert!(result_obj.contains_key("performance_analysis"));
+        assert!(result_obj.contains_key("strengths"));
+        assert!(result_obj.contains_key("weaknesses"));
+        assert!(result_obj.contains_key("insights"));
+        assert!(result_obj.contains_key("improvements"));
+        assert!(result_obj.contains_key("reflection_summary"));
     }
 }
 
