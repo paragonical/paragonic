@@ -58,22 +58,22 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 4.12 Implement Knowledge Extraction pattern
   - [x] 4.13 Verify all tests pass
 
-- [ ] 5. **API Implementation**
-  - [ ] 5.1 Write tests for pattern listing API
-  - [ ] 5.2 Implement GET /api/patterns endpoint
-  - [ ] 5.3 Write tests for pattern retrieval API
-  - [ ] 5.4 Implement GET /api/patterns/{pattern_id} endpoint
-  - [ ] 5.5 Write tests for pattern execution API
-  - [ ] 5.6 Implement POST /api/patterns/{pattern_id}/execute endpoint
-  - [ ] 5.7 Write tests for execution history API
-  - [ ] 5.8 Implement GET /api/patterns/{pattern_id}/executions endpoint
-  - [ ] 5.9 Write tests for pattern metrics API
-  - [ ] 5.10 Implement GET /api/patterns/{pattern_id}/metrics endpoint
-  - [ ] 5.11 Write tests for tool-pattern mapping API
-  - [ ] 5.12 Implement GET /api/tools/{tool_name}/patterns endpoint
-  - [ ] 5.13 Write tests for session pattern triggering API
-  - [ ] 5.14 Implement POST /api/sessions/{session_id}/patterns/trigger endpoint
-  - [ ] 5.15 Verify all tests pass
+- [x] 5. **API Implementation**
+  - [x] 5.1 Write tests for pattern listing API
+  - [x] 5.2 Implement GET /api/patterns endpoint
+  - [x] 5.3 Write tests for pattern retrieval API
+  - [x] 5.4 Implement GET /api/patterns/{pattern_id} endpoint
+  - [x] 5.5 Write tests for pattern execution API
+  - [x] 5.6 Implement POST /api/patterns/{pattern_id}/execute endpoint
+  - [x] 5.7 Write tests for execution history API
+  - [x] 5.8 Implement GET /api/patterns/{pattern_id}/executions endpoint
+  - [x] 5.9 Write tests for pattern metrics API
+  - [x] 5.10 Implement GET /api/patterns/{pattern_id}/metrics endpoint
+  - [x] 5.11 Write tests for tool-pattern mapping API
+  - [x] 5.12 Implement GET /api/tools/{tool_name}/patterns endpoint
+  - [x] 5.13 Write tests for session pattern triggering API
+  - [x] 5.14 Implement POST /api/sessions/{session_id}/patterns/trigger endpoint
+  - [x] 5.15 Verify all tests pass
 
 - [ ] 6. **MCP Tool Integration**
   - [ ] 6.1 Write tests for enhanced MCP tool descriptions
