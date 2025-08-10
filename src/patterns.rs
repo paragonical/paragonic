@@ -4157,6 +4157,304 @@ mod tests {
             assert!(attempts >= 1);
         }
     }
+
+    #[test]
+    fn test_session_summary_generation_pattern_creation() {
+        let pattern = SystemPattern::new(
+            "Session Summary Generation".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Automatically generates comprehensive session summaries".to_string(),
+            serde_json::json!([
+                {"step": 1, "action": "analyze_session_data", "description": "Analyze session messages and activities"},
+                {"step": 2, "action": "extract_key_decisions", "description": "Identify important decisions made"},
+                {"step": 3, "action": "identify_files_modified", "description": "Track files that were modified"},
+                {"step": 4, "action": "generate_summary", "description": "Create comprehensive session summary"},
+                {"step": 5, "action": "extract_key_points", "description": "Extract key insights and points"},
+                {"step": 6, "action": "suggest_next_actions", "description": "Recommend next steps"}
+            ]),
+            serde_json::json!({
+                "summary": "string",
+                "key_decisions": ["string"],
+                "files_modified": ["string"],
+                "key_points": ["string"],
+                "next_actions": ["string"],
+                "session_duration": "string",
+                "message_count": "number"
+            }),
+            Some(serde_json::json!({
+                "session_duration_minutes": 30,
+                "message_count_threshold": 10,
+                "activity_changes": 3
+            })),
+            None,
+        ).unwrap();
+
+        assert_eq!(pattern.name, "Session Summary Generation");
+        assert_eq!(pattern.category, PatternCategory::SessionManagement);
+        assert_eq!(pattern.meta_level, MetaLevel::System);
+        assert!(pattern.workflow_steps.is_array());
+        assert!(pattern.output_format.is_object());
+        assert!(pattern.trigger_conditions.is_some());
+    }
+
+    #[test]
+    fn test_session_summary_generation_pattern_execution() {
+        let pattern = SystemPattern::new(
+            "Session Summary Generation".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Automatically generates comprehensive session summaries".to_string(),
+            serde_json::json!([
+                {"step": 1, "action": "analyze_session_data", "description": "Analyze session messages and activities"},
+                {"step": 2, "action": "extract_key_decisions", "description": "Identify important decisions made"},
+                {"step": 3, "action": "identify_files_modified", "description": "Track files that were modified"},
+                {"step": 4, "action": "generate_summary", "description": "Create comprehensive session summary"},
+                {"step": 5, "action": "extract_key_points", "description": "Extract key insights and points"},
+                {"step": 6, "action": "suggest_next_actions", "description": "Recommend next steps"}
+            ]),
+            serde_json::json!({
+                "summary": "string",
+                "key_decisions": ["string"],
+                "files_modified": ["string"],
+                "key_points": ["string"],
+                "next_actions": ["string"],
+                "session_duration": "string",
+                "message_count": "number"
+            }),
+            Some(serde_json::json!({
+                "session_duration_minutes": 30,
+                "message_count_threshold": 10,
+                "activity_changes": 3
+            })),
+            None,
+        ).unwrap();
+
+        let mut execution = PatternExecution::new(
+            pattern.id,
+            Some(Uuid::new_v4()),
+            TriggerType::Automatic,
+            Some(serde_json::json!({
+                "session_duration_minutes": 45,
+                "message_count": 15,
+                "messages": [
+                    {"role": "user", "content": "Let's work on the pattern system"},
+                    {"role": "assistant", "content": "I'll help you implement the pattern system"},
+                    {"role": "user", "content": "We need to add session summary generation"}
+                ],
+                "files_modified": ["src/patterns.rs", "tests/patterns.rs"],
+                "activities": ["code_review", "testing", "documentation"]
+            })),
+        ).unwrap();
+
+        // Start the execution first
+        execution.start_execution().unwrap();
+
+        // Complete the execution with results
+        execution.complete_execution(
+            true,
+            Some(serde_json::json!({
+                "summary": "Worked on implementing the pattern system with focus on session summary generation",
+                "key_decisions": [
+                    "Implemented SystemPattern data structure",
+                    "Added PatternExecution tracking",
+                    "Created session summary generation pattern"
+                ],
+                "files_modified": ["src/patterns.rs", "tests/patterns.rs"],
+                "key_points": [
+                    "Pattern system provides meta-level capabilities",
+                    "Session summaries improve context awareness",
+                    "Automatic triggering enhances user experience"
+                ],
+                "next_actions": [
+                    "Implement remaining core patterns",
+                    "Add pattern execution engine",
+                    "Create Neovim integration"
+                ],
+                "session_duration": "45 minutes",
+                "message_count": 15
+            })),
+            None,
+        ).unwrap();
+
+        assert_eq!(execution.pattern_id, pattern.id);
+        assert_eq!(execution.trigger_type, TriggerType::Automatic);
+        assert!(execution.success);
+        assert!(execution.output_result.is_some());
+        
+        let result = execution.output_result.as_ref().unwrap().as_object().unwrap();
+        assert!(result.contains_key("summary"));
+        assert!(result.contains_key("key_decisions"));
+        assert!(result.contains_key("files_modified"));
+        assert!(result.contains_key("key_points"));
+        assert!(result.contains_key("next_actions"));
+    }
+
+    #[test]
+    fn test_session_summary_generation_trigger_conditions() {
+        let pattern = SystemPattern::new(
+            "Session Summary Generation".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Automatically generates comprehensive session summaries".to_string(),
+            serde_json::json!([
+                {"step": 1, "action": "analyze_session_data", "description": "Analyze session messages and activities"},
+                {"step": 2, "action": "extract_key_decisions", "description": "Identify important decisions made"},
+                {"step": 3, "action": "identify_files_modified", "description": "Track files that were modified"},
+                {"step": 4, "action": "generate_summary", "description": "Create comprehensive session summary"},
+                {"step": 5, "action": "extract_key_points", "description": "Extract key insights and points"},
+                {"step": 6, "action": "suggest_next_actions", "description": "Recommend next steps"}
+            ]),
+            serde_json::json!({
+                "summary": "string",
+                "key_decisions": ["string"],
+                "files_modified": ["string"],
+                "key_points": ["string"],
+                "next_actions": ["string"],
+                "session_duration": "string",
+                "message_count": "number"
+            }),
+            Some(serde_json::json!({
+                "session_duration_minutes": 30,
+                "message_count_threshold": 10,
+                "activity_changes": 3
+            })),
+            None,
+        ).unwrap();
+
+        // Test trigger conditions evaluation
+        let conditions = pattern.trigger_conditions.as_ref().unwrap().as_object().unwrap();
+        assert_eq!(conditions.get("session_duration_minutes").unwrap().as_u64().unwrap(), 30);
+        assert_eq!(conditions.get("message_count_threshold").unwrap().as_u64().unwrap(), 10);
+        assert_eq!(conditions.get("activity_changes").unwrap().as_u64().unwrap(), 3);
+
+        // Test that conditions are met
+        let session_context = serde_json::json!({
+            "session_duration_minutes": 45,
+            "message_count": 15,
+            "activity_changes": 5
+        });
+
+        let context = session_context.as_object().unwrap();
+        let duration_met = context.get("session_duration_minutes").unwrap().as_u64().unwrap() >= 
+                          conditions.get("session_duration_minutes").unwrap().as_u64().unwrap();
+        let message_met = context.get("message_count").unwrap().as_u64().unwrap() >= 
+                         conditions.get("message_count_threshold").unwrap().as_u64().unwrap();
+        let activity_met = context.get("activity_changes").unwrap().as_u64().unwrap() >= 
+                          conditions.get("activity_changes").unwrap().as_u64().unwrap();
+
+        assert!(duration_met);
+        assert!(message_met);
+        assert!(activity_met);
+    }
+
+    #[test]
+    fn test_session_summary_generation_workflow_steps() {
+        let pattern = SystemPattern::new(
+            "Session Summary Generation".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Automatically generates comprehensive session summaries".to_string(),
+            serde_json::json!([
+                {"step": 1, "action": "analyze_session_data", "description": "Analyze session messages and activities"},
+                {"step": 2, "action": "extract_key_decisions", "description": "Identify important decisions made"},
+                {"step": 3, "action": "identify_files_modified", "description": "Track files that were modified"},
+                {"step": 4, "action": "generate_summary", "description": "Create comprehensive session summary"},
+                {"step": 5, "action": "extract_key_points", "description": "Extract key insights and points"},
+                {"step": 6, "action": "suggest_next_actions", "description": "Recommend next steps"}
+            ]),
+            serde_json::json!({
+                "summary": "string",
+                "key_decisions": ["string"],
+                "files_modified": ["string"],
+                "key_points": ["string"],
+                "next_actions": ["string"],
+                "session_duration": "string",
+                "message_count": "number"
+            }),
+            Some(serde_json::json!({
+                "session_duration_minutes": 30,
+                "message_count_threshold": 10,
+                "activity_changes": 3
+            })),
+            None,
+        ).unwrap();
+
+        let steps = pattern.workflow_steps.as_array().unwrap();
+        assert_eq!(steps.len(), 6);
+
+        // Verify each step has required fields
+        for (i, step) in steps.iter().enumerate() {
+            let step_obj = step.as_object().unwrap();
+            assert!(step_obj.contains_key("step"));
+            assert!(step_obj.contains_key("action"));
+            assert!(step_obj.contains_key("description"));
+            
+            assert_eq!(step_obj.get("step").unwrap().as_u64().unwrap(), (i + 1) as u64);
+        }
+
+        // Verify specific steps
+        let step1 = steps[0].as_object().unwrap();
+        assert_eq!(step1.get("action").unwrap().as_str().unwrap(), "analyze_session_data");
+        assert_eq!(step1.get("description").unwrap().as_str().unwrap(), "Analyze session messages and activities");
+
+        let step4 = steps[3].as_object().unwrap();
+        assert_eq!(step4.get("action").unwrap().as_str().unwrap(), "generate_summary");
+        assert_eq!(step4.get("description").unwrap().as_str().unwrap(), "Create comprehensive session summary");
+    }
+
+    #[test]
+    fn test_session_summary_generation_output_format() {
+        let pattern = SystemPattern::new(
+            "Session Summary Generation".to_string(),
+            PatternCategory::SessionManagement,
+            MetaLevel::System,
+            "Automatically generates comprehensive session summaries".to_string(),
+            serde_json::json!([
+                {"step": 1, "action": "analyze_session_data", "description": "Analyze session messages and activities"},
+                {"step": 2, "action": "extract_key_decisions", "description": "Identify important decisions made"},
+                {"step": 3, "action": "identify_files_modified", "description": "Track files that were modified"},
+                {"step": 4, "action": "generate_summary", "description": "Create comprehensive session summary"},
+                {"step": 5, "action": "extract_key_points", "description": "Extract key insights and points"},
+                {"step": 6, "action": "suggest_next_actions", "description": "Recommend next steps"}
+            ]),
+            serde_json::json!({
+                "summary": "string",
+                "key_decisions": ["string"],
+                "files_modified": ["string"],
+                "key_points": ["string"],
+                "next_actions": ["string"],
+                "session_duration": "string",
+                "message_count": "number"
+            }),
+            Some(serde_json::json!({
+                "session_duration_minutes": 30,
+                "message_count_threshold": 10,
+                "activity_changes": 3
+            })),
+            None,
+        ).unwrap();
+
+        let output_format = pattern.output_format.as_object().unwrap();
+        
+        // Verify all required output fields
+        assert!(output_format.contains_key("summary"));
+        assert!(output_format.contains_key("key_decisions"));
+        assert!(output_format.contains_key("files_modified"));
+        assert!(output_format.contains_key("key_points"));
+        assert!(output_format.contains_key("next_actions"));
+        assert!(output_format.contains_key("session_duration"));
+        assert!(output_format.contains_key("message_count"));
+
+        // Verify field types are strings (JSON schema format)
+        assert!(output_format.get("summary").unwrap().is_string());
+        assert!(output_format.get("key_decisions").unwrap().is_array());
+        assert!(output_format.get("files_modified").unwrap().is_array());
+        assert!(output_format.get("key_points").unwrap().is_array());
+        assert!(output_format.get("next_actions").unwrap().is_array());
+        assert!(output_format.get("session_duration").unwrap().is_string());
+        assert!(output_format.get("message_count").unwrap().is_string());
+    }
 }
 
 /// Registry for managing skills and their relationships
