@@ -2416,6 +2416,46 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
         }
     }
 
+    /// Test Ollama streaming response format
+    pub fn handle_test_streaming_format(&self, params: Value) -> Result<String, RpcError> {
+        let model = params["model"]
+            .as_str()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'model' parameter".to_string())))?;
+        
+        tracing::info!("Testing streaming format for model: {}", model);
+        
+        let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.test_streaming_format(model).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    self.ollama_client.test_streaming_format(model).await
+                })
+        };
+        
+        match result {
+            Ok(_) => {
+                serde_json::to_string(&json!({
+                    "status": "success",
+                    "message": "Streaming format test completed successfully"
+                }))
+                .map_err(|e| {
+                    tracing::error!("Failed to serialize test response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to serialize test response: {e}")))
+                })
+            }
+            Err(e) => {
+                tracing::error!("Streaming format test failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Test failed: {e}"))))
+            }
+        }
+    }
+
     /// Get the next chunk from a streaming session
     pub fn handle_get_next_chunk(&self, params: Value) -> Result<String, RpcError> {
         let chunk_index = params["chunk_index"]
@@ -2565,6 +2605,8 @@ impl Server for ParagonicServer {
             "streaming_chat_completion" => Some(self.handle_streaming_chat_completion(params.clone().unwrap())),
             // Handle getting next chunk from streaming session
             "get_next_chunk" => Some(self.handle_get_next_chunk(params.clone().unwrap())),
+            // Handle testing streaming format
+            "test_streaming_format" => Some(self.handle_test_streaming_format(params.clone().unwrap())),
             _ => None
         };
         

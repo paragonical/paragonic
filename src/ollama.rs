@@ -672,6 +672,97 @@ impl OllamaClient {
     pub fn get_progress_timeout_seconds(&self) -> u64 {
         self.config.progress_timeout_seconds
     }
+
+    /// Test function to manually check Ollama streaming response format
+    pub async fn test_streaming_format(&self, model: &str) -> ParagonicResult<()> {
+        let url = format!("{}/api/chat", self.config.base_url);
+        
+        let request_body = ChatCompletionRequest {
+            model: model.to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: "Hello, say 'test' and nothing else.".to_string(),
+            }],
+            stream: Some(true),
+            options: None,
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to send test request to Ollama: {e}");
+                ParagonicError::Ollama(format!("Test request failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama test API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Test API error {status}: {error_text}")));
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut line_count = 0;
+        
+        info!("Testing streaming response format for model: {}", model);
+        
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    let lines: Vec<&str> = chunk_str.lines().collect();
+                    
+                    for line in lines {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        
+                        line_count += 1;
+                        info!("Line {}: {}", line_count, line);
+                        
+                        // Try to parse as JSON and see what we get
+                        match serde_json::from_str::<serde_json::Value>(line) {
+                            Ok(json_value) => {
+                                info!("Parsed JSON: {:?}", json_value);
+                                
+                                // Check if it has a 'message' field
+                                if let Some(message) = json_value.get("message") {
+                                    info!("Found 'message' field: {:?}", message);
+                                }
+                                
+                                // Check if it has a 'response' field
+                                if let Some(response) = json_value.get("response") {
+                                    info!("Found 'response' field: {:?}", response);
+                                }
+                                
+                                // Check if it has a 'done' field
+                                if let Some(done) = json_value.get("done") {
+                                    info!("Found 'done' field: {:?}", done);
+                                    if done.as_bool().unwrap_or(false) {
+                                        info!("Stream completed after {} lines", line_count);
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to parse line as JSON: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to read streaming chunk: {}", e);
+                    return Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")));
+                }
+            }
+        }
+        
+        info!("Stream ended after {} lines", line_count);
+        Ok(())
+    }
 }
 
 
