@@ -125,7 +125,7 @@ function M.open_config()
                 "",
                 "## Ollama Settings",
                 "- Host: " .. (config_response.ollama_host or "127.0.0.1:11434"),
-                "- Model: " .. (config_response.ollama_model or "llama2"),
+                "- Model: " .. (config_response.ollama_model or "deepseek-r1:1.5b"),
                 "",
                 "## Database Settings", 
                 "- Path: " .. (config_response.database_path or "/tmp/paragonic.db"),

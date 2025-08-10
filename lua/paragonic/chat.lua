@@ -18,7 +18,8 @@ function M.send_message(message, model)
     end
     
     -- Use default model if not specified
-    model = model or "llama2"
+    local config = require("paragonic.config")
+    model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
     
     -- Send chat completion request
     local response = rpc_client:chat_completion(model, message)
@@ -106,7 +107,8 @@ function M.send_message_formatted(message, model, format_config)
     end
     
     -- Use default model if not specified
-    model = model or "llama2"
+    local config = require("paragonic.config")
+    model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
     
     -- Set default format configuration if not provided
     format_config = format_config or {
@@ -180,7 +182,8 @@ function M.send_message_enhanced(message, model)
     end
     
     -- Use default model if not specified
-    model = model or "llama2"
+    local config = require("paragonic.config")
+    model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
     
     -- Send chat completion request
     local response = rpc_client:chat_completion(model, message)
@@ -411,7 +414,9 @@ function M.send_message_command_legacy()
     end
     
     -- Send the message using enhanced function
-    local response, err = M.send_message_enhanced(message, "llama2")
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local response, err = M.send_message_enhanced(message, default_model)
     
     -- Stop progress updates
     if progress_timer then
@@ -587,7 +592,9 @@ function M.send_message_command_debug()
     end
     
     -- Send the message using enhanced function
-    local response, err = M.send_message_enhanced(message, "llama2")
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local response, err = M.send_message_enhanced(message, default_model)
     
     -- Stop progress updates
     if progress_timer then
@@ -952,7 +959,9 @@ function M.send_message_command()
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
     -- Send the message using server-side formatted function
-    local formatted_response, original_response, server_duration_sec, err = M.send_message_formatted(message, "llama2", format_config)
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local formatted_response, original_response, server_duration_sec, err = M.send_message_formatted(message, default_model, format_config)
     
     if not formatted_response then
         vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
@@ -1009,7 +1018,9 @@ function M.send_message_backward_only()
     
     -- Get and send to backend
     local backend = require("paragonic.backend")
-    local success, response = backend.send_message(message, "llama2")
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local success, response = backend.send_message(message, default_model)
     
     if success then
         vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"", "∎"})
@@ -1043,7 +1054,9 @@ function M.send_message_forward_only()
     
     -- Get and send to backend
     local backend = require("paragonic.backend")
-    local success, response = backend.send_message(message, "llama2")
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local success, response = backend.send_message(message, default_model)
     
     if success then
         vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"", "∎"})

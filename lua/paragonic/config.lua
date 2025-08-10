@@ -8,7 +8,7 @@ local M = {}
 -- Plugin configuration
 local config = {
     ollama_host = "http://localhost:11434",
-    ollama_model = "llama3.2:3b",
+    ollama_model = "deepseek-r1:1.5b",
     database_path = nil, -- Will be set in setup() if vim is available
     log_level = "info",
 }

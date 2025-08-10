@@ -174,7 +174,7 @@ function M.get_available_models()
     local rpc_client = M._get_rpc_client()
     if not rpc_client then
         -- Return default models to prevent freezing
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
+        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Get models list with timeout
@@ -184,26 +184,26 @@ function M.get_available_models()
     
     if not success or not response then
         -- Return default models on failure
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
+        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Parse JSON response
     local utils = require("paragonic.utils")
     local parsed_response = utils.parse_json_response(response)
     if not parsed_response then
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
+        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Check for error in response
     if parsed_response.error then
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
+        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Extract models list
     if parsed_response.result and parsed_response.result.models then
         return parsed_response.result.models
     else
-        return {"llama2", "llama3.2:3b", "nomic-embed-text:latest"}
+        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
     end
 end
 

@@ -80,7 +80,7 @@ function M:call(method, params)
             jsonrpc = "2.0",
             result = {
                 models = {
-                    {name = "llama2", description = "Llama 2 model"},
+                    {name = "deepseek-r1:1.5b", description = "DeepSeek R1 1.5B model"},
                     {name = "llama3.2:3b", description = "Llama 3.2 3B model"},
                     {name = "nomic-embed-text:latest", description = "Nomic embedding model"}
                 }
@@ -123,7 +123,9 @@ function M:list_models()
 end
 
 function M:chat_completion(message, model)
-    return self:call("chat_completion", {message = message, model = model or "llama2"})
+            local config = require("paragonic.config")
+        local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+        return self:call("chat_completion", {message = message, model = model or default_model})
 end
 
 function M:formatted_chat_completion(model, message, format_config)
