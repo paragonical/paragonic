@@ -450,6 +450,14 @@ function M:formatted_chat_completion(model, message, format_config)
     return self:call("formatted_chat_completion", {message, model, format_config})
 end
 
+function M:streaming_chat_completion(params)
+    return self:call("streaming_chat_completion", params)
+end
+
+function M:get_next_chunk(params)
+    return self:call("get_next_chunk", params)
+end
+
 -- Send debug markdown test request to verify server-side formatting
 function M:debug_markdown_test(format_config)
     return self:call("debug_markdown_test", format_config or {})

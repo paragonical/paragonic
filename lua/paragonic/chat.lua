@@ -805,7 +805,7 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
     if not rpc_client then
         -- Try to initialize backend if not available
         if not backend.initialize_backend() then
-            return nil, "Backend not available"
+            return nil, "Backend not available - please ensure the Rust server is running"
         end
         rpc_client = backend._get_rpc_client()
     end
@@ -956,7 +956,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
     if not rpc_client then
         -- Try to initialize backend if not available
         if not backend.initialize_backend() then
-            return nil, "Backend not available"
+            return nil, "Backend not available - please ensure the Rust server is running"
         end
         rpc_client = backend._get_rpc_client()
     end

@@ -49,20 +49,9 @@ function M._initialize_backend()
     local success, rpc = pcall(require, "paragonic.rpc")
     if not success then
         debug.debug_print("❌ Failed to require paragonic.rpc: " .. tostring(rpc), "error")
-        debug.debug_print("🔧 Falling back to simple RPC client...", "info")
-        
-        -- Fallback to simple RPC client
-        local success2, rpc_simple = pcall(require, "paragonic.rpc_simple")
-        if not success2 then
-            debug.debug_print("❌ Failed to require paragonic.rpc_simple: " .. tostring(rpc_simple), "error")
-            return false
-        end
-        
-        debug.debug_print("✅ paragonic.rpc_simple module loaded successfully", "success")
-        rpc = rpc_simple
-    else
-        debug.debug_print("✅ paragonic.rpc module loaded successfully", "success")
+        return false
     end
+    debug.debug_print("✅ paragonic.rpc module loaded successfully", "success")
     
     debug.debug_print("🔧 Step 2: About to create RPC client with rpc.new()...", "debug")
     local success2, client = pcall(function() return rpc.new("127.0.0.1:3000") end)
