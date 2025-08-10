@@ -15,6 +15,7 @@ use crate::error::{ParagonicError, ParagonicResult};
 pub struct OllamaConfig {
     pub base_url: String,
     pub timeout_seconds: u64,
+    pub progress_timeout_seconds: u64,
 }
 
 impl Default for OllamaConfig {
@@ -22,6 +23,7 @@ impl Default for OllamaConfig {
         Self {
             base_url: "http://localhost:11434".to_string(),
             timeout_seconds: 120, // Increased to 2 minutes for complex requests
+            progress_timeout_seconds: 30, // 30 seconds without progress before timeout
         }
     }
 }
@@ -158,6 +160,7 @@ impl OllamaClient {
         let ollama_config = OllamaConfig {
             base_url: config.ollama.base_url.clone(),
             timeout_seconds: config.ollama.timeout_seconds,
+            progress_timeout_seconds: config.ollama.progress_timeout_seconds,
         };
         
         Self::new(ollama_config)
@@ -456,6 +459,122 @@ impl OllamaClient {
         info!("Successfully started streaming chat completion from Ollama model: {}", model);
         Ok(stream)
     }
+
+    /// Stream chat completion with progress detection and adaptive timeouts
+    /// 
+    /// This method uses streaming to detect when Ollama is making progress
+    /// and only times out if there's no progress for a specified duration.
+    pub async fn stream_chat_completion_with_progress(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        progress_timeout_seconds: u64,
+    ) -> ParagonicResult<ChatCompletionResponse> {
+        let url = format!("{}/api/chat", self.config.base_url);
+        
+        let request_body = ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: Some(true),
+            options: None,
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to send streaming chat completion to Ollama: {e}");
+                ParagonicError::Ollama(format!("Streaming chat completion failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama streaming chat API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut full_response = String::new();
+        let mut last_progress_time = std::time::Instant::now();
+        let progress_timeout = std::time::Duration::from_secs(progress_timeout_seconds);
+        
+        info!("Starting streaming chat completion with progress detection for model: {}", model);
+
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    let lines: Vec<&str> = chunk_str.lines().collect();
+                    
+                    for line in lines {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        
+                        match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                            Ok(stream_response) => {
+                                // Update progress time whenever we receive any response
+                                last_progress_time = std::time::Instant::now();
+                                
+                                // Log progress for debugging
+                                if let Some(response_text) = &stream_response.response {
+                                    info!("Progress update from {}: {} chars", model, response_text.len());
+                                }
+                                
+                                // Accumulate the response
+                                if let Some(response_text) = stream_response.response {
+                                    full_response.push_str(&response_text);
+                                }
+                                
+                                // Check if we're done
+                                if stream_response.done {
+                                    info!("Streaming chat completion completed for model: {}", model);
+                                    
+                                    // Construct the final response
+                                    let final_message = ChatMessage {
+                                        role: "assistant".to_string(),
+                                        content: full_response,
+                                    };
+                                    
+                                    return Ok(ChatCompletionResponse {
+                                        model: stream_response.model,
+                                        created_at: stream_response.created_at,
+                                        message: final_message,
+                                        done: true,
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to parse streaming response: {}", e);
+                                return Err(ParagonicError::Ollama(format!("Response parsing failed: {e}")));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to read streaming chunk: {}", e);
+                    return Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")));
+                }
+            }
+            
+            // Check for progress timeout
+            if last_progress_time.elapsed() > progress_timeout {
+                error!("No progress detected for {} seconds, timing out", progress_timeout_seconds);
+                return Err(ParagonicError::Ollama(format!("No progress detected for {} seconds", progress_timeout_seconds)));
+            }
+        }
+        
+        // If we get here, the stream ended without a done signal
+        Err(ParagonicError::Ollama("Stream ended unexpectedly without completion signal".to_string()))
+    }
+
+    /// Get the progress timeout configuration
+    pub fn get_progress_timeout_seconds(&self) -> u64 {
+        self.config.progress_timeout_seconds
+    }
 }
 
 
@@ -470,7 +589,8 @@ mod tests {
     fn test_ollama_config_default() {
         let config = OllamaConfig::default();
         assert_eq!(config.base_url, "http://localhost:11434");
-        assert_eq!(config.timeout_seconds, 30);
+        assert_eq!(config.timeout_seconds, 120);
+        assert_eq!(config.progress_timeout_seconds, 30);
     }
 
     /// Test Ollama model structure
@@ -526,6 +646,7 @@ mod tests {
         // Verify that the Ollama config from the config module matches our expectations
         assert_eq!(config.ollama.base_url, "http://localhost:11434");
         assert_eq!(config.ollama.timeout_seconds, 30);
+        assert_eq!(config.ollama.progress_timeout_seconds, 30);
     }
 
     /// Test Ollama client creation from config module
@@ -540,6 +661,7 @@ mod tests {
         let client = client.unwrap();
         assert_eq!(client.config.base_url, "http://localhost:11434");
         assert_eq!(client.config.timeout_seconds, 30);
+        assert_eq!(client.config.progress_timeout_seconds, 30);
     }
 
     /// Test Ollama client creation with custom configuration
@@ -550,6 +672,7 @@ mod tests {
         // Set custom Ollama configuration
         config_manager.get_config_mut().ollama.base_url = "http://custom-ollama:11435".to_string();
         config_manager.get_config_mut().ollama.timeout_seconds = 60;
+        config_manager.get_config_mut().ollama.progress_timeout_seconds = 60;
         
         // Test that the custom config is used
         let client = OllamaClient::from_config_manager(&config_manager);
@@ -558,6 +681,7 @@ mod tests {
         let client = client.unwrap();
         assert_eq!(client.config.base_url, "http://custom-ollama:11435");
         assert_eq!(client.config.timeout_seconds, 60);
+        assert_eq!(client.config.progress_timeout_seconds, 60);
     }
 
     /// Test list models with mock server (integration test)

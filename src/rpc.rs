@@ -259,15 +259,17 @@ impl ParagonicServer {
             content: message,
         };
         
-        // Make actual Ollama API call
-        tracing::info!("Making Ollama API call to model: {}", model);
+        // Make actual Ollama API call with progress detection
+        tracing::info!("Making Ollama API call to model: {} with progress detection", model);
         let ollama_start = std::time::Instant::now();
         
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             // We're in a runtime context, use block_in_place
             tokio::task::block_in_place(|| {
                 handle.block_on(async {
-                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                    // Use streaming with progress detection instead of fixed timeout
+                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
                 })
             })
         } else {
@@ -278,7 +280,9 @@ impl ParagonicServer {
                     RpcError::invalid_params(Some(format!("Failed to create runtime: {e}")))
                 })?
                 .block_on(async {
-                    self.ollama_client.chat_completion(&model, vec![chat_message], false).await
+                    // Use streaming with progress detection instead of fixed timeout
+                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
                 })
         };
         
@@ -366,18 +370,22 @@ impl ParagonicServer {
                 return Err(RpcError::invalid_params(Some("Maximum tool calling iterations reached".to_string())));
             }
             
-            // Get AI response
+            // Get AI response with progress detection
             let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
                 tokio::task::block_in_place(|| {
                     handle.block_on(async {
-                        self.ollama_client.chat_completion(model, current_messages.clone(), false).await
+                        // Use streaming with progress detection instead of fixed timeout
+                        let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                        self.ollama_client.stream_chat_completion_with_progress(model, current_messages.clone(), progress_timeout).await
                     })
                 })
             } else {
                 tokio::runtime::Runtime::new()
                     .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                     .block_on(async {
-                        self.ollama_client.chat_completion(model, current_messages.clone(), false).await
+                        // Use streaming with progress detection instead of fixed timeout
+                        let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                        self.ollama_client.stream_chat_completion_with_progress(model, current_messages.clone(), progress_timeout).await
                     })
             };
             
