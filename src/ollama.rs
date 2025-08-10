@@ -498,8 +498,10 @@ impl OllamaClient {
 
         let mut stream = response.bytes_stream();
         let mut full_response = String::new();
+        let mut accumulated_chunk = String::new();
         let mut last_progress_time = std::time::Instant::now();
         let progress_timeout = std::time::Duration::from_secs(progress_timeout_seconds);
+        let chunk_threshold = 50; // Send chunks when we have at least 50 characters
         
         info!("Starting streaming chat completion with progress detection for model: {} (progress_timeout: {}s)", model, progress_timeout_seconds);
 
@@ -550,11 +552,20 @@ impl OllamaClient {
                                 // Accumulate the response from both possible fields
                                 if let Some(response_text) = stream_response.response {
                                     full_response.push_str(&response_text);
+                                    accumulated_chunk.push_str(&response_text);
                                 }
                                 if let Some(message) = stream_response.message {
                                     // For streaming, each message contains the current piece of content
                                     // We need to append just the content, not replace the entire message
                                     full_response.push_str(&message.content);
+                                    accumulated_chunk.push_str(&message.content);
+                                }
+                                
+                                // Log when we have accumulated enough content for a meaningful chunk
+                                if accumulated_chunk.len() >= chunk_threshold {
+                                    info!("Accumulated chunk ready: {} chars - '{}'", accumulated_chunk.len(), accumulated_chunk);
+                                    // Reset accumulated chunk for next batch
+                                    accumulated_chunk.clear();
                                 }
                                 
                                 // Check if we're done
@@ -669,6 +680,101 @@ impl OllamaClient {
             });
 
         info!("Successfully started streaming chat completion chunks from Ollama model: {}", model);
+        Ok(stream)
+    }
+
+    /// Stream accumulated chunks for client consumption
+    /// 
+    /// This method accumulates small pieces from Ollama and sends larger,
+    /// more meaningful chunks to the client for better user experience.
+    pub async fn stream_accumulated_chunks(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        chunk_threshold: usize,
+    ) -> ParagonicResult<impl futures_util::Stream<Item = ParagonicResult<String>>> {
+        let url = format!("{}/api/chat", self.config.base_url);
+        
+        let request_body = ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: Some(true),
+            options: None,
+        };
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to send streaming chat completion to Ollama: {e}");
+                ParagonicError::Ollama(format!("Streaming chat completion failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Ollama streaming chat API error ({}): {}", status, error_text);
+            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+        }
+
+        let stream = response
+            .bytes_stream()
+            .scan(String::new(), move |accumulated_chunk, chunk_result| {
+                let mut accumulated_chunk = accumulated_chunk.clone();
+                Box::pin(async move {
+                    match chunk_result {
+                        Ok(chunk) => {
+                            let chunk_str = String::from_utf8_lossy(&chunk);
+                            let lines: Vec<&str> = chunk_str.lines().collect();
+                            
+                            for line in lines {
+                                if line.trim().is_empty() {
+                                    continue;
+                                }
+                                
+                                match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                                    Ok(stream_response) => {
+                                        // Accumulate content from both possible fields
+                                        if let Some(response_text) = stream_response.response {
+                                            accumulated_chunk.push_str(&response_text);
+                                        }
+                                        if let Some(message) = stream_response.message {
+                                            accumulated_chunk.push_str(&message.content);
+                                        }
+                                        
+                                        // Check if we have enough content to send a chunk
+                                        if accumulated_chunk.len() >= chunk_threshold {
+                                            let chunk_to_send = accumulated_chunk.clone();
+                                            accumulated_chunk.clear();
+                                            return Some(Ok(chunk_to_send));
+                                        }
+                                        
+                                        // If done, send any remaining content
+                                        if stream_response.done && !accumulated_chunk.is_empty() {
+                                            let final_chunk = accumulated_chunk.clone();
+                                            accumulated_chunk.clear();
+                                            return Some(Ok(final_chunk));
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to parse streaming response: {}", e);
+                                        return Some(Err(ParagonicError::Ollama(format!("Response parsing failed: {e}"))));
+                                    }
+                                }
+                            }
+                            None
+                        }
+                        Err(e) => {
+                            error!("Failed to read streaming chunk: {}", e);
+                            Some(Err(ParagonicError::Ollama(format!("Stream chunk error: {e}"))))
+                        }
+                    }
+                })
+            });
+
+        info!("Successfully started streaming accumulated chunks from Ollama model: {}", model);
         Ok(stream)
     }
 

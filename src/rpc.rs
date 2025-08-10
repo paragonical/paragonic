@@ -13,9 +13,8 @@ use std::sync::Arc;
 use tracing::error;
 use regex;
 
-use crate::ollama::OllamaClient;
+use crate::ollama::{OllamaClient, ChatMessage, ChatCompletionResponse};
 use crate::error::ParagonicResult;
-use crate::ollama::ChatMessage;
 use crate::text::{TextFormatter, FormatConfig};
 
 /// Tool call structure for agent tool execution
@@ -2360,20 +2359,74 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
         // Record start time
         let start_time = std::time::Instant::now();
         
-        // Get the full response first
+        // Use accumulated chunks for better streaming experience
+        let chunk_threshold = chunk_size.max(30); // Minimum 30 characters per chunk
+        
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            tokio::task::block_in_place(|| {
-                handle.block_on(async {
-                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
-                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
+                                tokio::task::block_in_place(|| {
+                        handle.block_on(async {
+                            // Use the new accumulated chunks method
+                            let mut stream = self.ollama_client.stream_accumulated_chunks(&model, vec![chat_message], chunk_threshold).await?;
+                            let mut full_response = String::new();
+                            
+                            use futures_util::StreamExt;
+                            while let Some(chunk_result) = stream.next().await {
+                                match chunk_result {
+                                    Ok(chunk) => {
+                                        full_response.push_str(&chunk);
+                                        tracing::info!("Sent accumulated chunk: {} chars", chunk.len());
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Error in accumulated chunk stream: {}", e);
+                                        return Err(e);
+                                    }
+                                }
+                            }
+                    
+                    // Return the complete response
+                    Ok(ChatCompletionResponse {
+                        model: model.to_string(),
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: full_response,
+                        },
+                        done: true,
+                    })
                 })
             })
         } else {
             tokio::runtime::Runtime::new()
                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
-                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
-                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
+                    // Use the new accumulated chunks method
+                    let mut stream = self.ollama_client.stream_accumulated_chunks(&model, vec![chat_message], chunk_threshold).await?;
+                    let mut full_response = String::new();
+                    
+                    use futures_util::StreamExt;
+                    while let Some(chunk_result) = stream.next().await {
+                        match chunk_result {
+                            Ok(chunk) => {
+                                full_response.push_str(&chunk);
+                                tracing::info!("Sent accumulated chunk: {} chars", chunk.len());
+                            }
+                            Err(e) => {
+                                tracing::error!("Error in accumulated chunk stream: {}", e);
+                                return Err(e);
+                            }
+                        }
+                    }
+                    
+                    // Return the complete response
+                    Ok(ChatCompletionResponse {
+                        model: model.to_string(),
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: full_response,
+                        },
+                        done: true,
+                    })
                 })
         };
         
