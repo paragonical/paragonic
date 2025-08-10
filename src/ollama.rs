@@ -501,13 +501,18 @@ impl OllamaClient {
         let mut last_progress_time = std::time::Instant::now();
         let progress_timeout = std::time::Duration::from_secs(progress_timeout_seconds);
         
-        info!("Starting streaming chat completion with progress detection for model: {}", model);
+        info!("Starting streaming chat completion with progress detection for model: {} (progress_timeout: {}s)", model, progress_timeout_seconds);
 
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
                     let lines: Vec<&str> = chunk_str.lines().collect();
+                    
+                    // Debug: log raw chunk info
+                    if !chunk_str.trim().is_empty() {
+                        info!("Received chunk from {}: {} bytes, {} lines", model, chunk.len(), lines.len());
+                    }
                     
                     for line in lines {
                         if line.trim().is_empty() {
@@ -516,12 +521,16 @@ impl OllamaClient {
                         
                         match serde_json::from_str::<StreamChatCompletionResponse>(line) {
                             Ok(stream_response) => {
-                                // Update progress time whenever we receive any response
-                                last_progress_time = std::time::Instant::now();
+                                // Only update progress time if we received actual content
+                                let has_content = stream_response.response.as_ref()
+                                    .map(|text| !text.trim().is_empty())
+                                    .unwrap_or(false);
                                 
-                                // Log progress for debugging
-                                if let Some(response_text) = &stream_response.response {
-                                    info!("Progress update from {}: {} chars", model, response_text.len());
+                                if has_content {
+                                    last_progress_time = std::time::Instant::now();
+                                    info!("Progress update from {}: {} chars", model, stream_response.response.as_ref().unwrap().len());
+                                } else {
+                                    info!("Received empty chunk from {} (not counting as progress)", model);
                                 }
                                 
                                 // Accumulate the response
