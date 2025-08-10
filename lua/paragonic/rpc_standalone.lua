@@ -950,6 +950,19 @@ local function send_jsonrpc_request_with_retry_and_pool_and_log(server_address, 
                 if client then
                     log_message(client, "debug", string.format("RPC request %s succeeded", method))
                 end
+                
+                -- Check for JSON-RPC error response
+                if parsed.error then
+                    local error_msg = parsed.error.message or "Unknown error"
+                    if parsed.error.data then
+                        error_msg = error_msg .. ": " .. tostring(parsed.error.data)
+                    end
+                    if client then
+                        log_message(client, "error", string.format("RPC request %s failed: %s", method, error_msg))
+                    end
+                    return nil, error_msg
+                end
+                
                 -- Extract the actual result from the JSON-RPC envelope
                 if parsed.result then
                     -- If result is a string, parse it as JSON
@@ -1066,11 +1079,106 @@ function M:chat_completion(model, message)
         return "This is a mock response to: " .. message
     end
     
+    -- For 127.0.0.1:3000, ensure we're connected to the real backend
+    if self.server_address == "127.0.0.1:3000" and not self.connected then
+        -- Try to connect to the real backend
+        local success, error_msg = test_server_connectivity(self.server_address)
+        if success then
+            self.connected = true
+        else
+            return nil, "Failed to connect to backend: " .. (error_msg or "unknown error")
+        end
+    end
+    
     -- Send chat completion request with parameters as array [message, model]
+    log_message(self, "info", "Sending chat completion request to " .. self.server_address .. " with message: " .. message)
     local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "chat_completion", {message, model}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
+        log_message(self, "info", "Chat completion response received: " .. tostring(result))
         return result
     else
+        log_message(self, "error", "Chat completion failed: " .. tostring(error_msg))
+        return nil, error_msg
+    end
+end
+
+-- Send debug markdown test request to verify server-side formatting
+function M:debug_markdown_test(format_config)
+    -- Parameter validation
+    if format_config and type(format_config) ~= "table" then
+        log_message(self, "error", "format_config must be a table")
+        return nil, "format_config must be a table"
+    end
+    
+    -- Default format config if not provided
+    format_config = format_config or {
+        max_width = 80,
+        include_diamond = true,
+        continuation_indent = 3,
+        format_markdown = true,
+        preserve_paragraphs = true
+    }
+    
+    -- Test mode simulation
+    if self.test_mode then
+        log_message(self, "info", "Test mode: simulating debug markdown test")
+        return "🮮   **TEST MARKDOWN**\n   This is a simulated test response", nil
+    end
+    
+    log_message(self, "info", "Sending debug markdown test request to " .. self.server_address)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "debug_markdown_test", format_config, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
+    if result then
+        log_message(self, "info", "Debug markdown test response received")
+        return result
+    else
+        log_message(self, "error", "Debug markdown test failed: " .. tostring(error_msg))
+        return nil, error_msg
+    end
+end
+
+-- Send formatted chat completion request to server with server-side formatting
+function M:formatted_chat_completion(model, message, format_config)
+    -- Parameter validation
+    if not model or model == "" then
+        log_message(self, "error", "Model parameter is required")
+        return nil, "Model parameter is required"
+    end
+    
+    if not message or message == "" then
+        log_message(self, "error", "Message parameter is required")
+        return nil, "Message parameter is required"
+    end
+    
+    if not self.connected then
+        log_message(self, "error", "Not connected to server")
+        return nil, "Not connected to server"
+    end
+    
+    -- Default format config if not provided
+    if not format_config then
+        format_config = {
+            max_width = 80,
+            include_diamond = true,
+            continuation_indent = 3,
+            format_markdown = true,
+            preserve_paragraphs = true
+        }
+    end
+    
+    -- Check if this is a test environment (no real server)
+    if self.test_mode then
+        log_message(self, "info", "Test mode: Simulating formatted chat completion response")
+        return "🮮  Test response for formatted chat completion with message: " .. message
+    end
+    
+    -- Send formatted chat completion request with parameters as array [message, model, format_config]
+    log_message(self, "info", "Sending formatted chat completion request to " .. self.server_address .. " with message: " .. message)
+    local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "formatted_chat_completion", {message, model, format_config}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
+    if result then
+        log_message(self, "info", "Formatted chat completion response received")
+        return result
+    else
+        log_message(self, "error", "Formatted chat completion failed: " .. tostring(error_msg))
         return nil, error_msg
     end
 end

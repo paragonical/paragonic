@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-01-27T10:00:00Z",
+  "pattern_count": 1,
+  "template_count": 0,
+  "relationship_count": 0,
+  "compatibility": {
+    "min_database_version": "1.0.0",
+    "max_database_version": "2.0.0"
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2025-01-27",
+      "changes": [
+        "Initial core pattern set",
+        "Session management patterns"
+      ]
+    }
+  ]
+}

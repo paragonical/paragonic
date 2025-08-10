@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "relationships": [
+    {
+      "id": "session-summary-depends-on-analysis",
+      "source_pattern_id": "session-summary-generation",
+      "target_pattern_id": "session-analysis",
+      "relationship_type": "DependsOn",
+      "description": "Session summary generation depends on session analysis",
+      "strength": 0.8,
+      "metadata": {
+        "trigger_condition": "session_duration_minutes >= 30",
+        "execution_order": 1,
+        "required": true
+      }
+    }
+  ]
+}

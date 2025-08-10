@@ -21,6 +21,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_agent_sessions (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        session_name -> Nullable<Varchar>,
+        #[max_length = 100]
+        session_type -> Nullable<Varchar>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+        active_patterns -> Nullable<Jsonb>,
+        pattern_execution_history -> Nullable<Jsonb>,
+        last_pattern_execution -> Nullable<Timestamptz>,
+        pattern_learning_enabled -> Nullable<Bool>,
+    }
+}
+
+diesel::table! {
     associations (id) {
         id -> Uuid,
         organization_id -> Nullable<Uuid>,
@@ -217,6 +233,56 @@ diesel::table! {
 }
 
 diesel::table! {
+    pattern_executions (id) {
+        id -> Uuid,
+        pattern_id -> Uuid,
+        session_id -> Nullable<Uuid>,
+        #[max_length = 50]
+        execution_status -> Varchar,
+        input_data -> Nullable<Jsonb>,
+        output_data -> Nullable<Jsonb>,
+        error_message -> Nullable<Text>,
+        execution_time_ms -> Nullable<Int4>,
+        started_at -> Nullable<Timestamptz>,
+        completed_at -> Nullable<Timestamptz>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    pattern_learning_metrics (id) {
+        id -> Uuid,
+        pattern_id -> Uuid,
+        #[max_length = 100]
+        metric_name -> Varchar,
+        metric_value -> Float8,
+        #[max_length = 50]
+        metric_unit -> Nullable<Varchar>,
+        #[max_length = 20]
+        time_period -> Varchar,
+        period_start -> Timestamptz,
+        period_end -> Timestamptz,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    pattern_relationships (id) {
+        id -> Uuid,
+        source_pattern_id -> Uuid,
+        target_pattern_id -> Uuid,
+        #[max_length = 100]
+        relationship_type -> Varchar,
+        relationship_strength -> Nullable<Float8>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     people (id) {
         id -> Uuid,
         #[max_length = 255]
@@ -262,6 +328,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    system_patterns (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        #[max_length = 100]
+        pattern_type -> Varchar,
+        template_content -> Text,
+        execution_conditions -> Nullable<Jsonb>,
+        metadata -> Nullable<Jsonb>,
+        is_active -> Nullable<Bool>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     tasks (id) {
         id -> Uuid,
         goal_id -> Nullable<Uuid>,
@@ -276,6 +359,22 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    tool_pattern_mappings (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        tool_name -> Varchar,
+        pattern_id -> Uuid,
+        #[max_length = 100]
+        mapping_type -> Varchar,
+        usage_frequency -> Nullable<Int4>,
+        success_rate -> Nullable<Float8>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
 diesel::joinable!(associations -> agents (agent_id));
 diesel::joinable!(associations -> organizations (organization_id));
 diesel::joinable!(associations -> people (person_id));
@@ -285,11 +384,15 @@ diesel::joinable!(conversations -> organizations (organization_id));
 diesel::joinable!(goals -> projects (project_id));
 diesel::joinable!(isrl_profiles -> people (person_id));
 diesel::joinable!(messages -> conversations (conversation_id));
+diesel::joinable!(pattern_executions -> system_patterns (pattern_id));
+diesel::joinable!(pattern_learning_metrics -> system_patterns (pattern_id));
 diesel::joinable!(projects -> organizations (organization_id));
 diesel::joinable!(tasks -> goals (goal_id));
+diesel::joinable!(tool_pattern_mappings -> system_patterns (pattern_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     agents,
+    ai_agent_sessions,
     associations,
     content_associations,
     conversations,
@@ -302,8 +405,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     optimization_history,
     organization_hierarchies,
     organizations,
+    pattern_executions,
+    pattern_learning_metrics,
+    pattern_relationships,
     people,
     projects,
     query_analytics,
+    system_patterns,
     tasks,
+    tool_pattern_mappings,
 );

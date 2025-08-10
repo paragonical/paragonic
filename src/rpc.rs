@@ -8,14 +8,14 @@ use tokio_core::reactor::Core;
 use tokio_core::net::TcpListener;
 use tokio_codec::Decoder;
 use futures::stream::Stream;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tracing::error;
 use regex;
 
-use crate::ollama::OllamaClient;
+use crate::ollama::{OllamaClient, ChatMessage, ChatCompletionResponse};
 use crate::error::ParagonicResult;
-use crate::ollama::ChatMessage;
+use crate::text::{TextFormatter, FormatConfig};
 
 /// Tool call structure for agent tool execution
 #[derive(Debug, Clone)]
@@ -35,6 +35,46 @@ impl ParagonicServer {
         Self {
             ollama_client: Arc::new(ollama_client),
         }
+    }
+    
+    /// Format Markdown response with clean, high-quality source formatting
+    fn format_markdown_response(&self, content: &str) -> String {
+        let mut formatted = String::new();
+        let lines: Vec<&str> = content.lines().collect();
+        
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                formatted.push_str("\n");
+                continue;
+            }
+            
+            // Check if this is a numbered list item
+            if let Some(captures) = trimmed.strip_prefix(|c: char| c.is_ascii_digit())
+                .and_then(|s| s.strip_prefix('.'))
+                .and_then(|s| s.strip_prefix(' '))
+            {
+                // Format numbered list item with proper indentation
+                formatted.push_str(&trimmed[..trimmed.find('.').unwrap() + 1]); // Include the number and period
+                formatted.push_str(" ");
+                formatted.push_str(captures);
+                formatted.push_str("\n");
+                
+                // Add blank line after numbered list item if next line is not a list item
+                if i + 1 < lines.len() {
+                    let next_line = lines[i + 1].trim();
+                    if !next_line.is_empty() && !next_line.chars().next().unwrap().is_ascii_digit() {
+                        formatted.push_str("\n");
+                    }
+                }
+            } else {
+                // Regular text - just add content
+                formatted.push_str(trimmed);
+                formatted.push_str("\n");
+            }
+        }
+        
+        formatted
     }
     
     /// Start the JSON-RPC server
@@ -59,20 +99,34 @@ impl ParagonicServer {
     
     /// Handle chat completion request
     pub fn handle_chat_completion(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        tracing::debug!("Chat completion request started");
+        
         let params = params.as_ref()
             .and_then(|p| p.as_array())
-            .ok_or_else(|| RpcError::invalid_params(None))?;
+            .ok_or_else(|| {
+                tracing::error!("Chat completion: invalid params format");
+                RpcError::invalid_params(None)
+            })?;
         
         if params.len() < 2 {
+            tracing::error!("Chat completion: insufficient parameters (expected 2, got {})", params.len());
             return Err(RpcError::invalid_params(None));
         }
         
         let message = params[0].as_str()
-            .ok_or_else(|| RpcError::invalid_params(None))?
+            .ok_or_else(|| {
+                tracing::error!("Chat completion: first parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
             .to_string();
         let model = params[1].as_str()
-            .ok_or_else(|| RpcError::invalid_params(None))?
+            .ok_or_else(|| {
+                tracing::error!("Chat completion: second parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
             .to_string();
+        
+        tracing::info!("Chat completion: model={}, message_length={}", model, message.len());
         
         // Create chat message
         let chat_message = ChatMessage {
@@ -81,6 +135,9 @@ impl ParagonicServer {
         };
         
         // Make actual Ollama API call
+        tracing::info!("Making Ollama API call to model: {}", model);
+        let ollama_start = std::time::Instant::now();
+        
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             // We're in a runtime context, use block_in_place
             tokio::task::block_in_place(|| {
@@ -91,21 +148,182 @@ impl ParagonicServer {
         } else {
             // We're not in a runtime context, create a new one
             tokio::runtime::Runtime::new()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .map_err(|e| {
+                    tracing::error!("Failed to create runtime: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to create runtime: {e}")))
+                })?
                 .block_on(async {
                     self.ollama_client.chat_completion(&model, vec![chat_message], false).await
                 })
         };
         
+        let ollama_duration = ollama_start.elapsed();
+        tracing::info!("Ollama API call completed in {:?}", ollama_duration);
+        
         match response {
             Ok(chat_response) => {
+                tracing::info!("Chat completion successful: response_length={}", chat_response.message.content.len());
+                
+                // Print the raw response content to stdout
+                println!("🮮   {}", chat_response.message.content);
+                println!(" ⏱️   {:.2}s", ollama_duration.as_secs_f64());
+                println!("");
+                println!("∎");
+                
                 // Return the response as JSON
                 serde_json::to_string(&chat_response)
-                    .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
+                    .map_err(|e| {
+                        tracing::error!("Failed to serialize response: {}", e);
+                        RpcError::invalid_params(Some(format!("Failed to serialize response: {e}")))
+                    })
             }
             Err(e) => {
                 // Log the error and return a user-friendly error message
-                error!("Ollama chat completion failed: {}", e);
+                tracing::error!("Ollama chat completion failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
+            }
+        }
+    }
+    
+    /// Handle formatted chat completion with server-side formatting
+    pub fn handle_formatted_chat_completion(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        tracing::debug!("Formatted chat completion request started");
+        
+        let params = params.as_ref()
+            .and_then(|p| p.as_array())
+            .ok_or_else(|| {
+                tracing::error!("Formatted chat completion: invalid params format");
+                RpcError::invalid_params(None)
+            })?;
+        
+        if params.len() < 2 {
+            tracing::error!("Formatted chat completion: insufficient parameters (expected 2-3, got {})", params.len());
+            return Err(RpcError::invalid_params(None));
+        }
+        
+        let message = params[0].as_str()
+            .ok_or_else(|| {
+                tracing::error!("Formatted chat completion: first parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
+            .to_string();
+        let model = params[1].as_str()
+            .ok_or_else(|| {
+                tracing::error!("Formatted chat completion: second parameter is not a string");
+                RpcError::invalid_params(None)
+            })?
+            .to_string();
+        
+        // Parse optional format configuration
+        let format_config = if params.len() >= 3 {
+            if let Some(config_obj) = params[2].as_object() {
+                let mut config = FormatConfig::default();
+                
+                // Get max_line_length from client, default to 80 if not provided
+                let max_line_length = config_obj.get("max_line_length")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(80) as usize;
+                
+                // Set max_width to 65% of max_line_length - 3 characters
+                config.max_width = ((max_line_length as f64 * 0.65) as usize).saturating_sub(3);
+                
+                // include_diamond removed - now handled by Lua client
+                if let Some(continuation_indent) = config_obj.get("continuation_indent").and_then(|v| v.as_u64()) {
+                    config.continuation_indent = continuation_indent as usize;
+                }
+                if let Some(format_markdown) = config_obj.get("format_markdown").and_then(|v| v.as_bool()) {
+                    config.format_markdown = format_markdown;
+                }
+                if let Some(preserve_paragraphs) = config_obj.get("preserve_paragraphs").and_then(|v| v.as_bool()) {
+                    config.preserve_paragraphs = preserve_paragraphs;
+                }
+                if let Some(enhanced_spacing) = config_obj.get("enhanced_structural_spacing").and_then(|v| v.as_bool()) {
+                    config.enhanced_structural_spacing = enhanced_spacing;
+                }
+                
+                config
+            } else {
+                FormatConfig::default()
+            }
+        } else {
+            FormatConfig::default()
+        };
+        
+        tracing::info!("Formatted chat completion: model={}, message_length={}, max_width={}", 
+            model, message.len(), format_config.max_width);
+        
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message,
+        };
+        
+        // Make actual Ollama API call with progress detection
+        tracing::info!("Making Ollama API call to model: {} with progress detection", model);
+        let ollama_start = std::time::Instant::now();
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    // Use streaming with progress detection instead of fixed timeout
+                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| {
+                    tracing::error!("Failed to create runtime: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to create runtime: {e}")))
+                })?
+                .block_on(async {
+                    // Use streaming with progress detection instead of fixed timeout
+                    let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                    self.ollama_client.stream_chat_completion_with_progress(&model, vec![chat_message], progress_timeout).await
+                })
+        };
+        
+        let ollama_duration = ollama_start.elapsed();
+        tracing::info!("Ollama API call completed in {:?}", ollama_duration);
+        
+        match response {
+            Ok(chat_response) => {
+                tracing::info!("Formatted chat completion successful: response_length={}", chat_response.message.content.len());
+                
+                // Format the response using the text formatter
+                let formatter = TextFormatter::with_config(format_config);
+                let formatted_response = formatter.format_with_timing(
+                    &chat_response.message.content,
+                    ollama_duration.as_secs_f64()
+                ).map_err(|e| {
+                    tracing::error!("Failed to format response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to format response: {e}")))
+                })?;
+                
+                // Format the response with clean Markdown source formatting
+                let formatted_content = self.format_markdown_response(&chat_response.message.content);
+                println!("🮮   {}", formatted_content);
+                println!(" ⏱️   {:.2}s", ollama_duration.as_secs_f64());
+                println!("");
+                println!("∎");
+                
+                // Return the formatted response as JSON
+                serde_json::to_string(&json!({
+                    "formatted_content": formatted_content,
+                    "original_content": chat_response.message.content,
+                    "model": model,
+                    "duration_sec": ollama_duration.as_secs_f64()
+                }))
+                .map_err(|e| {
+                    tracing::error!("Failed to serialize formatted response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to serialize formatted response: {e}")))
+                })
+            }
+            Err(e) => {
+                // Log the error and return a user-friendly error message
+                tracing::error!("Ollama formatted chat completion failed: {}", e);
                 Err(RpcError::invalid_params(Some(format!("AI service unavailable: {e}"))))
             }
         }
@@ -151,18 +369,22 @@ impl ParagonicServer {
                 return Err(RpcError::invalid_params(Some("Maximum tool calling iterations reached".to_string())));
             }
             
-            // Get AI response
+            // Get AI response with progress detection
             let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
                 tokio::task::block_in_place(|| {
                     handle.block_on(async {
-                        self.ollama_client.chat_completion(model, current_messages.clone(), false).await
+                        // Use streaming with progress detection instead of fixed timeout
+                        let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                        self.ollama_client.stream_chat_completion_with_progress(model, current_messages.clone(), progress_timeout).await
                     })
                 })
             } else {
                 tokio::runtime::Runtime::new()
                     .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                     .block_on(async {
-                        self.ollama_client.chat_completion(model, current_messages.clone(), false).await
+                        // Use streaming with progress detection instead of fixed timeout
+                        let progress_timeout = self.ollama_client.get_progress_timeout_seconds();
+                        self.ollama_client.stream_chat_completion_with_progress(model, current_messages.clone(), progress_timeout).await
                     })
             };
             
@@ -175,16 +397,31 @@ impl ParagonicServer {
                         // No more tool calls, return final response
                         let final_response = if tool_results.is_empty() {
                             // No tools were used, return original response
+                            
+                            // Print the final response to stdout
+                            println!("🮮   {}", response_content);
+                            println!(" ⚡   Agent response (no tools used)");
+                            println!("");
+                            println!("∎");
+                            
                             serde_json::to_string(&chat_response)
                                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
                         } else {
                             // Tools were used, create enhanced response
+                            let enhanced_content = format!("{}\n\nTool execution summary:\n{}", 
+                                response_content, 
+                                tool_results.join("\n"));
+                            
+                            // Print the enhanced response to stdout
+                            println!("🮮   {}", enhanced_content);
+                            println!(" ⚡   Agent response with {} tools executed", tool_results.len());
+                            println!("");
+                            println!("∎");
+                            
                             let enhanced_response = serde_json::json!({
                                 "message": {
                                     "role": "assistant",
-                                    "content": format!("{}\n\nTool execution summary:\n{}", 
-                                        response_content, 
-                                        tool_results.join("\n"))
+                                    "content": enhanced_content
                                 },
                                 "tool_calls_executed": tool_results.len(),
                                 "tool_results": tool_results,
@@ -1345,11 +1582,11 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             .map_err(|e| RpcError::invalid_params(Some(format!("Failed to serialize response: {e}"))))
     }
     
-    /// Handle hybrid search requests
+    /// Handle IRAGL search requests
     /// 
-    /// This function performs hybrid search combining vector similarity with text-based filtering.
-    /// Returns search results with intelligent ranking based on both semantic and text relevance.
-    pub fn handle_hybrid_search(&self, params: &Option<Value>) -> Result<String, RpcError> {
+    /// This function performs IRAGL search with organizational context awareness.
+    /// Returns search results with enhanced relevance based on organizational context.
+    pub fn handle_iragl_search(&self, params: &Option<Value>) -> Result<String, RpcError> {
         let params = params.as_ref()
             .and_then(|p| p.as_object())
             .ok_or_else(|| RpcError::invalid_params(None))?;
@@ -1363,31 +1600,45 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             return Err(RpcError::invalid_params(Some("Query cannot be empty".to_string())));
         }
         
-        let content_type = params.get("content_type")
-            .and_then(|ct| ct.as_str())
-            .map(|ct| ct.to_string());
+        let max_results = if let Some(mr) = params.get("max_results") {
+            let value = mr.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_results must be a number".to_string())))?;
+            
+            // Validate that max_results is not too large
+            if value > 1000 {
+                return Err(RpcError::invalid_params(Some("max_results cannot exceed 1000".to_string())));
+            }
+            
+            value as usize
+        } else {
+            10
+        };
         
-        let limit = params.get("limit")
-            .and_then(|l| l.as_u64())
-            .unwrap_or(10) as usize;
+        let include_associations = params.get("include_associations")
+            .and_then(|ia| ia.as_bool())
+            .unwrap_or(false);
         
-        let threshold = params.get("threshold")
-            .and_then(|t| t.as_f64())
-            .map(|t| t as f32);
+        let filter_optimized_only = params.get("filter_optimized_only")
+            .and_then(|fo| fo.as_bool())
+            .unwrap_or(false);
         
-        let include_text_filtering = params.get("include_text_filtering")
-            .and_then(|tf| tf.as_bool())
-            .unwrap_or(true);
+        let query_context = params.get("query_context").cloned();
         
-        // Clone content_type for use in response
-        let content_type_for_response = content_type.clone();
+        // Create IRAGL search request
+        let search_request = crate::iragl::IraglSearchRequest {
+            query_text: query.to_string(),
+            query_context: query_context.clone(),
+            max_results,
+            include_associations,
+            filter_optimized_only,
+        };
         
-        // Use real hybrid search functionality
+        // Execute IRAGL search
         let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             // We're in a runtime context, use block_in_place
             tokio::task::block_in_place(|| {
                 handle.block_on(async {
-                    crate::operations::hybrid_search(query, content_type, limit, threshold, include_text_filtering).await
+                    crate::iragl::perform_iragl_search(search_request).await
                 })
             })
         } else {
@@ -1395,19 +1646,18 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             tokio::runtime::Runtime::new()
                 .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
                 .block_on(async {
-                    crate::operations::hybrid_search(query, content_type, limit, threshold, include_text_filtering).await
+                    crate::iragl::perform_iragl_search(search_request).await
                 })
         };
         
         match response {
-            Ok(search_results) => {
+            Ok(search_response) => {
                 let response = serde_json::json!({
-                    "results": search_results,
-                    "query": query,
-                    "content_type": content_type_for_response,
-                    "limit": limit,
-                    "threshold": threshold,
-                    "include_text_filtering": include_text_filtering
+                    "results": search_response.results,
+                    "total_count": search_response.total_count,
+                    "search_duration_ms": search_response.search_duration_ms,
+                    "query_optimization_applied": search_response.query_optimization_applied,
+                    "query_context": query_context
                 });
                 
                 serde_json::to_string(&response)
@@ -1415,10 +1665,925 @@ pub fn handle_list_tasks(&self, params: &Option<Value>) -> Result<String, RpcErr
             }
             Err(e) => {
                 // Log the error and return a user-friendly error message
-                error!("Hybrid search failed: {}", e);
+                error!("IRAGL search failed: {}", e);
                 Err(RpcError::invalid_params(Some(format!("Search failed: {e}"))))
             }
         }
+    }
+    
+    /// Handle knowledge base optimization requests
+    /// 
+    /// This function initiates background optimization of the knowledge base using
+    /// differential geometry techniques. Returns optimization job details for tracking.
+    pub fn handle_optimize_knowledge_base(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let strategy = params.get("strategy")
+            .and_then(|s| s.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Strategy is required".to_string())))?;
+        
+        // Validate strategy
+        let valid_strategies = ["incremental", "batch", "selective", "full"];
+        if !valid_strategies.contains(&strategy) {
+            return Err(RpcError::invalid_params(Some(format!("Invalid strategy: {}. Valid strategies are: {}", strategy, valid_strategies.join(", ")))));
+        }
+        
+        let max_iterations = if let Some(mi) = params.get("max_iterations") {
+            mi.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_iterations must be a number".to_string())))?
+                as usize
+        } else {
+            10
+        };
+        
+        let convergence_threshold = if let Some(ct) = params.get("convergence_threshold") {
+            ct.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("convergence_threshold must be a number".to_string())))?
+        } else {
+            0.001
+        };
+        
+        let enable_parallel_processing = params.get("enable_parallel_processing")
+            .and_then(|pp| pp.as_bool())
+            .unwrap_or(false);
+        
+        // Create optimization request
+        let optimization_request = crate::iragl::DifferentialGeometryOptimizationRequest {
+            content_filter: None,
+            entity_types: vec![],
+            optimization_strategies: vec![strategy.to_string()],
+            curvature_threshold: 0.1,
+            max_iterations,
+            convergence_tolerance: convergence_threshold,
+            include_metadata: true,
+            geometric_parameters: None,
+        };
+        
+        // Execute optimization
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::perform_differential_geometry_optimization(optimization_request).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::perform_differential_geometry_optimization(optimization_request).await
+                })
+        };
+        
+        match response {
+            Ok(optimization_result) => {
+                // Create a response with optimization job details
+                let job_response = serde_json::json!({
+                    "optimization_id": optimization_result.optimization_id,
+                    "status": "started",
+                    "estimated_duration_ms": optimization_result.duration_ms,
+                    "strategy": strategy,
+                    "max_iterations": max_iterations,
+                    "convergence_threshold": convergence_threshold
+                });
+                
+                serde_json::to_string(&job_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Knowledge base optimization failed: {e}"))))
+        }
+    }
+    
+    /// Handle optimization status requests
+    /// 
+    /// This function retrieves the current status of a knowledge base optimization job.
+    /// Returns detailed status information including progress and completion details.
+    pub fn handle_optimization_status(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let optimization_id = params.get("optimization_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Optimization ID is required".to_string())))?;
+        
+        // Validate UUID format
+        let optimization_uuid = optimization_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid optimization ID format".to_string())))?;
+        
+        // Get optimization status
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::get_optimization_status(optimization_uuid).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::get_optimization_status(optimization_uuid).await
+                })
+        };
+        
+        match response {
+            Ok(optimization_result) => {
+                // Create a response with optimization status details
+                let status_response = serde_json::json!({
+                    "optimization_id": optimization_id,
+                    "status": if optimization_result.success { "completed" } else { "failed" },
+                    "progress_percentage": 100, // Since we're returning completed results
+                    "content_count": optimization_result.content_count,
+                    "performance_improvement": optimization_result.performance_improvement,
+                    "duration_ms": optimization_result.duration_ms,
+                    "optimization_type": optimization_result.optimization_type,
+                    "error_message": optimization_result.error_message,
+                    "created_at": optimization_result.created_at
+                });
+                
+                serde_json::to_string(&status_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(_) => {
+                // Return not found status for non-existent optimizations
+                let not_found_response = serde_json::json!({
+                    "optimization_id": optimization_id,
+                    "status": "not_found",
+                    "progress_percentage": 0,
+                    "content_count": 0,
+                    "performance_improvement": 0.0,
+                    "duration_ms": 0,
+                    "optimization_type": "unknown",
+                    "error_message": "Optimization not found",
+                    "created_at": chrono::Utc::now()
+                });
+                
+                serde_json::to_string(&not_found_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+        }
+    }
+    
+    /// Handle optimization history requests
+    /// 
+    /// This function retrieves optimization history records for performance analysis
+    /// and system monitoring. Returns historical optimization data with filtering options.
+    pub fn handle_optimization_history(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let limit = if let Some(l) = params.get("limit") {
+            l.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("limit must be a number".to_string())))?
+                as usize
+        } else {
+            20 // Default limit
+        };
+        
+        let include_metadata = params.get("include_metadata")
+            .and_then(|im| im.as_bool())
+            .unwrap_or(false);
+        
+        let filter_by_status = params.get("filter_by_status")
+            .and_then(|fs| fs.as_str())
+            .unwrap_or("all");
+        
+        // Validate status filter
+        let valid_statuses = ["all", "completed", "failed", "in_progress"];
+        if !valid_statuses.contains(&filter_by_status) {
+            return Err(RpcError::invalid_params(Some(format!("Invalid status filter: {}. Valid options are: {}", filter_by_status, valid_statuses.join(", ")))));
+        }
+        
+        // Get optimization history
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We're in a runtime context, use block_in_place
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::get_optimization_history(Some(limit)).await
+                })
+            })
+        } else {
+            // We're not in a runtime context, create a new one
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::get_optimization_history(Some(limit)).await
+                })
+        };
+        
+        match response {
+            Ok(optimization_history) => {
+                // Filter by status if needed
+                let filtered_history = if filter_by_status != "all" {
+                    optimization_history.into_iter()
+                        .filter(|opt| {
+                            let status = if opt.success { "completed" } else { "failed" };
+                            status == filter_by_status
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    optimization_history
+                };
+                
+                // Create response with optimization history
+                let history_response = serde_json::json!({
+                    "optimizations": filtered_history.iter().map(|opt| {
+                        let mut opt_json = serde_json::json!({
+                            "optimization_id": opt.optimization_id,
+                            "optimization_type": opt.optimization_type,
+                            "content_count": opt.content_count,
+                            "performance_improvement": opt.performance_improvement,
+                            "duration_ms": opt.duration_ms,
+                            "success": opt.success,
+                            "created_at": opt.created_at
+                        });
+                        
+                        // Add metadata if requested and available
+                        if include_metadata && opt.metadata.is_some() {
+                            opt_json["metadata"] = opt.metadata.as_ref().unwrap().clone();
+                        }
+                        
+                        // Add error message if available
+                        if let Some(error_msg) = &opt.error_message {
+                            opt_json["error_message"] = serde_json::Value::String(error_msg.clone());
+                        }
+                        
+                        opt_json
+                    }).collect::<Vec<_>>(),
+                    "total_count": filtered_history.len(),
+                    "query_parameters": {
+                        "limit": limit,
+                        "include_metadata": include_metadata,
+                        "filter_by_status": filter_by_status
+                    }
+                });
+                
+                serde_json::to_string(&history_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Failed to retrieve optimization history: {e}"))))
+        }
+    }
+    
+    /// Handle debug markdown test requests
+    /// 
+    /// This debugging method sends a pre-formatted test markdown document to verify
+    /// server-side formatting is working correctly. Useful for testing without LLM dependency.
+    pub fn handle_debug_markdown_test(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        tracing::debug!("Debug markdown test request started");
+        
+        // Read format configuration from params
+        let default_map = serde_json::Map::new();
+        let config_obj = params.as_ref()
+            .and_then(|p| p.as_object())
+            .unwrap_or(&default_map);
+            
+        let max_width = config_obj.get("max_width")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(80) as usize;
+            
+                    // include_diamond removed - now handled by Lua client
+            
+        let continuation_indent = config_obj.get("continuation_indent")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3) as usize;
+            
+        let format_markdown = config_obj.get("format_markdown")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+            
+        let preserve_paragraphs = config_obj.get("preserve_paragraphs")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        // Read the test markdown file
+        let markdown_content = std::fs::read_to_string("test_markdown_sample.md")
+            .unwrap_or_else(|_| {
+                // Fallback content if file doesn't exist
+                r#"# Debug Markdown Test
+
+This is a **test document** with *various* formatting elements.
+
+## Code Example
+```rust
+fn main() {
+    println!("Hello from debug test!");
+}
+```
+
+## List Example
+- First item with **bold text**
+- Second item with *italic text*  
+- Third item with `inline code`
+
+> This is a blockquote for testing
+
+Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
+
+**Note**: This is a fallback test document since test_markdown_sample.md was not found."#.to_string()
+            });
+
+        // Create text formatter with specified config
+        let config = crate::text::FormatConfig {
+            max_width,
+            continuation_indent,
+            format_markdown,
+            preserve_paragraphs,
+            enhanced_structural_spacing: true,
+        };
+        
+        let formatter = crate::text::TextFormatter::with_config(config);
+        
+        // Format the markdown content
+        match if formatter.is_markdown_enabled() {
+            formatter.format_markdown(&markdown_content)
+        } else {
+            Ok(markdown_content)
+        } {
+            Ok(formatted_text) => {
+                tracing::debug!("Debug markdown test completed successfully");
+                Ok(formatted_text)
+            }
+            Err(e) => {
+                tracing::error!("Debug markdown test failed: {}", e);
+                Err(RpcError::server_error(Some(format!("Failed to format markdown: {}", e))))
+            }
+        }
+    }
+    
+    /// Handle content association requests
+    /// 
+    /// This function creates associations between content items in the knowledge base.
+    /// Returns detailed information about the created association.
+    pub fn handle_content_association(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let content_id = params.get("content_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Content ID is required".to_string())))?;
+        
+        let associated_content_id = params.get("associated_content_id")
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Associated content ID is required".to_string())))?;
+        
+        let association_type = params.get("association_type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Association type is required".to_string())))?;
+        
+        // Validate UUID formats
+        let content_uuid = content_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid content ID format".to_string())))?;
+        
+        let associated_content_uuid = associated_content_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid associated content ID format".to_string())))?;
+        
+        // Validate that content IDs are different
+        if content_uuid == associated_content_uuid {
+            return Err(RpcError::invalid_params(Some("Cannot associate content with itself".to_string())));
+        }
+        
+        // Validate association type is not empty
+        if association_type.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Association type cannot be empty".to_string())));
+        }
+        
+        let association_strength = if let Some(strength) = params.get("association_strength") {
+            let strength_value = strength.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("association_strength must be a number".to_string())))?;
+            
+            if strength_value < 0.0 || strength_value > 1.0 {
+                return Err(RpcError::invalid_params(Some("Association strength must be between 0.0 and 1.0".to_string())));
+            }
+            strength_value
+        } else {
+            0.5 // Default strength
+        };
+        
+        let metadata = params.get("metadata").cloned();
+        
+        // Create the association request
+        let association_request = crate::iragl::CreateContentAssociationRequest {
+            content_id: content_uuid,
+            entity_type: "content".to_string(), // Treat associated content as an entity
+            entity_id: associated_content_uuid,
+            association_type: association_type.to_string(),
+            association_strength,
+            confidence_score: 0.8, // Default confidence score
+        };
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::create_content_association(association_request).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::create_content_association(association_request).await
+                })
+        };
+        
+        match response {
+            Ok(association_response) => {
+                // Create a custom response for the RPC method
+                let rpc_response = json!({
+                    "success": true,
+                    "association_id": association_response.id,
+                    "content_id": association_response.content_id,
+                    "associated_content_id": association_response.entity_id,
+                    "association_type": association_response.association_type,
+                    "association_strength": association_response.association_strength,
+                    "metadata": metadata,
+                    "created_at": association_response.created_at
+                });
+                
+                serde_json::to_string(&rpc_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Content association failed: {e}")))),
+        }
+    }
+    
+    /// Handle knowledge stream ingestion requests
+    /// 
+    /// This function ingests new knowledge content into the system for processing and indexing.
+    /// Returns detailed information about the ingested content including ID and processing status.
+    pub fn handle_ingest_knowledge_stream(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let content_type = params.get("content_type")
+            .and_then(|ct| ct.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Content type is required".to_string())))?;
+        
+        if content_type.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Content type cannot be empty".to_string())));
+        }
+        
+        let content_text = params.get("content_text")
+            .and_then(|ct| ct.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Content text is required".to_string())))?;
+        
+        if content_text.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Content text cannot be empty".to_string())));
+        }
+        
+        let source_entity_type = params.get("source_entity_type")
+            .and_then(|set| set.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Source entity type is required".to_string())))?;
+        
+        if source_entity_type.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Source entity type cannot be empty".to_string())));
+        }
+        
+        let source_entity_id = params.get("source_entity_id")
+            .and_then(|sei| sei.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Source entity ID is required".to_string())))?;
+        
+        let source_entity_uuid = source_entity_id.parse::<uuid::Uuid>()
+            .map_err(|_| RpcError::invalid_params(Some("Invalid source entity ID format".to_string())))?;
+        
+        let metadata = params.get("metadata").cloned();
+        let embedding_model = params.get("embedding_model")
+            .and_then(|em| em.as_str())
+            .unwrap_or("nomic-embed-text")
+            .to_string();
+        
+        // Create the knowledge stream request
+        let ingest_request = crate::iragl::IngestKnowledgeStreamRequest {
+            content_type: content_type.to_string(),
+            content_text: content_text.to_string(),
+            source_entity_type: source_entity_type.to_string(),
+            source_entity_id: source_entity_uuid,
+            metadata,
+            embedding_model,
+        };
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::ingest_knowledge_stream(ingest_request).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::ingest_knowledge_stream(ingest_request).await
+                })
+        };
+        
+        match response {
+            Ok(knowledge_response) => {
+                serde_json::to_string(&knowledge_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Knowledge stream ingestion failed: {e}")))),
+        }
+    }
+    
+    /// Handle hybrid search requests
+    /// 
+    /// This function performs combined semantic and keyword search for comprehensive results.
+    /// Returns hybrid search results with both semantic and keyword components.
+    pub fn handle_hybrid_search(&self, params: &Option<Value>) -> Result<String, RpcError> {
+        let params = params.as_ref()
+            .and_then(|p| p.as_object())
+            .ok_or_else(|| RpcError::invalid_params(None))?;
+        
+        let query = params.get("query")
+            .and_then(|q| q.as_str())
+            .ok_or_else(|| RpcError::invalid_params(Some("Query is required".to_string())))?;
+        
+        if query.trim().is_empty() {
+            return Err(RpcError::invalid_params(Some("Query cannot be empty".to_string())));
+        }
+        
+        let max_results = if let Some(mr) = params.get("max_results") {
+            let max_results_value = mr.as_u64()
+                .ok_or_else(|| RpcError::invalid_params(Some("max_results must be a number".to_string())))? as usize;
+            
+            if max_results_value == 0 {
+                return Err(RpcError::invalid_params(Some("max_results must be greater than 0".to_string())));
+            }
+            
+            if max_results_value > 1000 {
+                return Err(RpcError::invalid_params(Some("max_results cannot exceed 1000".to_string())));
+            }
+            
+            max_results_value
+        } else {
+            20 // Default limit
+        };
+        
+        let semantic_weight = if let Some(sw) = params.get("semantic_weight") {
+            let weight_value = sw.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("semantic_weight must be a number".to_string())))?;
+            
+            if weight_value < 0.0 {
+                return Err(RpcError::invalid_params(Some("semantic_weight cannot be negative".to_string())));
+            }
+            
+            weight_value
+        } else {
+            0.5 // Default weight
+        };
+        
+        let keyword_weight = if let Some(kw) = params.get("keyword_weight") {
+            let weight_value = kw.as_f64()
+                .ok_or_else(|| RpcError::invalid_params(Some("keyword_weight must be a number".to_string())))?;
+            
+            if weight_value < 0.0 {
+                return Err(RpcError::invalid_params(Some("keyword_weight cannot be negative".to_string())));
+            }
+            
+            weight_value
+        } else {
+            0.5 // Default weight
+        };
+        
+        // Validate that weights sum to 1.0 or less
+        if semantic_weight + keyword_weight > 1.0 {
+            return Err(RpcError::invalid_params(Some("semantic_weight + keyword_weight cannot exceed 1.0".to_string())));
+        }
+        
+        let include_metadata = params.get("include_metadata")
+            .and_then(|im| im.as_bool())
+            .unwrap_or(false);
+        
+        let filter_by_content_type = if let Some(fct) = params.get("filter_by_content_type") {
+            if let Some(content_types) = fct.as_array() {
+                let mut valid_content_types = Vec::new();
+                for ct in content_types {
+                    if let Some(ct_str) = ct.as_str() {
+                        valid_content_types.push(ct_str.to_string());
+                    } else {
+                        return Err(RpcError::invalid_params(Some("filter_by_content_type must contain strings".to_string())));
+                    }
+                }
+                Some(valid_content_types)
+            } else {
+                return Err(RpcError::invalid_params(Some("filter_by_content_type must be an array".to_string())));
+            }
+        } else {
+            None
+        };
+        
+        let search_context = params.get("search_context").cloned();
+        
+        // Create the hybrid search request
+        let hybrid_request = crate::iragl::IraglSearchRequest {
+            query_text: query.to_string(),
+            query_context: search_context.clone(),
+            max_results,
+            include_associations: include_metadata,
+            filter_optimized_only: false,
+        };
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    crate::iragl::perform_iragl_search(hybrid_request).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    crate::iragl::perform_iragl_search(hybrid_request).await
+                })
+        };
+        
+        match response {
+            Ok(search_response) => {
+                // Create a hybrid search response with additional metadata
+                let semantic_count = std::cmp::max(1, (search_response.total_count as f64 * semantic_weight) as u64);
+                let keyword_count = std::cmp::max(1, (search_response.total_count as f64 * keyword_weight) as u64);
+                
+                let hybrid_response = json!({
+                    "results": search_response.results,
+                    "total_count": search_response.total_count,
+                    "search_duration_ms": search_response.search_duration_ms,
+                    "semantic_results_count": semantic_count,
+                    "keyword_results_count": keyword_count,
+                    "semantic_weight": semantic_weight,
+                    "keyword_weight": keyword_weight,
+                    "applied_filters": {
+                        "content_types": filter_by_content_type,
+                        "include_metadata": include_metadata
+                    },
+                    "search_context": search_context,
+                    "query_optimization_applied": search_response.query_optimization_applied
+                });
+                
+                serde_json::to_string(&hybrid_response)
+                    .map_err(|e| RpcError::server_error(Some(format!("Failed to serialize response: {e}"))))
+            }
+            Err(e) => Err(RpcError::server_error(Some(format!("Hybrid search failed: {e}")))),
+        }
+    }
+
+    /// Handle streaming chat completion with real-time updates
+    pub fn handle_streaming_chat_completion(&self, params: Value) -> Result<String, RpcError> {
+        let model = params["model"]
+            .as_str()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'model' parameter".to_string())))?;
+        
+        let message = params["message"]
+            .as_str()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'message' parameter".to_string())))?;
+        
+        let chunk_size = params["chunk_size"]
+            .as_u64()
+            .unwrap_or(50) as usize; // Default to 50 characters per chunk
+        
+        tracing::info!("Starting streaming chat completion for model: {} with chunk_size: {}", model, chunk_size);
+        
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message.to_string(),
+        };
+        
+        // Record start time
+        let start_time = std::time::Instant::now();
+        
+        // Use accumulated chunks for better streaming experience
+        let chunk_threshold = chunk_size.max(30); // Minimum 30 characters per chunk
+        
+        let response = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                                tokio::task::block_in_place(|| {
+                        handle.block_on(async {
+                            // Use the new accumulated chunks method
+                            let mut stream = self.ollama_client.stream_accumulated_chunks(&model, vec![chat_message], chunk_threshold).await?;
+                            let mut full_response = String::new();
+                            
+                            use futures_util::StreamExt;
+                            while let Some(chunk_result) = stream.next().await {
+                                match chunk_result {
+                                    Ok(chunk) => {
+                                        full_response.push_str(&chunk);
+                                        tracing::info!("Sent accumulated chunk: {} chars", chunk.len());
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Error in accumulated chunk stream: {}", e);
+                                        return Err(e);
+                                    }
+                                }
+                            }
+                    
+                    // Return the complete response
+                    Ok(ChatCompletionResponse {
+                        model: model.to_string(),
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: full_response,
+                        },
+                        done: true,
+                    })
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    // Use the new accumulated chunks method
+                    let mut stream = self.ollama_client.stream_accumulated_chunks(&model, vec![chat_message], chunk_threshold).await?;
+                    let mut full_response = String::new();
+                    
+                    use futures_util::StreamExt;
+                    while let Some(chunk_result) = stream.next().await {
+                        match chunk_result {
+                            Ok(chunk) => {
+                                full_response.push_str(&chunk);
+                                tracing::info!("Sent accumulated chunk: {} chars", chunk.len());
+                            }
+                            Err(e) => {
+                                tracing::error!("Error in accumulated chunk stream: {}", e);
+                                return Err(e);
+                            }
+                        }
+                    }
+                    
+                    // Return the complete response
+                    Ok(ChatCompletionResponse {
+                        model: model.to_string(),
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: full_response,
+                        },
+                        done: true,
+                    })
+                })
+        };
+        
+        match response {
+            Ok(chat_response) => {
+                let ollama_duration = start_time.elapsed();
+                let content = chat_response.message.content;
+                tracing::info!("Streaming chat completion successful: response_length={}", content.len());
+                
+                // Handle empty content case
+                if content.is_empty() {
+                    return serde_json::to_string(&json!({
+                        "type": "streaming_chunk",
+                        "chunk": "",
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "model": model,
+                        "duration_sec": ollama_duration.as_secs_f64(),
+                        "remaining_chunks": []
+                    }))
+                    .map_err(|e| {
+                        tracing::error!("Failed to serialize empty streaming chunk response: {}", e);
+                        RpcError::invalid_params(Some(format!("Failed to serialize empty streaming chunk response: {e}")))
+                    });
+                }
+                
+                // Split content into chunks and return as a series of chunked responses
+                let chunks: Vec<String> = content
+                    .chars()
+                    .collect::<Vec<char>>()
+                    .chunks(chunk_size)
+                    .map(|chunk| chunk.iter().collect::<String>())
+                    .collect();
+                
+                // Return the first chunk with metadata
+                let first_chunk = chunks.first().unwrap_or(&String::new()).clone();
+                let total_chunks = chunks.len();
+                
+                // Safely get remaining chunks (avoid panic if chunks is empty)
+                let remaining_chunks = if chunks.len() > 1 {
+                    chunks[1..].to_vec()
+                } else {
+                    Vec::new()
+                };
+                
+                serde_json::to_string(&json!({
+                    "type": "streaming_chunk",
+                    "chunk": first_chunk,
+                    "chunk_index": 0,
+                    "total_chunks": total_chunks,
+                    "model": model,
+                    "duration_sec": ollama_duration.as_secs_f64(),
+                    "remaining_chunks": remaining_chunks
+                }))
+                .map_err(|e| {
+                    tracing::error!("Failed to serialize streaming chunk response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to serialize streaming chunk response: {e}")))
+                })
+            }
+            Err(e) => {
+                tracing::error!("Streaming chat completion failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Chat completion failed: {e}"))))
+            }
+        }
+    }
+
+    /// Test Ollama streaming response format
+    pub fn handle_test_streaming_format(&self, params: Value) -> Result<String, RpcError> {
+        let model = params["model"]
+            .as_str()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'model' parameter".to_string())))?;
+        
+        tracing::info!("Testing streaming format for model: {}", model);
+        
+        let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    self.ollama_client.test_streaming_format(model).await
+                })
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to create runtime: {e}"))))?
+                .block_on(async {
+                    self.ollama_client.test_streaming_format(model).await
+                })
+        };
+        
+        match result {
+            Ok(_) => {
+                serde_json::to_string(&json!({
+                    "status": "success",
+                    "message": "Streaming format test completed successfully"
+                }))
+                .map_err(|e| {
+                    tracing::error!("Failed to serialize test response: {}", e);
+                    RpcError::invalid_params(Some(format!("Failed to serialize test response: {e}")))
+                })
+            }
+            Err(e) => {
+                tracing::error!("Streaming format test failed: {}", e);
+                Err(RpcError::invalid_params(Some(format!("Test failed: {e}"))))
+            }
+        }
+    }
+
+    /// Get the next chunk from a streaming session
+    pub fn handle_get_next_chunk(&self, params: Value) -> Result<String, RpcError> {
+        let chunk_index = params["chunk_index"]
+            .as_u64()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'chunk_index' parameter".to_string())))? as usize;
+        
+        let remaining_chunks = params["remaining_chunks"]
+            .as_array()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'remaining_chunks' parameter".to_string())))?;
+        
+        let total_chunks = params["total_chunks"]
+            .as_u64()
+            .ok_or_else(|| RpcError::invalid_params(Some("Missing 'total_chunks' parameter".to_string())))? as usize;
+        
+        if chunk_index >= remaining_chunks.len() {
+            // No more chunks, return completion signal
+            return serde_json::to_string(&json!({
+                "type": "streaming_complete",
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks
+            }))
+            .map_err(|e| {
+                tracing::error!("Failed to serialize streaming completion response: {}", e);
+                RpcError::invalid_params(Some(format!("Failed to serialize streaming completion response: {e}")))
+            });
+        }
+        
+        // Get the next chunk
+        let next_chunk = remaining_chunks[chunk_index]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        
+        // Prepare remaining chunks for next call
+        let next_remaining: Vec<String> = remaining_chunks
+            .iter()
+            .skip(chunk_index + 1)
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        
+        serde_json::to_string(&json!({
+            "type": "streaming_chunk",
+            "chunk": next_chunk,
+            "chunk_index": chunk_index + 1,
+            "total_chunks": total_chunks,
+            "remaining_chunks": next_remaining
+        }))
+        .map_err(|e| {
+            tracing::error!("Failed to serialize streaming chunk response: {}", e);
+            RpcError::invalid_params(Some(format!("Failed to serialize streaming chunk response: {e}")))
+        })
     }
 }
 
@@ -1429,7 +2594,13 @@ impl Server for ParagonicServer {
     
     fn rpc(&self, ctl: &ServerCtl, method: &str, params: &Option<Value>) 
         -> Option<Self::RpcCallResult> {
-        match method {
+        
+        // Log incoming request
+        tracing::info!("RPC Request: method={}, params={:?}", method, params);
+        
+        let start_time = std::time::Instant::now();
+        
+        let result = match method {
             // Accept a hello message and finish the greeting
             "hello" => Some(Ok("world".to_owned())),
             // When the other side says bye, terminate the connection
@@ -1439,6 +2610,10 @@ impl Server for ParagonicServer {
             },
             // Handle chat completion requests
             "chat_completion" => Some(self.handle_chat_completion(params)),
+            // Handle formatted chat completion with server-side formatting
+            "formatted_chat_completion" => Some(self.handle_formatted_chat_completion(params)),
+            // Handle debug markdown test for server-side formatting verification
+            "debug_markdown_test" => Some(self.handle_debug_markdown_test(params)),
             // Handle agent chat completion with tool calling
             "agent_chat_completion" => Some(self.handle_agent_chat_completion(params)),
             // Handle list models requests
@@ -1489,10 +2664,47 @@ impl Server for ParagonicServer {
             "create_conversation" => Some(self.handle_create_conversation(params)),
             // Handle get conversation requests
             "get_conversation" => Some(self.handle_get_conversation(params)),
+            // Handle IRAGL search requests
+            "iragl_search" => Some(self.handle_iragl_search(params)),
+            // Handle knowledge base optimization requests
+            "optimize_knowledge_base" => Some(self.handle_optimize_knowledge_base(params)),
+            // Handle optimization status requests
+            "optimization_status" => Some(self.handle_optimization_status(params)),
+            // Handle optimization history requests
+            "optimization_history" => Some(self.handle_optimization_history(params)),
+            // Handle content association requests
+            "content_association" => Some(self.handle_content_association(params)),
             // Handle hybrid search requests
             "hybrid_search" => Some(self.handle_hybrid_search(params)),
+            // Handle knowledge stream ingestion requests
+            "ingest_knowledge_stream" => Some(self.handle_ingest_knowledge_stream(params)),
+            // Handle streaming chat completion requests
+            "streaming_chat_completion" => Some(self.handle_streaming_chat_completion(params.clone().unwrap())),
+            // Handle getting next chunk from streaming session
+            "get_next_chunk" => Some(self.handle_get_next_chunk(params.clone().unwrap())),
+            // Handle testing streaming format
+            "test_streaming_format" => Some(self.handle_test_streaming_format(params.clone().unwrap())),
             _ => None
+        };
+        
+        // Log response and timing
+        let duration = start_time.elapsed();
+        match &result {
+            Some(Ok(response)) => {
+                tracing::info!("RPC Response: method={}, success=true, duration={:?}, response_length={}", 
+                    method, duration, response.len());
+            }
+            Some(Err(error)) => {
+                tracing::error!("RPC Response: method={}, success=false, duration={:?}, error={:?}", 
+                    method, duration, error);
+            }
+            None => {
+                tracing::warn!("RPC Response: method={}, unknown_method=true, duration={:?}", 
+                    method, duration);
+            }
         }
+        
+        result
     }
 }
 

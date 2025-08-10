@@ -16,6 +16,9 @@ pub mod vector;
 // pub mod fulltext; // TODO: Fix type annotation issue in Tantivy integration
 pub mod operations;
 pub mod iragl;
+pub mod patterns;
+pub mod text;
+pub mod markdown_formatter;
 
 pub use error::{ParagonicError, ParagonicResult};
 
@@ -32,9 +35,8 @@ static INITIALIZED: OnceCell<()> = OnceCell::const_new();
 pub async fn initialize() -> ParagonicResult<()> {
     // Ensure initialization only happens once
     INITIALIZED.get_or_init(|| async {
-        // Initialize logging only once
-        tracing_subscriber::fmt::init();
-        tracing::info!("Logging initialized");
+        // Logging is initialized in main.rs, so we don't initialize it here
+        tracing::info!("Backend initialization started");
     }).await;
     
     // Check if database is already initialized before trying to initialize it
@@ -313,5 +315,14 @@ mod tests {
 mod iragl_database_tests;
 #[cfg(test)]
 mod iragl_processor_tests;
+mod content_association_tests;
+mod optimization_engine_tests;
+mod iragl_search_engine_tests;
+mod rpc_integration_tests;
+mod integration_tests;
+#[cfg(test)]
+mod pattern_database_tests;
+#[cfg(test)]
+mod pattern_database_operations_tests;
 
  

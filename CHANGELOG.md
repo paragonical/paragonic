@@ -5,6 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-08-07
+
+### Added
+- **🔄 Automatic Reconnection**: Plugin now automatically reconnects when the server restarts
+- **🔍 Connection Health Checking**: Periodic health checks to detect connection issues
+- **🛠️ Manual Reconnection**: `:ParagonicReconnect` command for manual reconnection
+- **⚡ Smart Connection Management**: Automatic reconnection attempts with retry logic
+- **🎯 Enhanced Error Handling**: RPC calls now detect failures and attempt reconnection
+- **🐛 Separate Debug Buffer**: Debug messages now appear in a dedicated `paragonic://debug` buffer
+- **🮮 Diamond AI Responses**: AI responses now prefixed with diamond symbol (🮮) for better visual distinction
+- **📊 Timestamped Debug Logs**: Debug messages include timestamps for better tracking
+- **🔧 Debug Print Integration**: All internal print statements now write to debug buffer instead of terminal
+- **🎛️ Which-Key Integration**: Full integration with [which-key.nvim](https://github.com/folke/which-key.nvim) for keymap discovery
+  - All Paragonic commands accessible via `<leader>P` prefix
+  - Visual mode support for searching selected text
+  - Fallback keymaps when which-key is not available
+  - Proper Neovim environment detection for standalone testing
+
+### Changed
+- **Connection Resilience**: Client no longer gets confused when server restarts
+- **RPC Architecture**: Enhanced with connection health monitoring and automatic recovery
+- **Error Recovery**: Failed RPC calls now trigger automatic reconnection attempts
+
+### Technical Details
+- Added `check_connection_health()` for periodic connection testing
+- Implemented `reconnect()` with configurable retry attempts and delays
+- Enhanced `is_connected()` to automatically trigger reconnection when needed
+- Added `force_reconnect()` for manual reconnection scenarios
+- Updated `_get_rpc_client()` to check health and reconnect automatically
+- Implemented connection state management with health check intervals
+- Added `get_or_create_debug_buffer()` and `open_debug_buffer()` for debug buffer management
+- Modified `append_debug_message()` to use dedicated debug buffer with timestamps
+- Updated AI response formatting to use diamond symbol (🮮) prefix
+- Added `:ParagonicDebug` command to open debug buffer
+- Added `debug_print()` function to replace all internal print statements
+- Replaced all print statements with debug buffer appends for cleaner terminal output
+- Added `setup_which_key()` function for which-key integration
+- Added `<leader>P` keymaps with which-key registration
+- Added visual mode keymaps for searching selected text
+- Added proper Neovim environment detection for standalone testing
+
+## [0.6.0] - 2025-08-07
+
+### Added
+- **🔌 Real Backend Integration**: Plugin now connects directly to Rust backend using vim.uv TCP sockets
+- **⚡ Direct TCP Communication**: Eliminated dependency on external tools (nc, curl) for backend communication
+- **🎯 Real AI Responses**: Plugin now returns actual AI responses from Ollama models instead of mock data
+- **🔄 Async-to-Sync Wrapper**: Proper handling of vim.uv async operations with synchronous RPC interface
+
+### Changed
+- **Default Backend Mode**: Plugin now uses real backend by default (no more mock responses)
+- **RPC Architecture**: Migrated from mock RPC client to real vim.uv TCP socket communication
+- **Connection Logic**: Updated to use vim.uv.new_tcp() for direct backend communication
+- **Error Handling**: Enhanced error handling for TCP connection failures and timeouts
+
+### Removed
+- **Toggle Commands**: Removed `:ParagonicUseRealBackend` and `:ParagonicUseMockBackend` commands
+- **Mock RPC Client**: Eliminated dependency on mock responses for testing
+- **External Tool Dependencies**: No longer requires nc, curl, or other external tools for communication
+
+### Technical Details
+- Implemented vim.uv.new_tcp() for direct TCP socket creation
+- Added synchronous wrapper using vim.wait() for async socket operations
+- Enhanced connection detection using self.connected flag instead of is_active()
+- Updated RPC client to use real backend by default (vim.g.paragonic_use_real_backend ~= false)
+- Improved timeout handling with vim.uv.now() for accurate timing
+
+### Testing
+- **Lua Unit Tests**: Updated to work with real backend integration
+- **Integration Tests**: Modified to handle real TCP connections instead of mock responses
+- **Test Suite Reorganization**: Completed major test cleanup with unit/integration/e2e structure
+- **Backend Integration**: All tests now pass with real backend communication
+
+## [0.5.0] - 2025-12-06
+
+### Added
+- **🎉 AI Agent Session Integration**: Complete session-aware event system for AI agent collaboration
+- **⚡ Real-Time Event Notification System**: Buffer changes, cursor movements, and window events
+- **🔧 Enhanced AI Action Functions**: Comprehensive set of actions for editor control
+- **🧪 Test-Driven Development**: Systematic TDD implementation with red-green-refactor cycles
+- **📊 Session Event History**: Track and retrieve event history from active sessions
+- **🔄 Neovim Autocommand Integration**: Automatic event triggering via Neovim events
+- **🎯 Session-Aware Handlers**: Event handlers that only execute with active sessions
+- **📝 User Commands**: New commands for AI agent actions and event management
+- **✅ Comprehensive Test Suite**: Full test coverage for all new features
+
+### Changed
+- **Event System Architecture**: Events now require active AI agent sessions
+- **Session Management**: Enhanced session context with event tracking
+- **Handler Registration**: Updated with session awareness and validation
+- **AI Actions**: Enhanced with new parameters and capabilities
+
+### Technical Details
+- Added `register_session_aware_handler()` for session-aware event handling
+- Implemented `track_event_in_session()` for event history tracking
+- Added `get_session_event_history()` for retrieving event history
+- Enhanced event triggers with session context and validation
+- Implemented autocommand setup for automatic event triggering
+- Added comprehensive error handling and validation
+
 ## [0.4.0] - 2025-01-XX
 
 ### Added
@@ -83,6 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.5.0**: AI Agent Session Integration & Real-Time Events
 - **0.4.0**: IRAGL Knowledge Management & PostgreSQL Integration
 - **0.3.0**: Enhanced Tool Calling & Agent Collaboration
 - **0.2.0**: JSON-RPC Backend & File System Tools  

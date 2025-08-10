@@ -36,6 +36,7 @@ pub struct DatabaseConfig {
 pub struct OllamaConfig {
     pub base_url: String,
     pub timeout_seconds: u64,
+    pub progress_timeout_seconds: u64,
 }
 
 /// Logging configuration
@@ -65,6 +66,7 @@ impl Default for OllamaConfig {
         Self {
             base_url: "http://localhost:11434".to_string(),
             timeout_seconds: 30,
+            progress_timeout_seconds: 30,
         }
     }
 }
@@ -167,6 +169,9 @@ impl ConfigManager {
             if let Some(timeout_seconds) = ollama.get("timeout_seconds").and_then(|v| v.as_integer()) {
                 self.config.ollama.timeout_seconds = timeout_seconds as u64;
             }
+            if let Some(progress_timeout_seconds) = ollama.get("progress_timeout_seconds").and_then(|v| v.as_integer()) {
+                self.config.ollama.progress_timeout_seconds = progress_timeout_seconds as u64;
+            }
         }
         
         if let Some(logging) = toml_value.get("logging") {
@@ -230,6 +235,11 @@ impl ConfigManager {
             "timeout_seconds" => {
                 self.config.ollama.timeout_seconds = value.parse().map_err(|_| {
                     ParagonicError::InvalidInput(format!("Invalid timeout_seconds: {value}"))
+                })?
+            }
+            "progress_timeout_seconds" => {
+                self.config.ollama.progress_timeout_seconds = value.parse().map_err(|_| {
+                    ParagonicError::InvalidInput(format!("Invalid progress_timeout_seconds: {value}"))
                 })?
             }
             _ => debug!("Unknown ollama field: {}", field),

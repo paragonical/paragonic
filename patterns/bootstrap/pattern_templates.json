@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "templates": [
+    {
+      "id": "session-summary",
+      "name": "Session Summary Template",
+      "description": "Template for generating session summaries",
+      "template_file": "session-summary.tmpl",
+      "variables": [
+        {
+          "name": "session_duration",
+          "type": "duration",
+          "description": "Total session duration"
+        },
+        {
+          "name": "message_count",
+          "type": "integer",
+          "description": "Number of messages exchanged"
+        },
+        {
+          "name": "key_decisions",
+          "type": "array",
+          "description": "Key decisions made during session"
+        },
+        {
+          "name": "files_modified",
+          "type": "array",
+          "description": "Files that were modified"
+        }
+      ],
+      "output_format": {
+        "summary": "string",
+        "key_points": ["string"],
+        "next_actions": ["string"]
+      }
+    }
+  ]
+}
