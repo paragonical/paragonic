@@ -519,23 +519,40 @@ impl OllamaClient {
                             continue;
                         }
                         
+                        // Debug: log the raw JSON line
+                        info!("Raw JSON line from {}: {}", model, line);
+                        
                         match serde_json::from_str::<StreamChatCompletionResponse>(line) {
                             Ok(stream_response) => {
-                                // Only update progress time if we received actual content
+                                // Debug: log the raw response structure
+                                info!("Raw stream response: {:?}", stream_response);
+                                
+                                // Check both response and message fields for content
                                 let has_content = stream_response.response.as_ref()
                                     .map(|text| !text.trim().is_empty())
+                                    .unwrap_or(false) || 
+                                    stream_response.message.as_ref()
+                                    .map(|msg| !msg.content.trim().is_empty())
                                     .unwrap_or(false);
                                 
                                 if has_content {
                                     last_progress_time = std::time::Instant::now();
-                                    info!("Progress update from {}: {} chars", model, stream_response.response.as_ref().unwrap().len());
+                                    if let Some(text) = &stream_response.response {
+                                        info!("Progress update from {}: {} chars (response field)", model, text.len());
+                                    }
+                                    if let Some(msg) = &stream_response.message {
+                                        info!("Progress update from {}: {} chars (message field)", model, msg.content.len());
+                                    }
                                 } else {
                                     info!("Received empty chunk from {} (not counting as progress)", model);
                                 }
                                 
-                                // Accumulate the response
+                                // Accumulate the response from both possible fields
                                 if let Some(response_text) = stream_response.response {
                                     full_response.push_str(&response_text);
+                                }
+                                if let Some(message) = stream_response.message {
+                                    full_response.push_str(&message.content);
                                 }
                                 
                                 // Check if we're done
