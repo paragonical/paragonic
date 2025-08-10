@@ -430,6 +430,7 @@ pub struct ProcessedResult {
 }
 
 /// Registry for managing system patterns
+#[derive(Clone)]
 pub struct PatternRegistry {
     patterns: Vec<SystemPattern>,
     relationships: Vec<PatternRelationship>,

@@ -17,7 +17,6 @@ use crate::ollama::{OllamaClient, ChatMessage, ChatCompletionResponse};
 use crate::error::ParagonicResult;
 use crate::text::{TextFormatter, FormatConfig};
 use crate::patterns::{PatternRegistry, PatternBootstrap, SystemPattern, PatternExecution, PatternCategory, MetaLevel, TriggerType};
-use std::sync::Mutex;
 
 /// Tool call structure for agent tool execution
 #[derive(Debug, Clone)]
@@ -29,7 +28,7 @@ pub struct ToolCall {
 /// JSON-RPC server for Paragonic
 pub struct ParagonicServer {
     ollama_client: Arc<OllamaClient>,
-    pattern_registry: Mutex<PatternRegistry>,
+    pattern_registry: PatternRegistry,
 }
 
 impl ParagonicServer {
@@ -43,7 +42,7 @@ impl ParagonicServer {
         
         Self {
             ollama_client: Arc::new(ollama_client),
-            pattern_registry: Mutex::new(pattern_registry),
+            pattern_registry,
         }
     }
     
@@ -2598,9 +2597,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
 
     // Pattern API Methods
     pub fn handle_list_patterns(&self, params: &Option<Value>) -> Result<String, RpcError> {
-        let registry = self.pattern_registry.lock()
-            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to lock pattern registry: {}", e))))?;
-        let mut patterns = registry.list_patterns(None, None);
+        let mut patterns = self.pattern_registry.list_patterns(None, None);
         
         // Apply filters if provided
         if let Some(params) = params {
@@ -2615,7 +2612,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
                     _ => None,
                 };
                 if let Some(cat) = category {
-                    patterns = registry.list_patterns(Some(cat), None);
+                    patterns = self.pattern_registry.list_patterns(Some(cat), None);
                 }
             }
             
@@ -2627,7 +2624,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
                     _ => None,
                 };
                 if let Some(ml) = meta_level {
-                    patterns = registry.list_patterns(None, Some(ml));
+                    patterns = self.pattern_registry.list_patterns(None, Some(ml));
                 }
             }
         }
@@ -2684,9 +2681,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
         let pattern_id = uuid::Uuid::parse_str(pattern_id_str)
             .map_err(|e| RpcError::invalid_params(Some(format!("Invalid pattern_id: {}", e))))?;
         
-        let registry = self.pattern_registry.lock()
-            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to lock pattern registry: {}", e))))?;
-        let pattern = registry.get_pattern(pattern_id)
+        let pattern = self.pattern_registry.get_pattern(pattern_id)
             .ok_or_else(|| RpcError::invalid_params(Some("Pattern not found".to_string())))?;
         
         let response = json!({
@@ -2717,7 +2712,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
             .ok_or_else(|| RpcError::invalid_params(Some("Missing pattern_id".to_string())))?;
         
         let pattern_id = uuid::Uuid::parse_str(pattern_id_str)
-            .map_err(|e| RpcError::invalid_params(Some(format!("Invalid pattern_id: {}", e))))?;
+            .map_err(|e| RpcError::invalid_params(format!("Invalid pattern_id: {}", e)))?;
         
         let session_id = params.get("session_id")
             .and_then(|s| s.as_str())
@@ -2736,28 +2731,14 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
             _ => TriggerType::Manual,
         };
         
-        // Get the pattern name first
-        let pattern_name = {
-            let registry = self.pattern_registry.lock()
-                .map_err(|e| RpcError::invalid_params(Some(format!("Failed to lock pattern registry: {}", e))))?;
-            let pattern = registry.get_pattern(pattern_id)
-                .ok_or_else(|| RpcError::invalid_params(Some("Pattern not found".to_string())))?;
-            pattern.name.clone()
-        };
-        
-        // Execute the pattern using the registry's execute_pattern method
-        let mut registry = self.pattern_registry.lock()
-            .map_err(|e| RpcError::invalid_params(Some(format!("Failed to lock pattern registry: {}", e))))?;
-        let execution = registry.execute_pattern(&pattern_name, input_context.clone())
-            .map_err(|e| RpcError::invalid_params(Some(format!("Pattern execution failed: {}", e))))?;
-        
-        // Create a mock execution result for the response
-        let execution_id = uuid::Uuid::new_v4();
+        // Execute the pattern
+        let execution = self.pattern_registry.execute_pattern(&pattern_id.to_string(), input_context)
+            .map_err(|e| RpcError::invalid_params(format!("Pattern execution failed: {}", e)))?;
         
         let response = json!({
             "execution_id": execution.id.to_string(),
             "pattern_id": execution.pattern_id.to_string(),
-            "pattern_name": pattern_name,
+            "pattern_name": "Pattern Name", // Would need to get from registry
             "session_id": execution.session_id.map(|id| id.to_string()),
             "trigger_type": format!("{:?}", execution.trigger_type),
             "input_context": execution.input_context,
@@ -2780,7 +2761,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
             .ok_or_else(|| RpcError::invalid_params(Some("Missing pattern_id".to_string())))?;
         
         let pattern_id = uuid::Uuid::parse_str(pattern_id_str)
-            .map_err(|e| RpcError::invalid_params(Some(format!("Invalid pattern_id: {}", e))))?;
+            .map_err(|e| RpcError::invalid_params(format!("Invalid pattern_id: {}", e)))?;
         
         let limit = params.get("limit")
             .and_then(|l| l.as_u64())
@@ -2822,7 +2803,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
             .ok_or_else(|| RpcError::invalid_params(Some("Missing pattern_id".to_string())))?;
         
         let pattern_id = uuid::Uuid::parse_str(pattern_id_str)
-            .map_err(|e| RpcError::invalid_params(Some(format!("Invalid pattern_id: {}", e))))?;
+            .map_err(|e| RpcError::invalid_params(format!("Invalid pattern_id: {}", e)))?;
         
         let days = params.get("days")
             .and_then(|d| d.as_u64())
@@ -2872,7 +2853,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
             .ok_or_else(|| RpcError::invalid_params(Some("Missing session_id".to_string())))?;
         
         let session_id = uuid::Uuid::parse_str(session_id_str)
-            .map_err(|e| RpcError::invalid_params(Some(format!("Invalid session_id: {}", e))))?;
+            .map_err(|e| RpcError::invalid_params(format!("Invalid session_id: {}", e)))?;
         
         let pattern_categories = params.get("pattern_categories")
             .and_then(|c| c.as_array())
@@ -3024,7 +3005,7 @@ impl Clone for ParagonicServer {
     fn clone(&self) -> Self {
         Self {
             ollama_client: self.ollama_client.clone(),
-            pattern_registry: Mutex::new(self.pattern_registry.lock().unwrap().clone()),
+            pattern_registry: self.pattern_registry.clone(),
         }
     }
 }

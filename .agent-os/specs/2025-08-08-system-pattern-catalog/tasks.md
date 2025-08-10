@@ -43,20 +43,20 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 3.10 Implement error handling and recovery mechanisms
   - [x] 3.11 Verify all tests pass
 
-- [ ] 4. **Core System Patterns Implementation**
+- [x] 4. **Core System Patterns Implementation**
   - [x] 4.1 Write tests for Session Summary Generation pattern
-  - [ ] 4.2 Implement Session Summary Generation pattern
-  - [ ] 4.3 Write tests for Activity Labeling pattern
-  - [ ] 4.4 Implement Activity Labeling pattern
-  - [ ] 4.5 Write tests for Self-Reflection pattern
-  - [ ] 4.6 Implement Self-Reflection pattern
-  - [ ] 4.7 Write tests for Context Condensation pattern
-  - [ ] 4.8 Implement Context Condensation pattern
-  - [ ] 4.9 Write tests for Progress Tracking pattern
-  - [ ] 4.10 Implement Progress Tracking pattern
-  - [ ] 4.11 Write tests for Knowledge Extraction pattern
-  - [ ] 4.12 Implement Knowledge Extraction pattern
-  - [ ] 4.13 Verify all tests pass
+  - [x] 4.2 Implement Session Summary Generation pattern
+  - [x] 4.3 Write tests for Activity Labeling pattern
+  - [x] 4.4 Implement Activity Labeling pattern
+  - [x] 4.5 Write tests for Self-Reflection pattern
+  - [x] 4.6 Implement Self-Reflection pattern
+  - [x] 4.7 Write tests for Context Condensation pattern
+  - [x] 4.8 Implement Context Condensation pattern
+  - [x] 4.9 Write tests for Progress Tracking pattern
+  - [x] 4.10 Implement Progress Tracking pattern
+  - [x] 4.11 Write tests for Knowledge Extraction pattern
+  - [x] 4.12 Implement Knowledge Extraction pattern
+  - [x] 4.13 Verify all tests pass
 
 - [ ] 5. **API Implementation**
   - [ ] 5.1 Write tests for pattern listing API
