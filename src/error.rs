@@ -52,6 +52,9 @@ pub enum ParagonicError {
     
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+    
+    #[error("Timeout: {0}")]
+    Timeout(String),
 }
 
 pub type ParagonicResult<T> = Result<T, ParagonicError>;
