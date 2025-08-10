@@ -1300,6 +1300,16 @@ impl PatternExecutionEngine {
             }
         }
 
+        // Handle Session Summary Generation pattern specifically
+        if pattern.name == "Session Summary Generation" {
+            return Self::execute_session_summary_generation(pattern, context);
+        }
+
+        // Handle Activity Labeling pattern specifically
+        if pattern.name == "Activity Labeling" {
+            return Self::execute_activity_labeling(pattern, context);
+        }
+
         let mut result = json!({
             "pattern_name": pattern.name,
             "executed_at": chrono::Utc::now().to_rfc3339(),
@@ -1313,6 +1323,559 @@ impl PatternExecutionEngine {
         }
 
         Ok(result)
+    }
+
+    /// Executes the Session Summary Generation pattern
+    fn execute_session_summary_generation(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // Extract session data from context
+        let session_data = context.as_ref()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Session data context is required for Session Summary Generation".to_string()
+            ))?;
+
+        // Step 1: Analyze session data
+        let session_analysis = Self::analyze_session_data(session_data)?;
+
+        // Step 2: Extract key decisions
+        let key_decisions = Self::extract_key_decisions(session_data, &session_analysis)?;
+
+        // Step 3: Identify files modified
+        let files_modified = Self::identify_files_modified(session_data)?;
+
+        // Step 4: Generate summary
+        let summary = Self::generate_summary_text(session_data, &session_analysis, &key_decisions)?;
+
+        // Step 5: Extract key points
+        let key_points = Self::extract_key_points(session_data, &session_analysis)?;
+
+        // Step 6: Suggest next actions
+        let next_actions = Self::suggest_next_actions(session_data, &session_analysis, &key_decisions)?;
+
+        // Format the result according to the pattern's output format
+        let result = json!({
+            "summary": summary,
+            "key_decisions": key_decisions,
+            "files_modified": files_modified,
+            "key_points": key_points,
+            "next_actions": next_actions,
+            "session_duration": session_data.get("session_duration_minutes")
+                .and_then(|v| v.as_u64())
+                .map(|mins| format!("{} minutes", mins))
+                .unwrap_or_else(|| "Unknown".to_string()),
+            "message_count": session_data.get("message_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+        });
+
+        Ok(result)
+    }
+
+    /// Executes the Activity Labeling pattern
+    fn execute_activity_labeling(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // Extract session data from context
+        let session_data = context.as_ref()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Session data context is required for Activity Labeling".to_string()
+            ))?;
+
+        // Step 1: Analyze context
+        let context_analysis = Self::analyze_activity_context(session_data)?;
+
+        // Step 2: Identify activity type
+        let activity_type = Self::identify_activity_type(session_data, &context_analysis)?;
+
+        // Step 3: Extract technologies
+        let technologies = Self::extract_technologies(session_data, &context_analysis)?;
+
+        // Step 4: Determine scope
+        let scope = Self::determine_activity_scope(session_data, &context_analysis)?;
+
+        // Step 5: Determine complexity
+        let complexity = Self::determine_activity_complexity(session_data, &context_analysis)?;
+
+        // Step 6: Generate activity label
+        let activity_label = Self::generate_activity_label(&activity_type, &technologies, &scope, &complexity)?;
+
+        // Format the result according to the pattern's output format
+        let result = json!({
+            "activity_label": activity_label,
+            "activity_type": activity_type,
+            "technologies": technologies,
+            "scope": scope,
+            "complexity": complexity
+        });
+
+        Ok(result)
+    }
+
+    /// Analyzes session data to extract insights
+    fn analyze_session_data(session_data: &Value) -> ParagonicResult<Value> {
+        let empty_vec = Vec::new();
+        let messages = session_data.get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let activities = session_data.get("activities")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = messages.len() as u64;
+
+        // Analyze conversation patterns
+        let user_messages = messages.iter()
+            .filter(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("user"))
+            .count();
+
+        let assistant_messages = messages.iter()
+            .filter(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+            .count();
+
+        let analysis = json!({
+            "total_messages": message_count,
+            "user_messages": user_messages,
+            "assistant_messages": assistant_messages,
+            "session_duration_minutes": duration_minutes,
+            "activities_count": activities.len(),
+            "conversation_ratio": if user_messages > 0 { 
+                assistant_messages as f64 / user_messages as f64 
+            } else { 
+                0.0 
+            },
+            "messages_per_minute": if duration_minutes > 0 { 
+                message_count as f64 / duration_minutes as f64 
+            } else { 
+                0.0 
+            }
+        });
+
+        Ok(analysis)
+    }
+
+    /// Extracts key decisions from session data
+    fn extract_key_decisions(session_data: &Value, _analysis: &Value) -> ParagonicResult<Vec<String>> {
+        let empty_vec = Vec::new();
+        let messages = session_data.get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let mut decisions = Vec::new();
+
+        // Look for decision-related keywords in messages
+        let decision_keywords = [
+            "decided", "chose", "selected", "opted", "determined", "resolved",
+            "agreed", "concluded", "settled", "picked", "went with", "chose to"
+        ];
+
+        for message in messages {
+            if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                let content_lower = content.to_lowercase();
+                
+                for keyword in &decision_keywords {
+                    if content_lower.contains(keyword) {
+                        // Extract the sentence containing the decision
+                        let sentences: Vec<&str> = content.split('.')
+                            .filter(|s| s.to_lowercase().contains(keyword))
+                            .collect();
+                        
+                        for sentence in sentences {
+                            let trimmed = sentence.trim();
+                            if !trimmed.is_empty() && !decisions.contains(&trimmed.to_string()) {
+                                decisions.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If no explicit decisions found, generate some based on activities
+        if decisions.is_empty() {
+            if let Some(activities) = session_data.get("activities").and_then(|v| v.as_array()) {
+                for activity in activities {
+                    if let Some(activity_str) = activity.as_str() {
+                        decisions.push(format!("Engaged in {}", activity_str));
+                    }
+                }
+            }
+        }
+
+        // Limit to top 5 decisions
+        decisions.truncate(5);
+        Ok(decisions)
+    }
+
+    /// Identifies files that were modified during the session
+    fn identify_files_modified(session_data: &Value) -> ParagonicResult<Vec<String>> {
+        let empty_vec = Vec::new();
+        let files = session_data.get("files_modified")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let mut file_list = Vec::new();
+        for file in files {
+            if let Some(file_str) = file.as_str() {
+                file_list.push(file_str.to_string());
+            }
+        }
+
+        Ok(file_list)
+    }
+
+    /// Generates a comprehensive summary text
+    fn generate_summary_text(session_data: &Value, _analysis: &Value, key_decisions: &[String]) -> ParagonicResult<String> {
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = session_data.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let empty_vec = Vec::new();
+        let activities = session_data.get("activities")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let mut summary_parts = Vec::new();
+
+        // Session overview
+        summary_parts.push(format!(
+            "Worked on development tasks for {} minutes with {} messages exchanged",
+            duration_minutes, message_count
+        ));
+
+        // Activities performed
+        if !activities.is_empty() {
+            let activity_list: Vec<String> = activities.iter()
+                .filter_map(|a| a.as_str().map(|s| s.to_string()))
+                .collect();
+            summary_parts.push(format!("Activities included: {}", activity_list.join(", ")));
+        }
+
+        // Key decisions made
+        if !key_decisions.is_empty() {
+            summary_parts.push(format!("Key decisions: {}", key_decisions.join("; ")));
+        }
+
+        // Files modified
+        if let Ok(files) = Self::identify_files_modified(session_data) {
+            if !files.is_empty() {
+                summary_parts.push(format!("Modified files: {}", files.join(", ")));
+            }
+        }
+
+        Ok(summary_parts.join(". "))
+    }
+
+    /// Extracts key points from the session
+    fn extract_key_points(session_data: &Value, analysis: &Value) -> ParagonicResult<Vec<String>> {
+        let mut key_points = Vec::new();
+
+        // Extract insights from analysis
+        if let Some(conversation_ratio) = analysis.get("conversation_ratio").and_then(|v| v.as_f64()) {
+            if conversation_ratio > 1.5 {
+                key_points.push("High assistant engagement with detailed responses".to_string());
+            } else if conversation_ratio < 0.5 {
+                key_points.push("User-driven session with focused questions".to_string());
+            }
+        }
+
+        if let Some(messages_per_minute) = analysis.get("messages_per_minute").and_then(|v| v.as_f64()) {
+            if messages_per_minute > 2.0 {
+                key_points.push("Fast-paced conversation with rapid iteration".to_string());
+            } else if messages_per_minute < 0.5 {
+                key_points.push("Thoughtful, deliberate session with careful consideration".to_string());
+            }
+        }
+
+        // Add activity-based insights
+        if let Some(activities) = session_data.get("activities").and_then(|v| v.as_array()) {
+            if activities.iter().any(|a| a.as_str() == Some("testing")) {
+                key_points.push("Testing and validation were key components".to_string());
+            }
+            if activities.iter().any(|a| a.as_str() == Some("documentation")) {
+                key_points.push("Documentation and knowledge sharing occurred".to_string());
+            }
+            if activities.iter().any(|a| a.as_str() == Some("code_review")) {
+                key_points.push("Code review and quality assurance were performed".to_string());
+            }
+        }
+
+        // If no specific insights, add general ones
+        if key_points.is_empty() {
+            key_points.push("Productive development session with multiple activities".to_string());
+            key_points.push("Collaborative problem-solving approach".to_string());
+        }
+
+        Ok(key_points)
+    }
+
+    /// Suggests next actions based on session analysis
+    fn suggest_next_actions(session_data: &Value, _analysis: &Value, _key_decisions: &[String]) -> ParagonicResult<Vec<String>> {
+        let mut next_actions = Vec::new();
+
+        // Suggest based on activities performed
+        if let Some(activities) = session_data.get("activities").and_then(|v| v.as_array()) {
+            let activity_list: Vec<&str> = activities.iter()
+                .filter_map(|a| a.as_str())
+                .collect();
+
+            if activity_list.contains(&"testing") {
+                next_actions.push("Continue testing and validation of implemented features".to_string());
+            }
+            if activity_list.contains(&"documentation") {
+                next_actions.push("Review and refine documentation for clarity".to_string());
+            }
+            if activity_list.contains(&"code_review") {
+                next_actions.push("Address any code review feedback and improvements".to_string());
+            }
+        }
+
+        // Suggest based on files modified
+        if let Ok(files) = Self::identify_files_modified(session_data) {
+            if files.iter().any(|f| f.contains("test")) {
+                next_actions.push("Run comprehensive test suite to ensure quality".to_string());
+            }
+            if files.iter().any(|f| f.contains("src")) {
+                next_actions.push("Review and test the implemented functionality".to_string());
+            }
+        }
+
+        // General next actions
+        next_actions.push("Plan next development iteration based on current progress".to_string());
+        next_actions.push("Update project documentation with latest changes".to_string());
+
+        // Limit to top 5 actions
+        next_actions.truncate(5);
+        Ok(next_actions)
+    }
+
+    /// Analyzes activity context from session data
+    fn analyze_activity_context(session_data: &Value) -> ParagonicResult<Value> {
+        let empty_vec = Vec::new();
+        let activities = session_data.get("activities")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let files_modified = session_data.get("files_modified")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let technologies = session_data.get("technologies")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let current_file = session_data.get("current_file")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let mode = session_data.get("mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let analysis = json!({
+            "activities_count": activities.len(),
+            "files_modified_count": files_modified.len(),
+            "technologies_count": technologies.len(),
+            "current_file": current_file,
+            "mode": mode,
+            "has_file_operations": !files_modified.is_empty(),
+            "has_technologies": !technologies.is_empty(),
+            "is_editing": mode == "insert" || mode == "visual",
+            "is_navigation": mode == "normal" && files_modified.is_empty()
+        });
+
+        Ok(analysis)
+    }
+
+    /// Identifies the primary activity type
+    fn identify_activity_type(session_data: &Value, analysis: &Value) -> ParagonicResult<String> {
+        let empty_vec = Vec::new();
+        let activities = session_data.get("activities")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let is_editing = analysis.get("is_editing")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let has_file_operations = analysis.get("has_file_operations")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Check for specific activities first
+        if activities.iter().any(|a| a.as_str() == Some("coding")) {
+            return Ok("coding".to_string());
+        }
+        if activities.iter().any(|a| a.as_str() == Some("testing")) {
+            return Ok("testing".to_string());
+        }
+        if activities.iter().any(|a| a.as_str() == Some("debugging")) {
+            return Ok("debugging".to_string());
+        }
+        if activities.iter().any(|a| a.as_str() == Some("documentation")) {
+            return Ok("documentation".to_string());
+        }
+        if activities.iter().any(|a| a.as_str() == Some("code_review")) {
+            return Ok("code_review".to_string());
+        }
+
+        // Fall back to inferred types
+        if is_editing {
+            return Ok("editing".to_string());
+        }
+        if has_file_operations {
+            return Ok("file_management".to_string());
+        }
+
+        Ok("general".to_string())
+    }
+
+    /// Extracts technologies from session data
+    fn extract_technologies(session_data: &Value, _analysis: &Value) -> ParagonicResult<Vec<String>> {
+        let mut technologies = Vec::new();
+
+        // Get explicit technologies from context
+        if let Some(tech_array) = session_data.get("technologies").and_then(|v| v.as_array()) {
+            for tech in tech_array {
+                if let Some(tech_str) = tech.as_str() {
+                    technologies.push(tech_str.to_string());
+                }
+            }
+        }
+
+        // Infer technologies from file extensions
+        if let Some(files) = session_data.get("files_modified").and_then(|v| v.as_array()) {
+            for file in files {
+                if let Some(file_str) = file.as_str() {
+                    if file_str.ends_with(".rs") && !technologies.contains(&"rust".to_string()) {
+                        technologies.push("rust".to_string());
+                    }
+                    if file_str.ends_with(".lua") && !technologies.contains(&"lua".to_string()) {
+                        technologies.push("lua".to_string());
+                    }
+                    if file_str.ends_with(".py") && !technologies.contains(&"python".to_string()) {
+                        technologies.push("python".to_string());
+                    }
+                    if file_str.ends_with(".js") && !technologies.contains(&"javascript".to_string()) {
+                        technologies.push("javascript".to_string());
+                    }
+                    if file_str.ends_with(".md") && !technologies.contains(&"markdown".to_string()) {
+                        technologies.push("markdown".to_string());
+                    }
+                }
+            }
+        }
+
+        // Add common development tools
+        if technologies.contains(&"rust".to_string()) && !technologies.contains(&"cargo".to_string()) {
+            technologies.push("cargo".to_string());
+        }
+        if !technologies.contains(&"neovim".to_string()) {
+            technologies.push("neovim".to_string());
+        }
+
+        Ok(technologies)
+    }
+
+    /// Determines the scope of the activity
+    fn determine_activity_scope(_session_data: &Value, analysis: &Value) -> ParagonicResult<String> {
+        let files_modified_count = analysis.get("files_modified_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let activities_count = analysis.get("activities_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let technologies_count = analysis.get("technologies_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        if files_modified_count > 5 || activities_count > 3 || technologies_count > 4 {
+            return Ok("large".to_string());
+        } else if files_modified_count > 2 || activities_count > 2 || technologies_count > 2 {
+            return Ok("medium".to_string());
+        } else {
+            return Ok("small".to_string());
+        }
+    }
+
+    /// Determines the complexity of the activity
+    fn determine_activity_complexity(session_data: &Value, analysis: &Value) -> ParagonicResult<String> {
+        let empty_vec = Vec::new();
+        let activities = session_data.get("activities")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let technologies_count = analysis.get("technologies_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        // Check for complex activities
+        if activities.iter().any(|a| a.as_str() == Some("debugging")) {
+            return Ok("high".to_string());
+        }
+        if activities.iter().any(|a| a.as_str() == Some("code_review")) {
+            return Ok("high".to_string());
+        }
+        if activities.iter().any(|a| a.as_str() == Some("testing")) {
+            return Ok("medium".to_string());
+        }
+
+        // Infer complexity from technologies
+        if technologies_count > 3 {
+            return Ok("high".to_string());
+        } else if technologies_count > 1 {
+            return Ok("medium".to_string());
+        } else {
+            return Ok("low".to_string());
+        }
+    }
+
+    /// Generates a descriptive activity label
+    fn generate_activity_label(activity_type: &str, technologies: &[String], scope: &str, complexity: &str) -> ParagonicResult<String> {
+        let mut label_parts = Vec::new();
+
+        // Add activity type
+        match activity_type {
+            "coding" => label_parts.push("Rust development".to_string()),
+            "testing" => label_parts.push("Test implementation".to_string()),
+            "debugging" => label_parts.push("Debugging session".to_string()),
+            "documentation" => label_parts.push("Documentation work".to_string()),
+            "code_review" => label_parts.push("Code review".to_string()),
+            "editing" => label_parts.push("Code editing".to_string()),
+            "file_management" => label_parts.push("File management".to_string()),
+            _ => label_parts.push("Development work".to_string()),
+        }
+
+        // Add scope indicator
+        match scope {
+            "large" => label_parts.push("large-scale".to_string()),
+            "medium" => label_parts.push("moderate".to_string()),
+            "small" => label_parts.push("focused".to_string()),
+            _ => label_parts.push("general".to_string()),
+        }
+
+        // Add complexity indicator
+        match complexity {
+            "high" => label_parts.push("complex".to_string()),
+            "medium" => label_parts.push("moderate complexity".to_string()),
+            "low" => label_parts.push("simple".to_string()),
+            _ => label_parts.push("standard".to_string()),
+        }
+
+        // Add primary technology if available
+        if let Some(primary_tech) = technologies.first() {
+            label_parts.push(format!("using {}", primary_tech));
+        }
+
+        let label = label_parts.join(" ");
+        Ok(label)
     }
 }
 
@@ -4454,6 +5017,258 @@ mod tests {
         assert!(output_format.get("next_actions").unwrap().is_array());
         assert!(output_format.get("session_duration").unwrap().is_string());
         assert!(output_format.get("message_count").unwrap().is_string());
+    }
+
+    #[test]
+    fn test_activity_labeling_pattern_creation() {
+        let pattern = SystemPattern::new(
+            "Activity Labeling".to_string(),
+            PatternCategory::ActivityLabeling,
+            MetaLevel::System,
+            "Generate descriptive labels for session activities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_context", "description": "Analyze current session context"},
+                {"step": 2, "action": "identify_activity_type", "description": "Identify primary activity type"},
+                {"step": 3, "action": "extract_technologies", "description": "Extract key technologies or concepts"},
+                {"step": 4, "action": "determine_scope", "description": "Determine scope and complexity"},
+                {"step": 5, "action": "generate_label", "description": "Generate descriptive label"}
+            ]),
+            json!({
+                "activity_label": "string",
+                "activity_type": "enum",
+                "technologies": ["string"],
+                "scope": "enum",
+                "complexity": "enum"
+            }),
+            Some(json!({
+                "session_duration_minutes": 5,
+                "message_count": 3,
+                "file_changes": true
+            })),
+            Some(json!({
+                "label_length_min": 10,
+                "label_length_max": 100,
+                "technologies_count_min": 1
+            })),
+        ).unwrap();
+
+        assert_eq!(pattern.name, "Activity Labeling");
+        assert_eq!(pattern.category, PatternCategory::ActivityLabeling);
+        assert_eq!(pattern.meta_level, MetaLevel::System);
+        assert!(pattern.description.contains("descriptive labels"));
+        
+        let workflow_steps = pattern.workflow_steps.as_array().unwrap();
+        assert_eq!(workflow_steps.len(), 5);
+        assert_eq!(workflow_steps[0]["action"], "analyze_context");
+        assert_eq!(workflow_steps[4]["action"], "generate_label");
+        
+        let output_format = pattern.output_format.as_object().unwrap();
+        assert!(output_format.contains_key("activity_label"));
+        assert!(output_format.contains_key("technologies"));
+        
+        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap();
+        assert_eq!(trigger_conditions["session_duration_minutes"], 5);
+        assert_eq!(trigger_conditions["message_count"], 3);
+        
+        let success_criteria = pattern.success_criteria.as_ref().unwrap();
+        assert_eq!(success_criteria["label_length_min"], 10);
+        assert_eq!(success_criteria["technologies_count_min"], 1);
+    }
+
+    #[test]
+    fn test_activity_labeling_pattern_execution() {
+        let pattern = SystemPattern::new(
+            "Activity Labeling".to_string(),
+            PatternCategory::ActivityLabeling,
+            MetaLevel::System,
+            "Generate descriptive labels for session activities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_context", "description": "Analyze current session context"},
+                {"step": 2, "action": "identify_activity_type", "description": "Identify primary activity type"},
+                {"step": 3, "action": "extract_technologies", "description": "Extract key technologies or concepts"},
+                {"step": 4, "action": "determine_scope", "description": "Determine scope and complexity"},
+                {"step": 5, "action": "generate_label", "description": "Generate descriptive label"}
+            ]),
+            json!({
+                "activity_label": "string",
+                "activity_type": "enum",
+                "technologies": ["string"],
+                "scope": "enum",
+                "complexity": "enum"
+            }),
+            None,
+            None,
+        ).unwrap();
+
+        let context = Some(json!({
+            "session_duration_minutes": 15,
+            "message_count": 8,
+            "files_modified": ["src/main.rs", "tests/test.rs"],
+            "activities": ["coding", "testing", "debugging"],
+            "technologies": ["rust", "cargo", "neovim"],
+            "current_file": "src/main.rs",
+            "mode": "normal"
+        }));
+
+        let result = PatternExecutionEngine::execute_pattern_workflow_internal(&pattern, &context);
+        assert!(result.is_ok());
+
+        let result_value = result.unwrap();
+        assert!(result_value.is_object());
+        
+        let result_obj = result_value.as_object().unwrap();
+        assert!(result_obj.contains_key("activity_label"));
+        assert!(result_obj.contains_key("activity_type"));
+        assert!(result_obj.contains_key("technologies"));
+        assert!(result_obj.contains_key("scope"));
+        assert!(result_obj.contains_key("complexity"));
+        
+        let activity_label = result_obj["activity_label"].as_str().unwrap();
+        assert!(!activity_label.is_empty());
+        assert!(activity_label.len() >= 10);
+        
+        let technologies = result_obj["technologies"].as_array().unwrap();
+        assert!(!technologies.is_empty());
+        assert!(technologies.iter().any(|t| t.as_str() == Some("rust")));
+        
+        let activity_type = result_obj["activity_type"].as_str().unwrap();
+        assert!(!activity_type.is_empty());
+        
+        let scope = result_obj["scope"].as_str().unwrap();
+        assert!(!scope.is_empty());
+        
+        let complexity = result_obj["complexity"].as_str().unwrap();
+        assert!(!complexity.is_empty());
+    }
+
+    #[test]
+    fn test_activity_labeling_trigger_conditions() {
+        let pattern = SystemPattern::new(
+            "Activity Labeling".to_string(),
+            PatternCategory::ActivityLabeling,
+            MetaLevel::System,
+            "Generate descriptive labels for session activities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_context", "description": "Analyze current session context"},
+                {"step": 2, "action": "identify_activity_type", "description": "Identify primary activity type"},
+                {"step": 3, "action": "extract_technologies", "description": "Extract key technologies or concepts"},
+                {"step": 4, "action": "determine_scope", "description": "Determine scope and complexity"},
+                {"step": 5, "action": "generate_label", "description": "Generate descriptive label"}
+            ]),
+            json!({
+                "activity_label": "string",
+                "activity_type": "enum",
+                "technologies": ["string"],
+                "scope": "enum",
+                "complexity": "enum"
+            }),
+            Some(json!({
+                "session_duration_minutes": 10,
+                "message_count": 5,
+                "file_changes": true
+            })),
+            None,
+        ).unwrap();
+
+        // Test trigger conditions
+        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap();
+        assert_eq!(trigger_conditions["session_duration_minutes"], 10);
+        assert_eq!(trigger_conditions["message_count"], 5);
+        assert_eq!(trigger_conditions["file_changes"], true);
+    }
+
+    #[test]
+    fn test_activity_labeling_workflow_steps() {
+        let pattern = SystemPattern::new(
+            "Activity Labeling".to_string(),
+            PatternCategory::ActivityLabeling,
+            MetaLevel::System,
+            "Generate descriptive labels for session activities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_context", "description": "Analyze current session context"},
+                {"step": 2, "action": "identify_activity_type", "description": "Identify primary activity type"},
+                {"step": 3, "action": "extract_technologies", "description": "Extract key technologies or concepts"},
+                {"step": 4, "action": "determine_scope", "description": "Determine scope and complexity"},
+                {"step": 5, "action": "generate_label", "description": "Generate descriptive label"}
+            ]),
+            json!({
+                "activity_label": "string",
+                "activity_type": "enum",
+                "technologies": ["string"],
+                "scope": "enum",
+                "complexity": "enum"
+            }),
+            None,
+            None,
+        ).unwrap();
+
+        let workflow_steps = pattern.workflow_steps.as_array().unwrap();
+        assert_eq!(workflow_steps.len(), 5);
+        
+        // Verify each step
+        assert_eq!(workflow_steps[0]["step"], 1);
+        assert_eq!(workflow_steps[0]["action"], "analyze_context");
+        assert_eq!(workflow_steps[0]["description"], "Analyze current session context");
+        
+        assert_eq!(workflow_steps[1]["step"], 2);
+        assert_eq!(workflow_steps[1]["action"], "identify_activity_type");
+        assert_eq!(workflow_steps[1]["description"], "Identify primary activity type");
+        
+        assert_eq!(workflow_steps[2]["step"], 3);
+        assert_eq!(workflow_steps[2]["action"], "extract_technologies");
+        assert_eq!(workflow_steps[2]["description"], "Extract key technologies or concepts");
+        
+        assert_eq!(workflow_steps[3]["step"], 4);
+        assert_eq!(workflow_steps[3]["action"], "determine_scope");
+        assert_eq!(workflow_steps[3]["description"], "Determine scope and complexity");
+        
+        assert_eq!(workflow_steps[4]["step"], 5);
+        assert_eq!(workflow_steps[4]["action"], "generate_label");
+        assert_eq!(workflow_steps[4]["description"], "Generate descriptive label");
+    }
+
+    #[test]
+    fn test_activity_labeling_output_format() {
+        let pattern = SystemPattern::new(
+            "Activity Labeling".to_string(),
+            PatternCategory::ActivityLabeling,
+            MetaLevel::System,
+            "Generate descriptive labels for session activities".to_string(),
+            json!([
+                {"step": 1, "action": "analyze_context", "description": "Analyze current session context"},
+                {"step": 2, "action": "identify_activity_type", "description": "Identify primary activity type"},
+                {"step": 3, "action": "extract_technologies", "description": "Extract key technologies or concepts"},
+                {"step": 4, "action": "determine_scope", "description": "Determine scope and complexity"},
+                {"step": 5, "action": "generate_label", "description": "Generate descriptive label"}
+            ]),
+            json!({
+                "activity_label": "string",
+                "activity_type": "enum",
+                "technologies": ["string"],
+                "scope": "enum",
+                "complexity": "enum"
+            }),
+            None,
+            None,
+        ).unwrap();
+
+        let output_format = pattern.output_format.as_object().unwrap();
+        
+        // Verify all required fields are present
+        assert!(output_format.contains_key("activity_label"));
+        assert_eq!(output_format["activity_label"], "string");
+        
+        assert!(output_format.contains_key("activity_type"));
+        assert_eq!(output_format["activity_type"], "enum");
+        
+        assert!(output_format.contains_key("technologies"));
+        assert_eq!(output_format["technologies"], json!(["string"]));
+        
+        assert!(output_format.contains_key("scope"));
+        assert_eq!(output_format["scope"], "enum");
+        
+        assert!(output_format.contains_key("complexity"));
+        assert_eq!(output_format["complexity"], "enum");
     }
 }
 
