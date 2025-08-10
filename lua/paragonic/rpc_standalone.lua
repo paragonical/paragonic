@@ -950,6 +950,19 @@ local function send_jsonrpc_request_with_retry_and_pool_and_log(server_address, 
                 if client then
                     log_message(client, "debug", string.format("RPC request %s succeeded", method))
                 end
+                
+                -- Check for JSON-RPC error response
+                if parsed.error then
+                    local error_msg = parsed.error.message or "Unknown error"
+                    if parsed.error.data then
+                        error_msg = error_msg .. ": " .. tostring(parsed.error.data)
+                    end
+                    if client then
+                        log_message(client, "error", string.format("RPC request %s failed: %s", method, error_msg))
+                    end
+                    return nil, error_msg
+                end
+                
                 -- Extract the actual result from the JSON-RPC envelope
                 if parsed.result then
                     -- If result is a string, parse it as JSON

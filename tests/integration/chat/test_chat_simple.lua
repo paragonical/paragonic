@@ -14,7 +14,7 @@ local M = require("paragonic")
 local function test_send_message_exists()
     print("=== Test 1: Check send_message function ===")
     
-    if M.send_message then
+    if M.chat.send_message then
         print("  ✅ send_message function exists")
         return true
     else
@@ -27,12 +27,19 @@ end
 local function test_rpc_client()
     print("\n=== Test 2: Check RPC client ===")
     
-    local rpc_client = M._get_rpc_client()
+    -- Try to initialize backend if not already done
+    local success = pcall(function()
+        if not M.backend._rpc_client then
+            M.backend.initialize_backend()
+        end
+    end)
+    
+    local rpc_client = M.backend._get_rpc_client()
     if rpc_client then
         print("  ✅ RPC client is available")
         return true
     else
-        print("  ❌ RPC client is not available")
+        print("  ⚠️  RPC client is not available (server may not be running)")
         return false
     end
 end
@@ -41,14 +48,14 @@ end
 local function test_json_parsing()
     print("\n=== Test 3: Test JSON parsing ===")
     
-    if not M.parse_json_response then
+    if not M.utils.parse_json_response then
         print("  ❌ parse_json_response function does not exist")
         return false
     end
     
     -- Test with valid JSON
     local valid_json = '{"result": "Hello, world!"}'
-    local parsed = M.parse_json_response(valid_json)
+    local parsed = M.utils.parse_json_response(valid_json)
     
     if parsed and parsed.result then
         print("  ✅ JSON parsing works for valid JSON")
@@ -59,7 +66,7 @@ local function test_json_parsing()
     
     -- Test with invalid JSON
     local invalid_json = '{"result": "Hello, world!"'
-    local parsed_invalid = M.parse_json_response(invalid_json)
+    local parsed_invalid = M.utils.parse_json_response(invalid_json)
     
     if not parsed_invalid then
         print("  ✅ JSON parsing correctly handles invalid JSON")
@@ -75,7 +82,7 @@ end
 local function test_send_message_timeout()
     print("\n=== Test 4: Test send_message with timeout ===")
     
-    if not M.send_message then
+    if not M.chat.send_message then
         print("  ❌ send_message function not available")
         return false
     end
@@ -86,7 +93,7 @@ local function test_send_message_timeout()
     
     -- Use pcall to catch any errors
     local success, response, error_msg = pcall(function()
-        return M.send_message(test_message, "llama2")
+        return M.chat.send_message(test_message, "llama2")
     end)
     
     if success then

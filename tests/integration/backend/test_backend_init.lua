@@ -15,13 +15,13 @@ local function test_backend_init_establishes_rpc_connection()
     local paragonic = require("paragonic")
     
     -- Check if backend is initialized before
-    local rpc_client_before = paragonic._rpc_client
+    local rpc_client_before = paragonic.backend._rpc_client
     
     -- Call _initialize_backend
-    paragonic._initialize_backend()
+    paragonic.backend.initialize_backend()
     
     -- Should have created an RPC client
-    local rpc_client_after = paragonic._rpc_client
+    local rpc_client_after = paragonic.backend._rpc_client
     assert(rpc_client_after ~= nil, "Should create RPC client")
     assert(rpc_client_after ~= rpc_client_before, "Should create new RPC client")
     

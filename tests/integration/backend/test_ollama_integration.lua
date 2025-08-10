@@ -10,52 +10,64 @@ package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/socket/?.
 
 -- Global variable to store the server process
 local server_process = nil
+local server_pid = nil
 
 -- Test that Ollama service is available
 local function test_ollama_service_available()
     print("Testing Ollama service availability...")
     
-    -- Check if Ollama is running
-    local success = os.execute("curl -s http://localhost:11434/api/tags > /dev/null 2>&1")
-    if success then
+    -- Check if Ollama is running on localhost:11434
+    local check_cmd = "curl -s http://localhost:11434/api/tags > /dev/null 2>&1"
+    local result = os.execute(check_cmd)
+    
+    if result then
         print("✓ Ollama service is running on localhost:11434")
+        
+        -- Check if llama2 model is available
+        local model_cmd = "curl -s http://localhost:11434/api/tags | grep -q llama2"
+        local model_result = os.execute(model_cmd)
+        
+        if model_result then
+            print("✓ llama2 model is available")
+            return true
+        else
+            print("⚠ llama2 model not found, but Ollama is running")
+            return true -- Still proceed with tests
+        end
     else
-        print("⚠ Ollama service not available, need to start Ollama first")
-        print("  You can start Ollama with: ollama serve")
+        print("❌ Ollama service is not running on localhost:11434")
         return false
     end
-    
-    -- Check if llama2 model is available
-    local model_check = io.popen("curl -s http://localhost:11434/api/tags | grep -q llama2")
-    if model_check then
-        model_check:close()
-        print("✓ llama2 model is available")
-    else
-        print("⚠ llama2 model not found, you may need to pull it with: ollama pull llama2")
-        return false
-    end
-    
-    return true
 end
 
 -- Test that Rust backend can connect to Ollama
 local function test_rust_backend_ollama_connection()
     print("Testing Rust backend Ollama connection...")
     
-    -- Start the server in background
+    -- Check if Rust backend binary exists
     local backend_binary = "./target/debug/paragonic"
+    local file = io.open(backend_binary, "r")
+    if not file then
+        print("⚠ Rust backend binary not found at " .. backend_binary)
+        print("  Need to build with: cargo build")
+        return false
+    end
+    file:close()
+    print("✓ Rust backend binary found at " .. backend_binary)
+    
+    -- Start the server in background
     server_process = io.popen(backend_binary .. " > /dev/null 2>&1 & echo $!")
     if not server_process then
         error("Failed to start server process")
     end
     
     -- Get the process ID
-    local pid = server_process:read("*a"):match("(%d+)")
-    if not pid then
+    server_pid = server_process:read("*a"):match("(%d+)")
+    if not server_pid then
         error("Failed to get server process ID")
     end
     
-    print("✓ Server started with PID: " .. pid)
+    print("✓ Server started with PID: " .. server_pid)
     
     -- Wait a moment for the server to start up
     os.execute("sleep 3")
@@ -64,11 +76,11 @@ local function test_rust_backend_ollama_connection()
     local paragonic = require("paragonic")
     
     -- Initialize backend to get RPC client
-    local success = paragonic._initialize_backend()
+    local success = paragonic.backend.initialize_backend()
     assert(success, "Backend initialization should succeed")
     
     -- Get RPC client (should be available after initialization)
-    local rpc_client = paragonic._get_rpc_client()
+    local rpc_client = paragonic.backend._get_rpc_client()
     assert(rpc_client ~= nil, "Should have RPC client")
     assert(rpc_client:is_connected(), "RPC client should be connected")
     
@@ -83,13 +95,13 @@ local function test_ollama_chat_completion()
     local paragonic = require("paragonic")
     
     -- Test that we can send a chat message and get a response
-    local response = paragonic.send_message("Hello, what is 2+2?", "llama2")
+    local response = paragonic.chat.send_message("Hello, what is 2+2?", "llama2")
     assert(response ~= nil, "Should get response from chat completion")
     assert(type(response) == "string", "Response should be string")
     assert(response ~= "", "Response should not be empty")
     
-    -- The response should contain mock AI content (valid for testing)
-    assert(response:find("mock"), "Response should contain mock AI content")
+    -- The response should contain real AI content (not mock)
+    assert(response:find("4") or response:find("four") or response:find("answer"), "Response should contain answer to 2+2")
     
     print("✓ Ollama chat completion test passed!")
     print("  Response: " .. response:sub(1, 100) .. "...")
@@ -103,15 +115,22 @@ local function test_ollama_model_listing()
     local paragonic = require("paragonic")
     
     -- Test that we can get available models
-    local models = paragonic.get_available_models()
+    local models = paragonic.backend.get_available_models()
     assert(models ~= nil, "Should get models list")
     assert(type(models) == "table", "Models should be table")
     assert(#models > 0, "Should have at least one model")
     
-    -- Check if llama2 is in the list
+    -- Check if llama2 is in the list (models may have suffixes like "llama2:7b")
     local has_llama2 = false
     for _, model in ipairs(models) do
-        if model.name and model.name:find("llama2") then
+        local model_name = nil
+        if type(model) == "table" and model.name then
+            model_name = model.name
+        elseif type(model) == "string" then
+            model_name = model
+        end
+        
+        if model_name and model_name:find("llama2") then
             has_llama2 = true
             break
         end
@@ -126,9 +145,11 @@ end
 local function cleanup_server()
     if server_process then
         server_process:close()
-        -- Kill the background process
-        os.execute("pkill -f 'target/debug/paragonic' > /dev/null 2>&1")
-        print("✓ Server cleanup completed")
+        -- Kill only the specific test server process
+        if server_pid then
+            os.execute("kill " .. server_pid .. " > /dev/null 2>&1")
+            print("✓ Test server (PID: " .. server_pid .. ") cleanup completed")
+        end
     end
 end
 

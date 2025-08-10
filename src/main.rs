@@ -194,6 +194,7 @@ async fn main() {
                 println!("Usage:");
                 println!("  paragonic                    - Start the RPC server");
                 println!("  paragonic --no-database      - Start without database initialization");
+                println!("  paragonic --port <port>      - Start on specific port (default: 3000)");
                 println!("  paragonic demonstrate-iragl  - Demonstrate IRAGL capabilities");
                 println!("  paragonic index-file <path>  - Index a file for IRAGL");
                 println!("  paragonic search <query>     - Search the IRAGL index");
@@ -217,6 +218,19 @@ async fn main() {
     
     let skip_database = args.iter().any(|arg| arg == "--no-database");
     
+    // Parse port argument
+    let mut port = 3000;
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "--port" && i + 1 < args.len() {
+            if let Ok(port_num) = args[i + 1].parse::<u16>() {
+                port = port_num;
+            } else {
+                eprintln!("Invalid port number: {}", args[i + 1]);
+                process::exit(1);
+            }
+        }
+    }
+    
     if skip_database {
         println!("Starting Paragonic backend without database initialization...");
     } else {
@@ -228,16 +242,17 @@ async fn main() {
         println!("Paragonic backend initialized successfully");
     }
     
-    tracing::info!("Starting RPC server on 127.0.0.1:3000...");
+    let server_addr = format!("127.0.0.1:{}", port);
+    tracing::info!("Starting RPC server on {}...", server_addr);
 
     // Start the RPC server (this is not async, it just sets up the server)
-    if let Err(e) = start_rpc_server("127.0.0.1:3000") {
+    if let Err(e) = start_rpc_server(&server_addr) {
         tracing::error!("Failed to start RPC server: {}", e);
         process::exit(1);
     }
 
     tracing::info!("RPC server started successfully");
-    println!("RPC server started successfully");
+    println!("RPC server started successfully on {}", server_addr);
     println!("Press Ctrl+C to stop the server");
     println!("Log level: {}", log_level);
 

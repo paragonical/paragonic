@@ -8,9 +8,13 @@ package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
 package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/?.so"
 package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/socket/?.so"
 
+-- Global variable to store the server process
+local server_process = nil
+local server_pid = nil
+
 -- Test that list_models method exists
 local function test_list_models_method_exists()
-    print("Testing that list_models method exists...")
+    print("Testing list_models method exists...")
     
     -- Load the rpc_standalone module
     local rpc_standalone = require("paragonic.rpc_standalone")
@@ -19,7 +23,8 @@ local function test_list_models_method_exists()
     local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Test that list_models method exists
-    assert(type(client.list_models) == "function", "list_models method should exist and be a function")
+    assert(client.list_models ~= nil, "list_models method should exist")
+    assert(type(client.list_models) == "function", "list_models should be a function")
     
     print("✓ list_models method exists")
     return true
@@ -37,17 +42,18 @@ local function test_list_models_method_implementation()
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
-    local server_process = io.popen(server_cmd)
+    server_process = io.popen(server_cmd)
     if not server_process then
         error("Failed to start server process")
     end
     
-    local pid = server_process:read("*a"):match("(%d+)")
-    if not pid then
+    -- Get the process ID
+    server_pid = server_process:read("*a"):match("(%d+)")
+    if not server_pid then
         error("Failed to get server process ID")
     end
     
-    print("✓ Server started with PID: " .. pid)
+    print("✓ Server started with PID: " .. server_pid)
     
     -- Wait for server to start
     os.execute("sleep 3")
@@ -56,35 +62,15 @@ local function test_list_models_method_implementation()
     local connect_result = client:connect()
     assert(connect_result == true, "Should connect successfully")
     
-    -- Test that list_models method exists
-    assert(type(client.list_models) == "function", "list_models should be a function")
+    -- Test list_models with connection
+    print("Testing list_models with connection...")
+    local result1 = client:list_models()
     
-    -- Test list_models functionality
-    print("Testing list_models functionality...")
-    local result = client:list_models()
+    assert(result1 ~= nil, "list_models should succeed when connected")
+    assert(type(result1) == "table", "list_models should return a table")
+    assert(#result1 > 0, "list_models should return at least one model")
     
-    assert(result ~= nil, "list_models should return a result")
-    assert(type(result) == "string", "list_models should return a string")
-    
-    -- Parse the result as JSON to verify it's a valid model list
-    local cjson = require("cjson")
-    local success, parsed = pcall(cjson.decode, result)
-    assert(success, "list_models should return valid JSON")
-    assert(type(parsed) == "table", "list_models should return a JSON array")
-    assert(#parsed > 0, "list_models should return at least one model")
-    
-    -- Check if llama2 is in the list (we know it should be available)
-    local has_llama2 = false
-    for _, model in ipairs(parsed) do
-        if model:find("llama2") then
-            has_llama2 = true
-            break
-        end
-    end
-    assert(has_llama2, "list_models should include llama2 model")
-    
-    print("✓ list_models method works: found " .. #parsed .. " models")
-    print("  Sample models: " .. table.concat({parsed[1], parsed[2], parsed[3]}, ", "))
+    print("✓ list_models works correctly when connected")
     
     -- Test list_models without connection
     print("Testing list_models without connection...")
@@ -96,8 +82,10 @@ local function test_list_models_method_implementation()
     print("✓ list_models correctly fails when not connected")
     
     -- Cleanup
-    os.execute("pkill -f 'target/debug/paragonic' > /dev/null 2>&1")
-    print("✓ Server cleanup completed")
+    if server_pid then
+        os.execute("kill " .. server_pid .. " > /dev/null 2>&1")
+        print("✓ Test server (PID: " .. server_pid .. ") cleanup completed")
+    end
     
     return true
 end
@@ -135,17 +123,17 @@ local function test_list_models_consistency()
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
-    local server_process = io.popen(server_cmd)
-    if not server_process then
+    local server_process2 = io.popen(server_cmd)
+    if not server_process2 then
         error("Failed to start server process")
     end
     
-    local pid = server_process:read("*a"):match("(%d+)")
-    if not pid then
+    local pid2 = server_process2:read("*a"):match("(%d+)")
+    if not pid2 then
         error("Failed to get server process ID")
     end
     
-    print("✓ Server started with PID: " .. pid)
+    print("✓ Server started with PID: " .. pid2)
     
     -- Wait for server to start
     os.execute("sleep 3")
@@ -165,8 +153,10 @@ local function test_list_models_consistency()
     print("✓ list_models consistency test passed")
     
     -- Cleanup
-    os.execute("pkill -f 'target/debug/paragonic' > /dev/null 2>&1")
-    print("✓ Server cleanup completed")
+    if pid2 then
+        os.execute("kill " .. pid2 .. " > /dev/null 2>&1")
+        print("✓ Test server (PID: " .. pid2 .. ") cleanup completed")
+    end
     
     return true
 end

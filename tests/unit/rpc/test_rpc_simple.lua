@@ -9,7 +9,7 @@ print("✅ Module loaded successfully")
 
 -- Test 2: Try to get RPC client
 print("📝 Getting RPC client...")
-local client = M._get_rpc_client()
+local client = M.backend._get_rpc_client()
 if client then
     print("✅ RPC client available")
 else
@@ -18,12 +18,12 @@ end
 
 -- Test 3: Try to initialize backend
 print("📝 Initializing backend...")
-local result = M.initialize_backend()
+local result = M.backend.initialize_backend()
 print("Backend initialization result:", result)
 
 -- Test 4: Try to get RPC client after initialization
 print("📝 Getting RPC client after initialization...")
-local client = M._get_rpc_client()
+local client = M.backend._get_rpc_client()
 if client then
     print("✅ RPC client available after initialization")
 else

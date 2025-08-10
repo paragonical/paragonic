@@ -65,11 +65,24 @@ test-unit: test-unit-core test-unit-rpc test-unit-utils
 	@echo ""
 	@echo "✓ All unit tests completed"
 
-# Integration tests (requires backend)
-.PHONY: test-integration test-integration-chat test-integration-search test-integration-backend
+# Server lifecycle tests (start/stop servers, use different ports)
+.PHONY: test-server-lifecycle test-server-lifecycle-backend
 
-test-integration-chat:
-	@echo "=== Running Integration Tests: Chat ==="
+test-server-lifecycle-backend:
+	@echo "=== Running Server Lifecycle Tests: Backend ==="
+	@echo "Testing server start/stop functionality..."
+	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/backend/test_rust_backend_server.lua
+	@echo "✓ Backend server lifecycle tests completed"
+
+test-server-lifecycle: test-server-lifecycle-backend
+	@echo ""
+	@echo "✓ All server lifecycle tests completed"
+
+# Server interaction tests (use already running server on port 3000)
+.PHONY: test-server-interaction test-server-interaction-chat test-server-interaction-search test-server-interaction-backend
+
+test-server-interaction-chat:
+	@echo "=== Running Server Interaction Tests: Chat ==="
 	@echo "Testing basic chat functionality..."
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/chat/test_chat_simple.lua
 	@echo "Testing chat interface..."
@@ -80,10 +93,10 @@ test-integration-chat:
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/chat/test_chat_interactive.lua
 	@echo "Testing chat visual feedback..."
 	@$(NEOVIM_LUA) $(UNIT_DIR)/chat/test_chat_visual_feedback_simple.lua
-	@echo "✓ Chat integration tests completed"
+	@echo "✓ Chat server interaction tests completed"
 
-test-integration-search:
-	@echo "=== Running Integration Tests: Search ==="
+test-server-interaction-search:
+	@echo "=== Running Server Interaction Tests: Search ==="
 	@echo "Testing search integration..."
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/search/test_lua_search_integration.lua
 	@echo "Testing enhanced search core..."
@@ -92,19 +105,28 @@ test-integration-search:
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/search/test_enhanced_search_ui.lua
 	@echo "Testing Neovim search integration..."
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/search/test_neovim_search_integration.lua
-	@echo "✓ Search integration tests completed"
+	@echo "✓ Search server interaction tests completed"
 
-test-integration-backend:
-	@echo "=== Running Integration Tests: Backend ==="
+test-server-interaction-backend:
+	@echo "=== Running Server Interaction Tests: Backend ==="
 	@echo "Testing backend initialization..."
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/backend/test_backend_init.lua
-	@echo "Testing Rust backend server..."
-	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/backend/test_rust_backend_server.lua
 	@echo "Testing Ollama integration..."
 	@$(NEOVIM_LUA) $(INTEGRATION_DIR)/backend/test_ollama_integration.lua
-	@echo "✓ Backend integration tests completed"
+	@echo "✓ Backend server interaction tests completed"
 
-test-integration: test-integration-chat test-integration-search test-integration-backend
+test-server-interaction: test-server-interaction-chat test-server-interaction-search test-server-interaction-backend
+	@echo ""
+	@echo "✓ All server interaction tests completed"
+
+# Legacy integration tests (for backward compatibility)
+.PHONY: test-integration test-integration-chat test-integration-search test-integration-backend
+
+test-integration-chat: test-server-interaction-chat
+test-integration-search: test-server-interaction-search
+test-integration-backend: test-server-interaction-backend
+
+test-integration: test-server-interaction
 	@echo ""
 	@echo "✓ All integration tests completed"
 
@@ -144,7 +166,7 @@ test: test-unit
 # Development test (unit + search)
 .PHONY: test-dev
 
-test-dev: test-unit test-integration-search
+test-dev: test-unit test-server-interaction-search
 	@echo ""
 	@echo "✓ Development test completed"
 
@@ -164,7 +186,16 @@ test-with-backend:
 	@echo "=== Running Tests with Backend ==="
 	@echo "Make sure the Rust backend is running with: cargo run -- --no-database"
 	@echo ""
-	@$(MAKE) test-integration
+	@$(MAKE) test-server-interaction
+
+# Test server lifecycle (starts/stops servers)
+.PHONY: test-server-lifecycle-standalone
+
+test-server-lifecycle-standalone:
+	@echo "=== Running Server Lifecycle Tests ==="
+	@echo "These tests start and stop their own servers"
+	@echo ""
+	@$(MAKE) test-server-lifecycle
 
 # Clean up deprecated tests
 .PHONY: clean-deprecated
@@ -184,22 +215,26 @@ help:
 	@echo "Available test targets:"
 	@echo "  test              - Quick test (unit tests only)"
 	@echo "  test-unit         - All unit tests (fast, no dependencies)"
-	@echo "  test-integration  - All integration tests (requires backend)"
+	@echo "  test-server-interaction - Tests that use already running server"
+	@echo "  test-server-lifecycle   - Tests that start/stop their own servers"
 	@echo "  test-e2e          - All E2E tests (full Neovim environment)"
 	@echo "  test-all          - All tests (unit + e2e, integration requires backend)"
 	@echo "  test-dev          - Development test (unit + search)"
 	@echo "  test-timeout-retry - Timeout and retry behavior tests"
-	@echo "  test-with-backend - Integration tests (requires backend running)"
+	@echo "  test-with-backend - Server interaction tests (requires backend running)"
 	@echo ""
 	@echo "Unit test categories:"
 	@echo "  test-unit-core    - Core functionality tests"
 	@echo "  test-unit-rpc     - RPC client tests"
 	@echo "  test-unit-utils   - Utility function tests"
 	@echo ""
-	@echo "Integration test categories:"
-	@echo "  test-integration-chat    - Chat functionality"
-	@echo "  test-integration-search  - Search functionality"
-	@echo "  test-integration-backend - Backend communication"
+	@echo "Server interaction test categories:"
+	@echo "  test-server-interaction-chat    - Chat functionality"
+	@echo "  test-server-interaction-search  - Search functionality"
+	@echo "  test-server-interaction-backend - Backend communication"
+	@echo ""
+	@echo "Server lifecycle test categories:"
+	@echo "  test-server-lifecycle-backend   - Server start/stop tests"
 	@echo ""
 	@echo "E2E test categories:"
 	@echo "  test-e2e-plugin   - Plugin loading tests"
@@ -208,16 +243,17 @@ help:
 	@echo "Examples:"
 	@echo "  make test              # Quick development test"
 	@echo "  make test-unit         # Fast unit tests"
-	@echo "  make test-integration  # Backend integration tests"
+	@echo "  make test-server-interaction  # Tests using running server"
+	@echo "  make test-server-lifecycle    # Tests that manage servers"
 	@echo "  make test-all          # Complete test suite"
 	@echo ""
 	@echo "Backend setup:"
 	@echo "  cargo run -- --no-database &  # Start backend"
-	@echo "  make test-with-backend        # Run integration tests"
+	@echo "  make test-with-backend        # Run server interaction tests"
 
 # Legacy targets for backward compatibility
 .PHONY: test-lua test-lua-unit test-lua-integration
 
 test-lua: test
 test-lua-unit: test-unit
-test-lua-integration: test-integration 
+test-lua-integration: test-server-interaction 

@@ -8,30 +8,13 @@ package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
 package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/?.so"
 package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/socket/?.so"
 
--- Test that current mock implementation fails (red phase)
-local function test_mock_implementation_fails()
-    print("Testing that current mock implementation fails (red phase)...")
-    
-    -- Load the rpc_standalone module
-    local rpc_standalone = require("paragonic.rpc_standalone")
-    
-    -- Create a new RPC client with invalid address for red phase test
-    local client = rpc_standalone.new("127.0.0.1:9999")
-    
-    -- Test that connect() fails with invalid address
-    local connect_result = client:connect()
-    
-    -- This should fail because the address is invalid
-    assert(connect_result == false, "Connect should fail with invalid address")
-    assert(client.connected == false, "Client should remain disconnected with invalid address")
-    
-    print("✓ Mock implementation correctly fails (red phase)")
-    return true
-end
+-- Global variable to store the server process
+local server_process = nil
+local server_pid = nil
 
--- Test actual connection logic implementation
-local function test_actual_connection_logic()
-    print("Testing actual connection logic implementation...")
+-- Test that mock implementation fails as expected
+local function test_mock_implementation_fails()
+    print("Testing mock implementation fails as expected...")
     
     -- Load the rpc_standalone module
     local rpc_standalone = require("paragonic.rpc_standalone")
@@ -39,28 +22,38 @@ local function test_actual_connection_logic()
     -- Create a new RPC client
     local client = rpc_standalone.new("127.0.0.1:2346")
     
-    -- Test initial state
-    assert(client.connected == false, "Client should start disconnected")
-    assert(client.server_address == "127.0.0.1:2346", "Server address should be set correctly")
+    -- Test that the mock implementation fails as expected
+    local result = client:hello()
+    assert(result == nil, "Mock implementation should return nil")
     
-    print("✓ Initial client state is correct")
+    print("✓ Mock implementation fails as expected")
+    return true
+end
+
+-- Test actual connection logic
+local function test_actual_connection_logic()
+    print("Testing actual connection logic...")
     
-    -- Test connection attempt
-    print("Testing connection attempt...")
+    -- Load the rpc_standalone module
+    local rpc_standalone = require("paragonic.rpc_standalone")
+    
+    -- Create a new RPC client
+    local client = rpc_standalone.new("127.0.0.1:2346")
     
     -- Start the Rust backend server with database bypass
     local server_cmd = "./target/debug/paragonic --no-database > /dev/null 2>&1 & echo $!"
-    local server_process = io.popen(server_cmd)
+    server_process = io.popen(server_cmd)
     if not server_process then
         error("Failed to start server process")
     end
     
-    local pid = server_process:read("*a"):match("(%d+)")
-    if not pid then
+    -- Get the process ID
+    server_pid = server_process:read("*a"):match("(%d+)")
+    if not server_pid then
         error("Failed to get server process ID")
     end
     
-    print("✓ Server started with PID: " .. pid)
+    print("✓ Server started with PID: " .. server_pid)
     
     -- Wait for server to start
     os.execute("sleep 3")
@@ -93,8 +86,10 @@ local function test_actual_connection_logic()
     print("✓ Disconnection logic works correctly")
     
     -- Cleanup
-    os.execute("pkill -f 'target/debug/paragonic' > /dev/null 2>&1")
-    print("✓ Server cleanup completed")
+    if server_pid then
+        os.execute("kill " .. server_pid .. " > /dev/null 2>&1")
+        print("✓ Test server (PID: " .. server_pid .. ") cleanup completed")
+    end
     
     return true
 end

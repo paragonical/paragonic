@@ -15,10 +15,10 @@ local function test_chat_interface_has_send_function()
     local paragonic = require("paragonic")
     
     -- Should have send_message function
-    assert(type(paragonic.send_message) == "function", "Should have send_message function")
+    assert(type(paragonic.chat.send_message) == "function", "Should have send_message function")
     
     -- Should have get_available_models function
-    assert(type(paragonic.get_available_models) == "function", "Should have get_available_models function")
+    assert(type(paragonic.backend.get_available_models) == "function", "Should have get_available_models function")
     
     print("✓ Chat interface has send_message function test passed!")
 end
@@ -31,7 +31,7 @@ local function test_send_message_communicates_with_backend()
     local paragonic = require("paragonic")
     
     -- Test sending a message
-    local response = paragonic.send_message("Hello, this is a test message", "llama2")
+    local response = paragonic.chat.send_message("Hello, this is a test message", "llama2")
     assert(response ~= nil, "Should get response from send_message")
     assert(type(response) == "string", "Response should be string")
     

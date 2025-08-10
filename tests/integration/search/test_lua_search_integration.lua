@@ -92,7 +92,7 @@ local function test_hybrid_search(client)
     print("Performing hybrid search for 'artificial intelligence development'...")
     local result, error = client:hybrid_search("artificial intelligence development", "project", 3, 0.3, true)
     
-    if result then
+    if result and result.results then
         print("✓ Hybrid search successful!")
         print("Found " .. #result.results .. " results")
         
@@ -115,7 +115,12 @@ local function test_hybrid_search(client)
             end
         end
     else
-        print("✗ Hybrid search failed: " .. (error or "unknown error"))
+        if error and (error:find("Database not initialized") or error:find("Database not available")) then
+            print("⚠ Hybrid search skipped (database not available)")
+            print("  This is expected when running with --no-database")
+        else
+            print("✗ Hybrid search failed: " .. (error or "unknown error"))
+        end
     end
 end
 
@@ -150,10 +155,14 @@ local function test_search_parameters(client)
     -- Test without text filtering
     print("\nTesting hybrid search without text filtering...")
     local result3, error3 = client:hybrid_search("test", nil, 3, 0.0, false)
-    if result3 then
+    if result3 and result3.results then
         print("✓ Hybrid search without text filtering successful: " .. #result3.results .. " results")
     else
-        print("✗ Hybrid search without text filtering failed: " .. (error3 or "unknown error"))
+        if error3 and (error3:find("Database not initialized") or error3:find("Database not available")) then
+            print("⚠ Hybrid search without text filtering skipped (database not available)")
+        else
+            print("✗ Hybrid search without text filtering failed: " .. (error3 or "unknown error"))
+        end
     end
 end
 

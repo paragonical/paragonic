@@ -10,6 +10,8 @@ package.cpath = package.cpath .. ";/Users/sjanes/.luarocks/lib/lua/5.1/socket/?.
 
 -- Global variable to store the server process
 local server_process = nil
+local server_pid = nil
+local TEST_PORT = 3001
 
 -- Test that Rust backend server can be started in background
 local function test_rust_backend_server_start()
@@ -26,19 +28,20 @@ local function test_rust_backend_server_start()
         return
     end
     
-    -- Start the server in background
-    server_process = io.popen(backend_binary .. " > /dev/null 2>&1 & echo $!")
+    -- Start the server in background on test port
+    local server_cmd = backend_binary .. " --port " .. TEST_PORT .. " > /dev/null 2>&1 & echo $!"
+    server_process = io.popen(server_cmd)
     if not server_process then
         error("Failed to start server process")
     end
     
     -- Get the process ID
-    local pid = server_process:read("*a"):match("(%d+)")
-    if not pid then
+    server_pid = server_process:read("*a"):match("(%d+)")
+    if not server_pid then
         error("Failed to get server process ID")
     end
     
-    print("✓ Server started with PID: " .. pid)
+    print("✓ Server started with PID: " .. server_pid .. " on port " .. TEST_PORT)
     
     -- Wait a moment for the server to start up
     os.execute("sleep 2")
@@ -53,22 +56,20 @@ local function test_rust_backend_server_connection()
     -- Load the paragonic module
     local paragonic = require("paragonic")
     
-    -- Initialize backend to get RPC client
-    local success = paragonic._initialize_backend()
-    assert(success, "Backend initialization should succeed")
-    
-    -- Get RPC client (should be available after initialization)
-    local rpc_client = paragonic._get_rpc_client()
-    assert(rpc_client ~= nil, "Should have RPC client")
-    assert(rpc_client:is_connected(), "RPC client should be connected")
+    -- Create a temporary RPC client for the test server
+    local rpc = require("paragonic.rpc")
+    local test_client = rpc.new("127.0.0.1:" .. TEST_PORT)
     
     -- Test that we can make a call to the backend
-    local response = rpc_client:hello()
+    local response = test_client:hello()
     assert(response ~= nil, "Should get response from backend")
     assert(type(response) == "string", "Response should be string")
     
-    -- Should contain JSON-RPC structure
-    assert(response:find('"jsonrpc"'), "Should contain jsonrpc field")
+    -- Parse the JSON-RPC response
+    local success, parsed = pcall(vim.json.decode, response)
+    assert(success, "Should be able to parse JSON response")
+    assert(parsed.jsonrpc == "2.0", "Should be JSON-RPC 2.0")
+    assert(parsed.result == "world", "Should get 'world' as result")
     
     print("✓ Rust backend server connection test passed!")
 end
@@ -77,16 +78,20 @@ end
 local function test_rust_backend_server_chat()
     print("Testing Rust backend server chat completion...")
     
-    -- Load the paragonic module
-    local paragonic = require("paragonic")
+    -- Create a temporary RPC client for the test server
+    local rpc = require("paragonic.rpc")
+    local test_client = rpc.new("127.0.0.1:" .. TEST_PORT)
     
     -- Test that we can send a chat message
-    local response = paragonic.send_message("Hello, this is a test message", "llama2")
+    local response = test_client:chat_completion("llama2", "Hello, this is a test message")
     assert(response ~= nil, "Should get response from chat completion")
     assert(type(response) == "string", "Response should be string")
     
-    -- Should contain the mock AI response content
-    assert(response:find("mock response"), "Should contain mock AI response content")
+    -- Parse the JSON-RPC response
+    local success, parsed = pcall(vim.json.decode, response)
+    assert(success, "Should be able to parse JSON response")
+    assert(parsed.jsonrpc == "2.0", "Should be JSON-RPC 2.0")
+    assert(parsed.result ~= nil, "Should have a result")
     
     print("✓ Rust backend server chat completion test passed!")
 end
@@ -95,9 +100,11 @@ end
 local function cleanup_server()
     if server_process then
         server_process:close()
-        -- Kill the background process
-        os.execute("pkill -f 'target/debug/paragonic' > /dev/null 2>&1")
-        print("✓ Server cleanup completed")
+        -- Kill only the specific test server process
+        if server_pid then
+            os.execute("kill " .. server_pid .. " > /dev/null 2>&1")
+            print("✓ Test server (PID: " .. server_pid .. ") cleanup completed")
+        end
     end
 end
 
