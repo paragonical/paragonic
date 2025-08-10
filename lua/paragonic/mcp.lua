@@ -51,7 +51,7 @@ function M.initialize_mcp_server()
         }
     }
     
-    -- Initialize MCP tools
+    -- Initialize MCP tools with enhanced pattern information
     M.mcp_tools = {
         {
             name = "agent_edit_file",
@@ -73,6 +73,24 @@ function M.initialize_mcp_server()
                     }
                 },
                 required = {"file_path", "line_number"}
+            },
+            patterns = {
+                {
+                    pattern_id = "session_summary_generation",
+                    relationship_type = "input",
+                    description = "Used to modify files during session summary generation"
+                },
+                {
+                    pattern_id = "activity_labeling",
+                    relationship_type = "enhance",
+                    description = "Enhances activity labeling by tracking file modifications"
+                }
+            },
+            usage_guidance = "Use this tool when you need to modify file content. Always specify the file_path and line_number. The content parameter is optional and will replace the entire line if provided.",
+            success_metrics = {
+                success_rate = 0.95,
+                usage_count = 0,
+                last_used = nil
             }
         }
     }
@@ -779,6 +797,75 @@ function M.display_resource_roots(uri, roots)
     -- Set buffer options
     vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
     vim.api.nvim_buf_set_option(buf, "modifiable", false)
+end
+
+-- Get pattern-aware tool recommendations
+function M.get_pattern_aware_tool_recommendations(pattern_context)
+    if not M.mcp_server_initialized then
+        M.initialize_mcp_server()
+    end
+    
+    local recommendations = {}
+    local tools = M.list_mcp_tools()
+    
+    for _, tool in ipairs(tools) do
+        if tool.patterns then
+            for _, pattern in ipairs(tool.patterns) do
+                -- Enhanced pattern matching based on context
+                local pattern_lower = string.lower(pattern.pattern_id)
+                local desc_lower = string.lower(pattern.description)
+                local context_lower = string.lower(pattern_context)
+                
+                -- Check for direct matches or semantic matches
+                if string.find(pattern_lower, context_lower) or
+                   string.find(desc_lower, context_lower) or
+                   string.find(context_lower, "file") and string.find(desc_lower, "file") or
+                   string.find(context_lower, "edit") and string.find(desc_lower, "edit") then
+                    table.insert(recommendations, {
+                        tool_name = tool.name,
+                        confidence = 0.8,
+                        reason = "Pattern match: " .. pattern.pattern_id,
+                        pattern_id = pattern.pattern_id,
+                        relationship_type = pattern.relationship_type
+                    })
+                end
+            end
+        end
+    end
+    
+    -- Sort by confidence (highest first)
+    table.sort(recommendations, function(a, b)
+        return a.confidence > b.confidence
+    end)
+    
+    return recommendations
+end
+
+-- Track tool usage with pattern context
+function M.track_tool_usage(tool_name, pattern_id, success)
+    if not M.mcp_server_initialized then
+        M.initialize_mcp_server()
+    end
+    
+    -- Find the tool
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            -- Update usage count
+            tool.success_metrics.usage_count = tool.success_metrics.usage_count + 1
+            
+            -- Update last used timestamp
+            tool.success_metrics.last_used = os.time()
+            
+            -- Update success rate (simple moving average)
+            local current_rate = tool.success_metrics.success_rate
+            local new_rate = success and 1.0 or 0.0
+            tool.success_metrics.success_rate = (current_rate * 0.9) + (new_rate * 0.1)
+            
+            return true
+        end
+    end
+    
+    return false
 end
 
 return M

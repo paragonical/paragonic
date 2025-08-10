@@ -5705,8 +5705,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn test_pattern_execution_engine_retry_mechanism() {
         let mut engine = PatternExecutionEngine::new();
@@ -6964,47 +6962,6 @@ mod tests {
         assert!(result_obj.contains_key("milestones"));
         assert!(result_obj.contains_key("velocity"));
         assert!(result_obj.contains_key("report"));
-    }
-
-    #[test]
-    fn test_tool_pattern_mapper_creation() {
-        let mapper = ToolPatternMapper::new();
-        assert!(mapper.is_empty());
-        assert_eq!(mapper.get_tool_pattern_count(), 0);
-    }
-}
-
-/// Mapper for managing tool-pattern relationships and enhanced MCP tool descriptions
-#[derive(Debug, Clone)]
-pub struct ToolPatternMapper {
-    tool_pattern_mappings: HashMap<String, Vec<Uuid>>, // tool_name -> pattern_ids
-    pattern_tool_mappings: HashMap<Uuid, Vec<String>>, // pattern_id -> tool_names
-    usage_frequency: HashMap<(String, Uuid), u32>, // (tool_name, pattern_id) -> frequency
-    success_rates: HashMap<(String, Uuid), f64>, // (tool_name, pattern_id) -> success_rate
-}
-
-impl ToolPatternMapper {
-    /// Creates a new empty ToolPatternMapper
-    pub fn new() -> Self {
-        Self {
-            tool_pattern_mappings: HashMap::new(),
-            pattern_tool_mappings: HashMap::new(),
-            usage_frequency: HashMap::new(),
-            success_rates: HashMap::new(),
-        }
-    }
-
-    /// Checks if the mapper is empty
-    pub fn is_empty(&self) -> bool {
-        self.tool_pattern_mappings.is_empty() && 
-        self.pattern_tool_mappings.is_empty() && 
-        self.usage_frequency.is_empty() && 
-        self.success_rates.is_empty()
-    }
-
-    /// Gets the total number of tool-pattern mappings
-    pub fn get_tool_pattern_count(&self) -> usize {
-        self.tool_pattern_mappings.values().map(|v| v.len()).sum()
     }
 }
 
