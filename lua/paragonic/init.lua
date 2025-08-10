@@ -66,6 +66,7 @@ function M.setup(opts)
         {name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {}},
         {name = "ParagonicSendStreaming", func = M.chat.send_message_command_streaming, opts = {}},
         {name = "ParagonicSendThinking", func = M.chat.send_message_command_thinking, opts = {}},
+        {name = "ParagonicSendSmart", func = M.chat.send_message_command_smart, opts = {}},
         {name = "ParagonicDebugMarkdown", func = M.chat.send_debug_markdown_test, opts = {}},
                 {name = "ParagonicTest", func = function()
         M.debug.debug_print("TEST COMMAND WORKING", "debug")

@@ -286,7 +286,7 @@ function M.open_chat()
         vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, {
             "# Paragonic Chat",
             "Multi-line input extraction modes:",
-            "• <CR>: Send complete range (backward + forward to tombstones)",
+            "• <CR>: Send message (smart - auto-detects model capabilities)",
             "• <leader>b: Send backward only (cursor to previous ∎)",
             "• <leader>f: Send forward only (cursor to next ∎ or end)",
             "• <leader><CR>: Send with debug output",
@@ -301,7 +301,7 @@ function M.open_chat()
         vim.api.nvim_buf_set_option(chat_buf, "filetype", "markdown")
 
         -- Set up buffer-local commands for different extraction modes
-        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSend<CR>", {noremap = true, silent = true, desc = "Send message (complete range)"})
+        vim.api.nvim_buf_set_keymap(chat_buf, "n", "<CR>", ":ParagonicSendSmart<CR>", {noremap = true, silent = true, desc = "Send message (smart - auto-detects model capabilities)"})
         vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader>b", ":ParagonicSendBackward<CR>", {noremap = true, silent = true, desc = "Send backward to tombstone"})
         vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader>f", ":ParagonicSendForward<CR>", {noremap = true, silent = true, desc = "Send forward to tombstone"})
         vim.api.nvim_buf_set_keymap(chat_buf, "n", "<leader><CR>", ":ParagonicSendDebug<CR>", {noremap = true, silent = true, desc = "Send with debug output"})
@@ -1816,6 +1816,54 @@ function M.send_message_command_thinking()
             "🛔  " .. (err or "unknown error")
         }
         vim.api.nvim_buf_set_lines(current_buf, response_line_start, response_line_start, false, error_lines)
+    end
+end
+
+-- Smart send message command that automatically chooses streaming type based on model
+function M.send_message_command_smart()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Extract message from cursor position
+    local message, start_line = extract_backward_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
+    
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    -- Get current model and its capabilities
+    local config = require("paragonic.config")
+    local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local streaming_type = config.get_current_model_streaming_type()
+    local supports_thinking = config.current_model_supports_thinking()
+    
+    -- Determine which command to use based on model capabilities
+    if supports_thinking then
+        vim.notify("🧠 Sending (thinking mode): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""), vim.log.levels.INFO)
+        M.send_message_command_thinking()
+    else
+        vim.notify("🮮 Sending (normal mode): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""), vim.log.levels.INFO)
+        M.send_message_command_streaming()
+    end
+end
+
+-- Smart send message function (for programmatic use)
+function M.send_message_smart(message, model)
+    local config = require("paragonic.config")
+    local target_model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
+    local supports_thinking = config.model_supports_thinking(target_model)
+    
+    if supports_thinking then
+        return M.send_message_thinking_streaming(message, target_model)
+    else
+        return M.send_message_streaming(message, target_model)
     end
 end
 

@@ -12,7 +12,7 @@ function M._setup_keymaps()
     vim.api.nvim_set_keymap("n", "<leader>pp", ":ParagonicProjects<CR>", {noremap = true, silent = true, desc = "Open Paragonic Projects"})
     vim.api.nvim_set_keymap("n", "<leader>pC", ":ParagonicConfig<CR>", {noremap = true, silent = true, desc = "Open Paragonic Config"})
     vim.api.nvim_set_keymap("n", "<leader>pd", ":ParagonicDebug<CR>", {noremap = true, silent = true, desc = "Open Paragonic Debug"})
-    vim.api.nvim_set_keymap("n", "<leader>ps", ":ParagonicSend<CR>", {noremap = true, silent = true, desc = "Send Paragonic Message"})
+    vim.api.nvim_set_keymap("n", "<leader>ps", ":ParagonicSendSmart<CR>", {noremap = true, silent = true, desc = "Send Paragonic Message (Smart)"})
     vim.api.nvim_set_keymap("n", "<leader>pS", ":ParagonicSendDebug<CR>", {noremap = true, silent = true, desc = "Send Paragonic Message (Debug)"})
     vim.api.nvim_set_keymap("n", "<leader>PM", ":ParagonicDebugMarkdown<CR>", {noremap = true, silent = true, desc = "Send Debug Markdown Test"})
     
