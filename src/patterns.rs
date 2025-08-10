@@ -1318,6 +1318,11 @@ impl PatternExecutionEngine {
             return Self::execute_context_summarization(pattern, context);
         }
 
+        // Handle Progress Tracking pattern specifically
+        if pattern.name == "Progress Tracking" {
+            return Self::execute_progress_tracking(pattern, context);
+        }
+
         let mut result = json!({
             "pattern_name": pattern.name,
             "executed_at": chrono::Utc::now().to_rfc3339(),
@@ -1835,6 +1840,203 @@ impl PatternExecutionEngine {
         // Ensure score is between 0.0 and 1.0
         clarity_score = clarity_score.max(0.0).min(1.0);
         Ok(clarity_score)
+    }
+
+    /// Collects progress metrics from session data
+    fn collect_progress_metrics(session_data: &Value) -> ParagonicResult<Value> {
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let message_count = session_data.get("message_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let empty_vec = Vec::new();
+        let files_modified = session_data.get("files_modified")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let technologies = session_data.get("technologies")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let activities = session_data.get("activities")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty_vec);
+
+        let empty_map = serde_json::Map::new();
+        let progress_metrics = session_data.get("progress_metrics")
+            .and_then(|v| v.as_object())
+            .unwrap_or(&empty_map);
+
+        let lines_added = progress_metrics.get("lines_added")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let lines_removed = progress_metrics.get("lines_removed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let tests_passed = progress_metrics.get("tests_passed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let tests_failed = progress_metrics.get("tests_failed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let metrics = json!({
+            "session_duration_minutes": duration_minutes,
+            "message_count": message_count,
+            "files_modified_count": files_modified.len(),
+            "technologies_count": technologies.len(),
+            "activities_count": activities.len(),
+            "lines_added": lines_added,
+            "lines_removed": lines_removed,
+            "net_lines": lines_added as i64 - lines_removed as i64,
+            "tests_passed": tests_passed,
+            "tests_failed": tests_failed,
+            "test_success_rate": if tests_passed + tests_failed > 0 {
+                tests_passed as f64 / (tests_passed + tests_failed) as f64
+            } else {
+                0.0
+            }
+        });
+
+        Ok(metrics)
+    }
+
+    /// Analyzes progress trends over time
+    fn analyze_progress_trends(_session_data: &Value, metrics: &Value) -> ParagonicResult<Vec<String>> {
+        let mut trends = Vec::new();
+
+        let net_lines = metrics.get("net_lines")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+
+        let test_success_rate = metrics.get("test_success_rate")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let files_modified_count = metrics.get("files_modified_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        if net_lines > 0 {
+            trends.push("Positive code growth".to_string());
+        } else if net_lines < 0 {
+            trends.push("Code cleanup/refactoring".to_string());
+        }
+
+        if test_success_rate >= 0.8 {
+            trends.push("High test reliability".to_string());
+        } else if test_success_rate < 0.5 {
+            trends.push("Test quality needs attention".to_string());
+        }
+
+        if files_modified_count > 3 {
+            trends.push("Multi-file development".to_string());
+        } else if files_modified_count == 1 {
+            trends.push("Focused single-file work".to_string());
+        }
+
+        Ok(trends)
+    }
+
+    /// Identifies achieved milestones
+    fn identify_achieved_milestones(_session_data: &Value, metrics: &Value) -> ParagonicResult<Vec<String>> {
+        let mut milestones = Vec::new();
+
+        let lines_added = metrics.get("lines_added")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let tests_passed = metrics.get("tests_passed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let files_modified_count = metrics.get("files_modified_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        if lines_added >= 100 {
+            milestones.push("Significant code addition".to_string());
+        }
+
+        if tests_passed >= 10 {
+            milestones.push("Comprehensive testing".to_string());
+        }
+
+        if files_modified_count >= 2 {
+            milestones.push("Multi-file integration".to_string());
+        }
+
+        if lines_added > 0 && tests_passed > 0 {
+            milestones.push("Code with tests".to_string());
+        }
+
+        Ok(milestones)
+    }
+
+    /// Calculates development velocity
+    fn calculate_development_velocity(session_data: &Value, metrics: &Value) -> ParagonicResult<f64> {
+        let duration_minutes = session_data.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1); // Avoid division by zero
+
+        let lines_added = metrics.get("lines_added")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let tests_passed = metrics.get("tests_passed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let files_modified_count = metrics.get("files_modified_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        // Calculate velocity as (lines + tests + files) per hour
+        let total_work = lines_added + tests_passed + files_modified_count;
+        let velocity = (total_work as f64) / (duration_minutes as f64 / 60.0);
+
+        Ok(velocity)
+    }
+
+    /// Generates a comprehensive progress report
+    fn generate_progress_report(metrics: &Value, trends: &[String], milestones: &[String], velocity: f64) -> ParagonicResult<String> {
+        let mut report_parts = Vec::new();
+
+        let duration_minutes = metrics.get("session_duration_minutes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let lines_added = metrics.get("lines_added")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let tests_passed = metrics.get("tests_passed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        report_parts.push(format!(
+            "Progress Report: {} minute session with {} lines added and {} tests passed",
+            duration_minutes, lines_added, tests_passed
+        ));
+
+        if !trends.is_empty() {
+            report_parts.push(format!("Trends: {}", trends.join(", ")));
+        }
+
+        if !milestones.is_empty() {
+            report_parts.push(format!("Milestones: {}", milestones.join(", ")));
+        }
+
+        report_parts.push(format!("Development Velocity: {:.2} units/hour", velocity));
+
+        let report = report_parts.join("\n");
+        Ok(report)
     }
 
     /// Analyzes performance metrics from session data
@@ -2390,6 +2592,40 @@ impl PatternExecutionEngine {
                 "topics_covered": session_data.get("topics_covered").unwrap_or(&json!([])),
                 "clarity_score": clarity_score
             }
+        });
+
+        Ok(result)
+    }
+
+    /// Executes the Progress Tracking pattern
+    fn execute_progress_tracking(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+        // Extract session data from context
+        let session_data = context.as_ref()
+            .ok_or_else(|| ParagonicError::InvalidInput(
+                "Session data context is required for Progress Tracking".to_string()
+            ))?;
+
+        // Step 1: Collect metrics
+        let metrics = Self::collect_progress_metrics(session_data)?;
+
+        // Step 2: Analyze trends
+        let trends = Self::analyze_progress_trends(session_data, &metrics)?;
+
+        // Step 3: Identify milestones
+        let milestones = Self::identify_achieved_milestones(session_data, &metrics)?;
+
+        // Step 4: Calculate velocity
+        let velocity = Self::calculate_development_velocity(session_data, &metrics)?;
+
+        // Step 5: Generate report
+        let report = Self::generate_progress_report(&metrics, &trends, &milestones, velocity)?;
+
+        let result = json!({
+            "metrics": metrics,
+            "trends": trends,
+            "milestones": milestones,
+            "velocity": velocity,
+            "report": report
         });
 
         Ok(result)
@@ -6244,6 +6480,211 @@ mod tests {
         assert!(result_obj.contains_key("key_points"));
         assert!(result_obj.contains_key("categories"));
         assert!(result_obj.contains_key("context_metadata"));
+    }
+
+    #[test]
+    fn test_progress_tracking_pattern_creation() {
+        let pattern = SystemPattern::new(
+            "Progress Tracking".to_string(),
+            PatternCategory::ProgressTracking,
+            MetaLevel::System,
+            "Track and analyze progress across development sessions".to_string(),
+            json!([
+                {"step": 1, "action": "collect_metrics", "description": "Collect progress metrics from session"},
+                {"step": 2, "action": "analyze_trends", "description": "Analyze progress trends over time"},
+                {"step": 3, "action": "identify_milestones", "description": "Identify achieved milestones"},
+                {"step": 4, "action": "calculate_velocity", "description": "Calculate development velocity"},
+                {"step": 5, "action": "generate_report", "description": "Generate progress report"}
+            ]),
+            json!({
+                "trigger_conditions": ["session_end", "milestone_reached", "weekly_review"],
+                "output_format": {
+                    "metrics": "object",
+                    "trends": "array",
+                    "milestones": "array",
+                    "velocity": "number",
+                    "report": "string"
+                }
+            }),
+            Some(json!(["session_end", "milestone_reached", "weekly_review"])),
+            None
+        ).unwrap();
+
+        assert_eq!(pattern.name, "Progress Tracking");
+        assert_eq!(pattern.category, PatternCategory::ProgressTracking);
+        assert_eq!(pattern.meta_level, MetaLevel::System);
+        assert_eq!(pattern.description, "Track and analyze progress across development sessions");
+    }
+
+    #[test]
+    fn test_progress_tracking_workflow_steps() {
+        let pattern = SystemPattern::new(
+            "Progress Tracking".to_string(),
+            PatternCategory::ProgressTracking,
+            MetaLevel::System,
+            "Track and analyze progress across development sessions".to_string(),
+            json!([
+                {"step": 1, "action": "collect_metrics", "description": "Collect progress metrics from session"},
+                {"step": 2, "action": "analyze_trends", "description": "Analyze progress trends over time"},
+                {"step": 3, "action": "identify_milestones", "description": "Identify achieved milestones"},
+                {"step": 4, "action": "calculate_velocity", "description": "Calculate development velocity"},
+                {"step": 5, "action": "generate_report", "description": "Generate progress report"}
+            ]),
+            json!({
+                "trigger_conditions": ["session_end", "milestone_reached", "weekly_review"],
+                "output_format": {
+                    "metrics": "object",
+                    "trends": "array",
+                    "milestones": "array",
+                    "velocity": "number",
+                    "report": "string"
+                }
+            }),
+            Some(json!(["session_end", "milestone_reached", "weekly_review"])),
+            None
+        ).unwrap();
+
+        let workflow = pattern.workflow_steps.as_array().unwrap();
+        assert_eq!(workflow.len(), 5);
+        
+        assert_eq!(workflow[0]["action"], "collect_metrics");
+        assert_eq!(workflow[1]["action"], "analyze_trends");
+        assert_eq!(workflow[2]["action"], "identify_milestones");
+        assert_eq!(workflow[3]["action"], "calculate_velocity");
+        assert_eq!(workflow[4]["action"], "generate_report");
+    }
+
+    #[test]
+    fn test_progress_tracking_trigger_conditions() {
+        let pattern = SystemPattern::new(
+            "Progress Tracking".to_string(),
+            PatternCategory::ProgressTracking,
+            MetaLevel::System,
+            "Track and analyze progress across development sessions".to_string(),
+            json!([
+                {"step": 1, "action": "collect_metrics", "description": "Collect progress metrics from session"},
+                {"step": 2, "action": "analyze_trends", "description": "Analyze progress trends over time"},
+                {"step": 3, "action": "identify_milestones", "description": "Identify achieved milestones"},
+                {"step": 4, "action": "calculate_velocity", "description": "Calculate development velocity"},
+                {"step": 5, "action": "generate_report", "description": "Generate progress report"}
+            ]),
+            json!({
+                "trigger_conditions": ["session_end", "milestone_reached", "weekly_review"],
+                "output_format": {
+                    "metrics": "object",
+                    "trends": "array",
+                    "milestones": "array",
+                    "velocity": "number",
+                    "report": "string"
+                }
+            }),
+            Some(json!(["session_end", "milestone_reached", "weekly_review"])),
+            None
+        ).unwrap();
+
+        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap().as_array().unwrap();
+        
+        assert_eq!(trigger_conditions.len(), 3);
+        assert!(trigger_conditions.contains(&json!("session_end")));
+        assert!(trigger_conditions.contains(&json!("milestone_reached")));
+        assert!(trigger_conditions.contains(&json!("weekly_review")));
+    }
+
+    #[test]
+    fn test_progress_tracking_output_format() {
+        let pattern = SystemPattern::new(
+            "Progress Tracking".to_string(),
+            PatternCategory::ProgressTracking,
+            MetaLevel::System,
+            "Track and analyze progress across development sessions".to_string(),
+            json!([
+                {"step": 1, "action": "collect_metrics", "description": "Collect progress metrics from session"},
+                {"step": 2, "action": "analyze_trends", "description": "Analyze progress trends over time"},
+                {"step": 3, "action": "identify_milestones", "description": "Identify achieved milestones"},
+                {"step": 4, "action": "calculate_velocity", "description": "Calculate development velocity"},
+                {"step": 5, "action": "generate_report", "description": "Generate progress report"}
+            ]),
+            json!({
+                "trigger_conditions": ["session_end", "milestone_reached", "weekly_review"],
+                "output_format": {
+                    "metrics": "object",
+                    "trends": "array",
+                    "milestones": "array",
+                    "velocity": "number",
+                    "report": "string"
+                }
+            }),
+            Some(json!(["session_end", "milestone_reached", "weekly_review"])),
+            None
+        ).unwrap();
+
+        let output_format = pattern.output_format.as_object().unwrap();
+        let format_spec = output_format["output_format"].as_object().unwrap();
+        
+        assert_eq!(format_spec["metrics"], "object");
+        assert_eq!(format_spec["trends"], "array");
+        assert_eq!(format_spec["milestones"], "array");
+        assert_eq!(format_spec["velocity"], "number");
+        assert_eq!(format_spec["report"], "string");
+    }
+
+    #[test]
+    fn test_progress_tracking_pattern_execution() {
+        let mut registry = PatternRegistry::new();
+        
+        let pattern = SystemPattern::new(
+            "Progress Tracking".to_string(),
+            PatternCategory::ProgressTracking,
+            MetaLevel::System,
+            "Track and analyze progress across development sessions".to_string(),
+            json!([
+                {"step": 1, "action": "collect_metrics", "description": "Collect progress metrics from session"},
+                {"step": 2, "action": "analyze_trends", "description": "Analyze progress trends over time"},
+                {"step": 3, "action": "identify_milestones", "description": "Identify achieved milestones"},
+                {"step": 4, "action": "calculate_velocity", "description": "Calculate development velocity"},
+                {"step": 5, "action": "generate_report", "description": "Generate progress report"}
+            ]),
+            json!({
+                "trigger_conditions": ["session_end", "milestone_reached", "weekly_review"],
+                "output_format": {
+                    "metrics": "object",
+                    "trends": "array",
+                    "milestones": "array",
+                    "velocity": "number",
+                    "report": "string"
+                }
+            }),
+            Some(json!(["session_end", "milestone_reached", "weekly_review"])),
+            None
+        ).unwrap();
+
+        registry.register_pattern(pattern).unwrap();
+
+        let session_data = json!({
+            "session_duration_minutes": 120,
+            "message_count": 25,
+            "files_modified": ["src/main.rs", "src/lib.rs"],
+            "technologies": ["Rust", "Cargo"],
+            "activities": ["coding", "testing", "debugging"],
+            "progress_metrics": {
+                "lines_added": 150,
+                "lines_removed": 50,
+                "tests_passed": 12,
+                "tests_failed": 2
+            }
+        });
+
+        let result = registry.execute_pattern("Progress Tracking", Some(session_data)).unwrap();
+        assert!(result.success);
+        
+        let output_result = result.output_result.unwrap();
+        let result_obj = output_result.as_object().unwrap();
+        
+        assert!(result_obj.contains_key("metrics"));
+        assert!(result_obj.contains_key("trends"));
+        assert!(result_obj.contains_key("milestones"));
+        assert!(result_obj.contains_key("velocity"));
+        assert!(result_obj.contains_key("report"));
     }
 }
 
