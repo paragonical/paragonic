@@ -38,6 +38,48 @@ impl ParagonicServer {
         }
     }
     
+    /// Format Markdown response with proper indentation and list handling
+    fn format_markdown_response(&self, content: &str) -> String {
+        let mut formatted = String::new();
+        let lines: Vec<&str> = content.lines().collect();
+        
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                formatted.push_str("\n");
+                continue;
+            }
+            
+            // Check if this is a numbered list item
+            if let Some(captures) = trimmed.strip_prefix(|c: char| c.is_ascii_digit())
+                .and_then(|s| s.strip_prefix('.'))
+                .and_then(|s| s.strip_prefix(' '))
+            {
+                // Format numbered list item with proper indentation
+                formatted.push_str("🮮   ");
+                formatted.push_str(&trimmed[..trimmed.find('.').unwrap() + 1]); // Include the number and period
+                formatted.push_str(" ");
+                formatted.push_str(captures);
+                formatted.push_str("\n");
+                
+                // Add blank line after numbered list item if next line is not a list item
+                if i + 1 < lines.len() {
+                    let next_line = lines[i + 1].trim();
+                    if !next_line.is_empty() && !next_line.chars().next().unwrap().is_ascii_digit() {
+                        formatted.push_str("\n");
+                    }
+                }
+            } else {
+                // Regular text - just add diamond prefix and content
+                formatted.push_str("🮮   ");
+                formatted.push_str(trimmed);
+                formatted.push_str("\n");
+            }
+        }
+        
+        formatted
+    }
+    
     /// Start the JSON-RPC server
     pub fn start(&self, addr: &str) -> ParagonicResult<()> {
         let mut core = Core::new()?;
@@ -256,8 +298,9 @@ impl ParagonicServer {
                     RpcError::invalid_params(Some(format!("Failed to format response: {e}")))
                 })?;
                 
-                // Print the original Markdown source to stdout
-                println!("🮮   {}", chat_response.message.content);
+                // Format the response with proper Markdown formatting
+                let formatted_content = self.format_markdown_response(&chat_response.message.content);
+                println!("{}", formatted_content);
                 println!(" ⏱️   {:.2}s", ollama_duration.as_secs_f64());
                 println!("");
                 println!("∎");

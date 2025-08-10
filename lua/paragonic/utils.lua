@@ -102,28 +102,28 @@ function M.wrap_text(text, max_width, indent)
     return lines
 end
 
--- Word wrapping helper function for first line with diamond
+-- Simple word wrapping helper function for first line with diamond
 function M.wrap_text_with_diamond(text, max_width)
     if not text or text == "" then
-        return {"🮮"}
+        return {"🮮   "}
     end
     
     local lines = {}
     
-    -- Split text into lines and detect paragraph breaks
+    -- Split text into lines
     local text_lines = {}
     for line in text:gmatch("[^\r\n]+") do
         table.insert(text_lines, line)
     end
     
-    -- Process each line as a potential paragraph
+    -- Process each line with simple 3-space indentation
     for i, line in ipairs(text_lines) do
         if line:match("%S") then  -- Only process non-empty lines
             -- Strip leading spaces from the line
             local clean_line = line:match("^%s*(.+)$")
-            local words = {}
             
-            -- Split clean line into words
+            -- Simple word wrapping with 3-space indentation
+            local words = {}
             for word in clean_line:gmatch("[^%s]+") do
                 table.insert(words, word)
             end
@@ -131,7 +131,7 @@ function M.wrap_text_with_diamond(text, max_width)
             local current_line = "🮮   "
             local current_length = 4  -- Length of diamond + three spaces
             
-            for i, word in ipairs(words) do
+            for j, word in ipairs(words) do
                 local word_length = #word
                 
                 -- If adding this word would exceed the line limit
@@ -158,39 +158,6 @@ function M.wrap_text_with_diamond(text, max_width)
             -- Add the last line if it has content
             if current_line ~= "🮮   " then
                 table.insert(lines, current_line)
-            end
-            
-            -- Check if we should add a blank line after this paragraph
-            local should_add_blank = false
-            
-            -- Add blank line if this is not the last line
-            if i < #text_lines then
-                local next_line = text_lines[i + 1]
-                if next_line and next_line:match("%S") then
-                    -- Check if next line starts a new paragraph type
-                    local next_clean = next_line:match("^%s*(.+)$")
-                    
-                    -- Add blank line if next line is a numbered list item
-                    if next_clean and next_clean:match("^%d+%.") then
-                        should_add_blank = true
-                    -- Add blank line if next line starts with common paragraph starters
-                    elseif next_clean and (next_clean:match("^The ") or 
-                                         next_clean:match("^This ") or 
-                                         next_clean:match("^These ") or
-                                         next_clean:match("^In ") or
-                                         next_clean:match("^When ") or
-                                         next_clean:match("^While ") or
-                                         next_clean:match("^However ") or
-                                         next_clean:match("^Additionally ") or
-                                         next_clean:match("^Furthermore ") or
-                                         next_clean:match("^Moreover ")) then
-                        should_add_blank = true
-                    end
-                end
-            end
-            
-            if should_add_blank then
-                table.insert(lines, "")
             end
         end
     end
