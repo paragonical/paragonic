@@ -47,18 +47,10 @@ impl TextFormatter {
         Self { config }
     }
 
-    /// Format text for Neovim display with basic formatting
-    pub fn format_for_neovim(&self, text: &str) -> ParagonicResult<String> {
-        // Format markdown if configured, otherwise return text as-is
-        if self.config.format_markdown {
-            self.format_markdown(text)
-        } else {
-            Ok(text.to_string())
-        }
-    }
+
 
     /// Format markdown source for specified line width with basic formatting
-    fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
+    pub fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
         // Calculate target line width: 65% of max_width - 3 characters
         let target_width = ((self.config.max_width as f64 * 0.65) as usize).saturating_sub(3);
         
@@ -238,11 +230,15 @@ impl TextFormatter {
         Ok(result)
     }
 
-    /// Format text with timing information using 3-space gutter design
+    /// Format text with timing information
     pub fn format_with_timing(&self, text: &str, duration_sec: f64) -> ParagonicResult<String> {
-        let mut formatted = self.format_for_neovim(text)?;
+        let mut formatted = if self.config.format_markdown {
+            self.format_markdown(text)?
+        } else {
+            text.to_string()
+        };
         
-        // Add timing information with timer glyph in gutter
+        // Add timing information
         formatted.push_str("\n");
         formatted.push_str(&format!(" ⏱️   {:.2}s", duration_sec));
         formatted.push_str("\n");
@@ -260,6 +256,11 @@ impl TextFormatter {
     /// Get current configuration
     pub fn get_config(&self) -> &FormatConfig {
         &self.config
+    }
+
+    /// Check if markdown formatting is enabled
+    pub fn is_markdown_enabled(&self) -> bool {
+        self.config.format_markdown
     }
 }
 
@@ -308,15 +309,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_format_for_neovim_basic() {
-        let formatter = TextFormatter::new();
-        let text = "This is a test message that should be formatted with basic markdown formatting.";
-        let formatted = formatter.format_for_neovim(text).unwrap();
-        
-        // Should return the text as-is when format_markdown is false
-        assert!(formatted.contains("This is a test message"));
-    }
+
 
     #[test]
     fn test_format_markdown() {
@@ -366,25 +359,7 @@ fn main() {
         }
     }
 
-    #[test]
-    fn test_format_for_neovim_with_markdown() {
-        let mut formatter = TextFormatter::new();
-        formatter.config.format_markdown = true;
-        formatter.config.max_width = 30;
-        
-        let text = "This is a long test message that should be wrapped when markdown formatting is enabled.";
-        let formatted = formatter.format_for_neovim(text).unwrap();
-        
-        // Should wrap the text when format_markdown is true
-        let lines: Vec<&str> = formatted.split('\n').collect();
-        assert!(lines.len() > 1, "Text should be wrapped to multiple lines");
-        
-        for line in &lines {
-            if !line.trim().is_empty() {
-                assert!(line.len() <= 30, "Line '{}' exceeds max width of 30", line);
-            }
-        }
-    }
+
 
 
 

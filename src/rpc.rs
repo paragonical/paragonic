@@ -1994,7 +1994,11 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
         let formatter = crate::text::TextFormatter::with_config(config);
         
         // Format the markdown content
-        match formatter.format_for_neovim(&markdown_content) {
+        match if formatter.is_markdown_enabled() {
+            formatter.format_markdown(&markdown_content)
+        } else {
+            Ok(markdown_content)
+        } {
             Ok(formatted_text) => {
                 tracing::debug!("Debug markdown test completed successfully");
                 Ok(formatted_text)
