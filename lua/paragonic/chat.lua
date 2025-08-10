@@ -946,6 +946,258 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
     return true
 end
 
+-- Send a streaming message with thinking model support
+-- Handles intermediate thinking output with <think></think> encapsulation
+-- Uses brain symbol for first step, vertical ideographic iteration mark (〻) for successive steps
+-- Implements Neovim folding for thinking steps
+function M.send_message_thinking_streaming(message, model, on_chunk, on_complete)
+    local backend = require("paragonic.backend")
+    local rpc_client = backend._get_rpc_client()
+    if not rpc_client then
+        -- Try to initialize backend if not available
+        if not backend.initialize_backend() then
+            return nil, "Backend not available"
+        end
+        rpc_client = backend._get_rpc_client()
+    end
+    
+    -- Use default model if not specified
+    local config = require("paragonic.config")
+    model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
+    
+    -- Start streaming chat completion
+    local response = rpc_client:streaming_chat_completion({
+        model = model,
+        message = message,
+        chunk_size = 50 -- Larger chunks for thinking model
+    })
+    
+    if not response then
+        return nil, "Failed to start streaming"
+    end
+    
+    -- Parse the initial response
+    local utils = require("paragonic.utils")
+    local parsed_response = utils.parse_json_response_enhanced(response)
+    if not parsed_response then
+        return nil, "Failed to parse streaming response"
+    end
+    
+    -- Check for error in response
+    if parsed_response.error then
+        return nil, "Streaming error: " .. (parsed_response.error.message or "Unknown error")
+    end
+    
+    -- Extract streaming data
+    local result = parsed_response.result
+    if type(result) == "string" then
+        -- Try to parse JSON string
+        local success, parsed = pcall(vim.json.decode, result)
+        if success then
+            result = parsed
+        else
+            return nil, "Failed to parse streaming result"
+        end
+    end
+    
+    if not result or result.type ~= "streaming_chunk" then
+        return nil, "Unexpected streaming response format"
+    end
+    
+    -- Initialize thinking state
+    local thinking_state = {
+        in_thinking = false,
+        thinking_start_line = nil,
+        thinking_step_count = 0,
+        current_content = "",
+        final_content = ""
+    }
+    
+    -- Function to process thinking content
+    local function process_thinking_content(content, is_final)
+        if is_final then
+            thinking_state.final_content = thinking_state.final_content .. content
+        else
+            thinking_state.current_content = thinking_state.current_content .. content
+        end
+        
+        -- Check if we're entering thinking mode
+        if not thinking_state.in_thinking and thinking_state.current_content:match("<think>") then
+            thinking_state.in_thinking = true
+            thinking_state.thinking_step_count = 0
+            thinking_state.current_content = thinking_state.current_content:gsub("<think>", "")
+            
+            -- Start thinking section with brain symbol
+            if on_chunk then
+                on_chunk("󰧑   <think>\n", 0, 1, "thinking_start")
+            end
+        end
+        
+        -- Check if we're exiting thinking mode
+        if thinking_state.in_thinking and thinking_state.current_content:match("</think>") then
+            thinking_state.in_thinking = false
+            local before_end, after_end = thinking_state.current_content:match("(.*)</think>(.*)")
+            thinking_state.current_content = before_end or ""
+            thinking_state.final_content = (after_end or "") .. thinking_state.final_content
+            
+            -- End thinking section
+            if on_chunk then
+                on_chunk("</think>\n", 0, 1, "thinking_end")
+            end
+        end
+        
+        -- Process thinking content with step detection
+        if thinking_state.in_thinking then
+            -- Split content into lines to detect thinking steps
+            local lines = {}
+            for line in thinking_state.current_content:gmatch("[^\r\n]+") do
+                table.insert(lines, line)
+            end
+            
+            -- Process each line for thinking steps
+            for i, line in ipairs(lines) do
+                -- Check if this is a new thinking step (starts with > or specific patterns)
+                if line:match("^%s*>%s*") or line:match("^%s*%d+%.") or line:match("^%s*%-%s*") then
+                    thinking_state.thinking_step_count = thinking_state.thinking_step_count + 1
+                    
+                    -- Use brain for first step, vertical ideographic iteration mark for others
+                    local step_symbol = thinking_state.thinking_step_count == 1 and "󰧑" or "〻"
+                    
+                    if on_chunk then
+                        on_chunk(step_symbol .. "   " .. line .. "\n", 0, 1, "thinking_step")
+                    end
+                else
+                    -- Regular thinking content
+                    if on_chunk then
+                        on_chunk("   " .. line .. "\n", 0, 1, "thinking_content")
+                    end
+                end
+            end
+            
+            -- Clear processed content
+            thinking_state.current_content = ""
+        else
+            -- Regular content (not in thinking mode)
+            if thinking_state.current_content ~= "" then
+                if on_chunk then
+                    on_chunk(thinking_state.current_content, 0, 1, "regular_content")
+                end
+                thinking_state.current_content = ""
+            end
+        end
+    end
+    
+    -- Call on_chunk for the first chunk with thinking processing
+    if on_chunk then
+        process_thinking_content(result.chunk, false)
+    end
+    
+    -- Process remaining chunks
+    local remaining_chunks = result.remaining_chunks or {}
+    local current_chunk_index = result.chunk_index or 0
+    local total_chunks = result.total_chunks or 1
+    
+    -- Function to process next chunk
+    local function process_next_chunk()
+        if #remaining_chunks == 0 then
+            -- Process any remaining content
+            if thinking_state.current_content ~= "" then
+                process_thinking_content(thinking_state.current_content, true)
+            end
+            
+            -- All chunks processed, call completion
+            if on_complete then
+                on_complete()
+            end
+            return
+        end
+        
+        -- Get next chunk
+        local next_response = rpc_client:get_next_chunk({
+            chunk_index = current_chunk_index,
+            remaining_chunks = remaining_chunks,
+            total_chunks = total_chunks
+        })
+        
+        if not next_response then
+            -- Process any remaining content
+            if thinking_state.current_content ~= "" then
+                process_thinking_content(thinking_state.current_content, true)
+            end
+            
+            if on_complete then
+                on_complete()
+            end
+            return
+        end
+        
+        -- Parse next chunk response
+        local next_parsed = utils.parse_json_response_enhanced(next_response)
+        if not next_parsed or not next_parsed.result then
+            if on_complete then
+                on_complete()
+            end
+            return
+        end
+        
+        local next_result = next_parsed.result
+        if type(next_result) == "string" then
+            local success, parsed = pcall(vim.json.decode, next_result)
+            if success then
+                next_result = parsed
+            else
+                if on_complete then
+                    on_complete()
+                end
+                return
+            end
+        end
+        
+        if next_result.type == "streaming_complete" then
+            -- Process any remaining content
+            if thinking_state.current_content ~= "" then
+                process_thinking_content(thinking_state.current_content, true)
+            end
+            
+            -- Streaming finished
+            if on_complete then
+                on_complete()
+            end
+            return
+        elseif next_result.type == "streaming_chunk" then
+            -- Process this chunk with thinking logic
+            process_thinking_content(next_result.chunk, false)
+            
+            -- Update for next iteration
+            remaining_chunks = next_result.remaining_chunks or {}
+            current_chunk_index = next_result.chunk_index or 0
+            
+            -- Schedule next chunk with a small delay for smooth animation
+            vim.defer_fn(process_next_chunk, 50) -- 50ms delay between chunks
+        else
+            if on_complete then
+                on_complete()
+            end
+        end
+    end
+    
+    -- Start processing remaining chunks
+    if #remaining_chunks > 0 then
+        vim.defer_fn(process_next_chunk, 100) -- Start after 100ms
+    else
+        -- Process any remaining content
+        if thinking_state.current_content ~= "" then
+            process_thinking_content(thinking_state.current_content, true)
+        end
+        
+        if on_complete then
+            on_complete()
+        end
+    end
+    
+    return true
+end
+
 -- Helper function to extract text backward from cursor to previous tombstone
 -- This enables multi-line input by capturing all lines from the cursor 
 -- position back to the previous ∎ tombstone marker
@@ -1421,5 +1673,150 @@ end
 M._test_extract_backward_to_tombstone = extract_backward_to_tombstone
 M._test_extract_forward_to_tombstone = extract_forward_to_tombstone
 M._test_extract_complete_range = extract_complete_range
+
+-- Send message command with thinking model support and folding
+function M.send_message_command_thinking()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    if buf_name ~= "paragonic://chat" then
+        vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+        return
+    end
+    
+    -- Extract message from cursor position
+    local message, start_line = extract_backward_to_tombstone(current_buf)
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
+    
+    if message == "" or message:match("^%s*#") then
+        vim.notify("Please enter a message to send", vim.log.levels.INFO)
+        return
+    end
+    
+    vim.notify("🧠 Sending (thinking mode): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""), vim.log.levels.INFO)
+    
+    -- Add user message to buffer
+    local user_lines = {"", "⚡   " .. message, ""}
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
+    
+    -- Calculate response line start
+    local response_line_start = line_num + 4
+    
+    -- Initialize response buffer and thinking state
+    local response_buffer = ""
+    local thinking_start_line = nil
+    local thinking_end_line = nil
+    local fold_start_line = nil
+    
+    -- Set up chunk callback for thinking streaming
+    local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
+        if chunk_type == "thinking_start" then
+            -- Start thinking section
+            thinking_start_line = response_line_start + #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
+            fold_start_line = thinking_start_line
+            
+            -- Add thinking start with brain symbol
+            local lines = {chunk}
+            vim.api.nvim_buf_set_lines(current_buf, thinking_start_line, thinking_start_line, false, lines)
+            
+        elseif chunk_type == "thinking_step" then
+            -- Add thinking step with proper symbol
+            local lines = {chunk}
+            vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+            
+        elseif chunk_type == "thinking_content" then
+            -- Add thinking content with indentation
+            local lines = {chunk}
+            vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+            
+        elseif chunk_type == "thinking_end" then
+            -- End thinking section
+            thinking_end_line = response_line_start + #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
+            
+            -- Add thinking end
+            local lines = {chunk}
+            vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+            
+            -- Create fold for thinking section
+            if fold_start_line and thinking_end_line then
+                vim.api.nvim_buf_set_option(current_buf, "foldmethod", "manual")
+                vim.api.nvim_buf_set_option(current_buf, "foldlevel", 0)
+                
+                -- Create fold from thinking start to thinking end
+                local fold_start = fold_start_line - 1  -- Convert to 0-indexed
+                local fold_end = thinking_end_line - 1   -- Convert to 0-indexed
+                
+                -- Set fold markers
+                vim.api.nvim_buf_set_lines(current_buf, fold_start, fold_start + 1, false, {"{{{ " .. "Thinking Process"})
+                vim.api.nvim_buf_set_lines(current_buf, fold_end, fold_end + 1, false, {"}}}"})
+                
+                -- Create the fold
+                vim.cmd(string.format(":%d,%dfold", fold_start + 1, fold_end + 1))
+            end
+            
+        elseif chunk_type == "regular_content" then
+            -- Add regular content with diamond symbol
+            response_buffer = response_buffer .. chunk
+            
+            -- Format and add to buffer
+            local utils = require("paragonic.utils")
+            local formatted_lines = utils.wrap_text_with_diamond(response_buffer)
+            
+            -- Replace or append to buffer
+            local current_lines = vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
+            if #current_lines > 0 and current_lines[#current_lines]:match("^🮮") then
+                -- Replace existing diamond content
+                vim.api.nvim_buf_set_lines(current_buf, response_line_start, -1, false, formatted_lines)
+            else
+                -- Add new diamond content
+                vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, formatted_lines)
+            end
+            
+        else
+            -- Default chunk handling
+            response_buffer = response_buffer .. chunk
+        end
+        
+        -- Move cursor to the end of the buffer
+        local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+        vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+    end
+    
+    -- Set up completion callback
+    local function on_complete()
+        local duration_sec = 0 -- TODO: Calculate actual duration
+        
+        -- Add timing information
+        local timing_lines = {
+            "",
+            " ⏱️   " .. string.format("%.2fs", duration_sec),
+            "",
+            "∎"
+        }
+        vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, timing_lines)
+        
+        -- Move cursor to the end of the buffer
+        local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+        vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+        
+        -- Notify success
+        vim.notify("Thinking streaming completed successfully", vim.log.levels.INFO)
+    end
+    
+    -- Send the thinking streaming message
+    local config = require("paragonic.config")
+    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    local success, err = M.send_message_thinking_streaming(message, default_model, on_chunk, on_complete)
+    
+    if not success then
+        vim.notify("Failed to start thinking streaming: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        
+        -- Add error message to chat buffer
+        local error_lines = {
+            "🛔  " .. (err or "unknown error")
+        }
+        vim.api.nvim_buf_set_lines(current_buf, response_line_start, response_line_start, false, error_lines)
+    end
+end
 
 return M
