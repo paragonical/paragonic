@@ -43,7 +43,13 @@ test-unit-rpc:
 	@$(NEOVIM_LUA) $(UNIT_DIR)/rpc/test_rpc_standalone_list_models.lua
 	@echo "Testing RPC timeout and retry behavior..."
 	@$(NEOVIM_LUA) $(UNIT_DIR)/rpc/test_timeout_retry_simple.lua
-	@echo "✓ RPC unit tests completed (connection tests temporarily disabled)"
+	@echo "✓ RPC unit tests completed"
+
+test-rpc-integration:
+	@echo "=== Running RPC Integration Tests ==="
+	@echo "Testing RPC server integration (soft fail if server not available)..."
+	@$(NEOVIM_LUA) $(UNIT_DIR)/rpc/test_rpc_integration.lua
+	@echo "✓ RPC integration tests completed"
 
 test-unit-utils:
 	@echo "=== Running Unit Tests: Utils ==="

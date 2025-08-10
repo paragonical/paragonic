@@ -2436,6 +2436,23 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
                 let content = chat_response.message.content;
                 tracing::info!("Streaming chat completion successful: response_length={}", content.len());
                 
+                // Handle empty content case
+                if content.is_empty() {
+                    return serde_json::to_string(&json!({
+                        "type": "streaming_chunk",
+                        "chunk": "",
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "model": model,
+                        "duration_sec": ollama_duration.as_secs_f64(),
+                        "remaining_chunks": []
+                    }))
+                    .map_err(|e| {
+                        tracing::error!("Failed to serialize empty streaming chunk response: {}", e);
+                        RpcError::invalid_params(Some(format!("Failed to serialize empty streaming chunk response: {e}")))
+                    });
+                }
+                
                 // Split content into chunks and return as a series of chunked responses
                 let chunks: Vec<String> = content
                     .chars()
@@ -2448,6 +2465,13 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
                 let first_chunk = chunks.first().unwrap_or(&String::new()).clone();
                 let total_chunks = chunks.len();
                 
+                // Safely get remaining chunks (avoid panic if chunks is empty)
+                let remaining_chunks = if chunks.len() > 1 {
+                    chunks[1..].to_vec()
+                } else {
+                    Vec::new()
+                };
+                
                 serde_json::to_string(&json!({
                     "type": "streaming_chunk",
                     "chunk": first_chunk,
@@ -2455,7 +2479,7 @@ Visit [Rust Documentation](https://doc.rust-lang.org/) for more info.
                     "total_chunks": total_chunks,
                     "model": model,
                     "duration_sec": ollama_duration.as_secs_f64(),
-                    "remaining_chunks": chunks[1..].to_vec()
+                    "remaining_chunks": remaining_chunks
                 }))
                 .map_err(|e| {
                     tracing::error!("Failed to serialize streaming chunk response: {}", e);
