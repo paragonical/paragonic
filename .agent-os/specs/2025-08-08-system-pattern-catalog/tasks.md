@@ -96,8 +96,8 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 7.7 Write tests for session pattern integration
   - [x] 7.8 Integrate patterns with AI agent session commands
   - [x] 7.9 Write tests for pattern metrics display
-  - [x] 7.10 Implement pattern metrics visualization
-  - [ ] 7.11 Verify all tests pass
+         - [x] 7.10 Implement pattern metrics visualization
+       - [x] 7.11 Verify all tests pass
 
 - [ ] 8. **Learning System Implementation**
   - [ ] 8.1 Write tests for pattern success tracking
