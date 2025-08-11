@@ -148,7 +148,15 @@ local function test_list_models_consistency()
     
     assert(result1 ~= nil, "First list_models call should succeed")
     assert(result2 ~= nil, "Second list_models call should succeed")
-    assert(result1 == result2, "Multiple list_models calls should return consistent results")
+    
+    -- Compare the contents of the tables rather than the table references
+    assert(type(result1) == "table", "First result should be a table")
+    assert(type(result2) == "table", "Second result should be a table")
+    assert(#result1 == #result2, "Both results should have the same number of models")
+    
+    for i = 1, #result1 do
+        assert(result1[i] == result2[i], "Model " .. i .. " should be consistent between calls")
+    end
     
     print("✓ list_models consistency test passed")
     

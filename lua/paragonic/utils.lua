@@ -193,13 +193,33 @@ function M.parse_json_response(json_string)
         return nil, "Empty JSON string"
     end
     
-    -- Parse JSON with error handling using vim.json
-    local success, result = pcall(vim.json.decode, json_string)
-    if not success then
-        return nil, "Failed to parse JSON: " .. tostring(result)
+    -- Try using vim.json if available (Neovim environment)
+    if vim and vim.json then
+        local success, result = pcall(vim.json.decode, json_string)
+        if success then
+            return result
+        end
     end
     
-    return result
+    -- Fallback to cjson if available
+    local cjson_ok, cjson = pcall(require, "cjson")
+    if cjson_ok then
+        local success, result = pcall(cjson.decode, json_string)
+        if success then
+            return result
+        end
+    end
+    
+    -- Fallback to dkjson if available
+    local dkjson_ok, dkjson = pcall(require, "dkjson")
+    if dkjson_ok then
+        local success, result = pcall(dkjson.decode, json_string)
+        if success then
+            return result
+        end
+    end
+    
+    return nil, "Failed to parse JSON: no JSON parser available"
 end
 
 -- Enhanced parse JSON-RPC response (handles both strings and tables)
@@ -219,13 +239,7 @@ function M.parse_json_response_enhanced(input)
             return nil, "Empty JSON string"
         end
         
-        -- Parse JSON with error handling using vim.json
-        local success, result = pcall(vim.json.decode, input)
-        if not success then
-            return nil, "Failed to parse JSON: " .. tostring(result)
-        end
-        
-        return result
+        return M.parse_json_response(input)
     end
     
     -- Unsupported input type

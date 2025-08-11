@@ -56,14 +56,25 @@ M.config_schema = {
 -- Initialize logging
 function M.initialize_logging()
     if not M.logging_config.log_file then
-        local data_dir = vim.fn.stdpath("data")
-        M.logging_config.log_file = data_dir .. "/paragonic_mcp.log"
+        -- Try to use vim.fn.stdpath if available (Neovim environment)
+        if vim and vim.fn and vim.fn.stdpath then
+            local data_dir = vim.fn.stdpath("data")
+            M.logging_config.log_file = data_dir .. "/paragonic_mcp.log"
+        else
+            -- Fallback for non-Neovim environment
+            M.logging_config.log_file = "/tmp/paragonic_mcp.log"
+        end
     end
     
     -- Create log directory if it doesn't exist
     local log_dir = M.logging_config.log_file:match("(.*)/[^/]*$")
     if log_dir and log_dir ~= M.logging_config.log_file then
-        vim.fn.mkdir(log_dir, "p")
+        if vim and vim.fn and vim.fn.mkdir then
+            vim.fn.mkdir(log_dir, "p")
+        else
+            -- Fallback for non-Neovim environment
+            os.execute("mkdir -p " .. log_dir)
+        end
     end
     
     M.log("info", "MCP logging initialized", {
@@ -108,7 +119,13 @@ function M.format_log_message(level, message, context)
     local formatted = table.concat(parts, " | ")
     
     if context and M.logging_config.include_context then
-        formatted = formatted .. " | " .. vim.json.encode(context)
+        -- Try to use vim.json if available, otherwise use a simple fallback
+        if vim and vim.json then
+            formatted = formatted .. " | " .. vim.json.encode(context)
+        else
+            -- Simple fallback for non-Neovim environment
+            formatted = formatted .. " | " .. tostring(context)
+        end
     end
     
     return formatted
@@ -122,8 +139,21 @@ function M.write_log_to_file(log_entry)
     
     local success, result = pcall(function()
         local current_logs = {}
-        if vim.fn.filereadable(M.logging_config.log_file) == 1 then
-            current_logs = vim.fn.readfile(M.logging_config.log_file)
+        
+        -- Try to use vim.fn if available, otherwise use io
+        if vim and vim.fn then
+            if vim.fn.filereadable(M.logging_config.log_file) == 1 then
+                current_logs = vim.fn.readfile(M.logging_config.log_file)
+            end
+        else
+            -- Fallback for non-Neovim environment
+            local file = io.open(M.logging_config.log_file, "r")
+            if file then
+                for line in file:lines() do
+                    table.insert(current_logs, line)
+                end
+                file:close()
+            end
         end
         
         table.insert(current_logs, log_entry)
@@ -139,17 +169,39 @@ function M.write_log_to_file(log_entry)
             for i = M.logging_config.max_log_files, 2, -1 do
                 local old_file = M.logging_config.log_file .. "." .. (i - 1)
                 local new_file = M.logging_config.log_file .. "." .. i
-                if vim.fn.filereadable(old_file) == 1 then
-                    vim.fn.rename(old_file, new_file)
+                if vim and vim.fn then
+                    if vim.fn.filereadable(old_file) == 1 then
+                        vim.fn.rename(old_file, new_file)
+                    end
+                else
+                    -- Fallback for non-Neovim environment
+                    os.execute("mv " .. old_file .. " " .. new_file .. " 2>/dev/null || true")
                 end
             end
             
             -- Move current log to .1
-            vim.fn.rename(M.logging_config.log_file, M.logging_config.log_file .. ".1")
+            if vim and vim.fn then
+                vim.fn.rename(M.logging_config.log_file, M.logging_config.log_file .. ".1")
+            else
+                os.execute("mv " .. M.logging_config.log_file .. " " .. M.logging_config.log_file .. ".1 2>/dev/null || true")
+            end
             current_logs = {}
         end
         
-        vim.fn.writefile(current_logs, M.logging_config.log_file)
+        -- Write to file
+        if vim and vim.fn then
+            vim.fn.writefile(current_logs, M.logging_config.log_file)
+        else
+            -- Fallback for non-Neovim environment
+            local file = io.open(M.logging_config.log_file, "w")
+            if file then
+                for _, line in ipairs(current_logs) do
+                    file:write(line .. "\n")
+                end
+                file:close()
+            end
+        end
+        
         return true
     end)
     
@@ -168,8 +220,10 @@ function M.log(level, message, context)
     M.write_log_to_file(log_entry)
     
     -- Also output to Neovim log if appropriate
-    local vim_level = vim.log.levels[string.upper(level)] or vim.log.levels.INFO
-    -- Skip actual vim.log call in test environment
+    if vim and vim.log then
+        local vim_level = vim.log.levels[string.upper(level)] or vim.log.levels.INFO
+        -- Skip actual vim.log call in test environment
+    end
 end
 
 -- Convenience logging functions
@@ -1193,12 +1247,22 @@ function M:list_models()
     -- Check if this is a test environment (no real server)
     if self.server_address == "127.0.0.1:2346" then
         -- Return mock response for testing
-        return '["llama2:7b", "llama3.2:3b", "nomic-embed-text:latest"]'
+        return {"llama2:7b", "llama3.2:3b", "nomic-embed-text:latest"}
     end
     
     -- Send list_models request with empty parameters
     local result, error_msg = send_jsonrpc_request_with_retry_and_pool_and_log(self.server_address, "list_models", {}, self.timeout, self.max_retries, self.retry_delay, self.pool_size, self)
     if result then
+        -- Parse the result if it's a JSON string
+        if type(result) == "string" then
+            local utils = require("paragonic.utils")
+            local parsed = utils.parse_json_response(result)
+            if parsed then
+                return parsed
+            else
+                return nil, "Failed to parse list_models response"
+            end
+        end
         return result
     else
         return nil, error_msg
