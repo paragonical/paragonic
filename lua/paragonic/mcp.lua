@@ -16,6 +16,10 @@ M.cancellation_state = {
     next_operation_id = 1
 }
 
+-- Tool-pattern relationship tracking
+M.tool_pattern_usage = {}
+M.pattern_tool_mappings = {}
+
 -- Initialize MCP server
 function M.initialize_mcp_server()
     if M.mcp_server_initialized then
@@ -78,12 +82,12 @@ function M.initialize_mcp_server()
                 {
                     pattern_id = "session_summary_generation",
                     relationship_type = "input",
-                    description = "Used to modify files during session summary generation"
+                    description = "Used to modify files during session summary generation pattern"
                 },
                 {
                     pattern_id = "activity_labeling",
                     relationship_type = "enhance",
-                    description = "Enhances activity labeling by tracking file modifications"
+                    description = "Enhances activity labeling pattern by tracking file modifications"
                 }
             },
             usage_guidance = "Use this tool when you need to modify file content. Always specify the file_path and line_number. The content parameter is optional and will replace the entire line if provided.",
@@ -118,17 +122,17 @@ function M.initialize_mcp_server()
                 {
                     pattern_id = "session_summary_generation",
                     relationship_type = "input",
-                    description = "Used to create summary files during session summary generation"
+                    description = "Used to create summary files during session summary generation pattern"
                 },
                 {
                     pattern_id = "activity_labeling",
                     relationship_type = "enhance",
-                    description = "Enhances activity labeling by tracking file creation activities"
+                    description = "Enhances activity labeling pattern by tracking file creation activities"
                 },
                 {
                     pattern_id = "knowledge_extraction",
                     relationship_type = "output",
-                    description = "Creates files to store extracted knowledge and insights"
+                    description = "Creates files to store extracted knowledge and insights pattern"
                 }
             },
             usage_guidance = "Use this tool when you need to create new files. The file_name parameter is required. Content is optional and will create an empty file if not provided. Set open_in_window to true if you want the file to open in a new window.",
@@ -159,17 +163,17 @@ function M.initialize_mcp_server()
                 {
                     pattern_id = "progress_tracking",
                     relationship_type = "enhance",
-                    description = "Enhances progress tracking by recording file save events"
+                    description = "Enhances progress tracking pattern by recording file save events"
                 },
                 {
                     pattern_id = "activity_labeling",
                     relationship_type = "enhance",
-                    description = "Enhances activity labeling by tracking file save activities"
+                    description = "Enhances activity labeling pattern by tracking file save activities"
                 },
                 {
                     pattern_id = "session_summary_generation",
                     relationship_type = "input",
-                    description = "Used to save files before generating session summaries"
+                    description = "Used to save files before generating session summaries pattern"
                 }
             },
             usage_guidance = "Use this tool when you need to save files to disk. If file_path is not specified, it will save the current buffer. Use force=true to save read-only files. This tool is essential for persisting changes.",
@@ -221,6 +225,98 @@ function M.read_mcp_resource(uri)
     else
         return nil, "Unknown resource URI: " .. uri
     end
+end
+
+-- Track tool-pattern usage
+function M.track_tool_pattern_usage(tool_name, pattern_id, success)
+    if not M.tool_pattern_usage[tool_name] then
+        M.tool_pattern_usage[tool_name] = {}
+    end
+    
+    if not M.tool_pattern_usage[tool_name][pattern_id] then
+        M.tool_pattern_usage[tool_name][pattern_id] = {
+            total_usage = 0,
+            successful_usage = 0,
+            last_used = nil
+        }
+    end
+    
+    local usage = M.tool_pattern_usage[tool_name][pattern_id]
+    usage.total_usage = usage.total_usage + 1
+    if success then
+        usage.successful_usage = usage.successful_usage + 1
+    end
+    usage.last_used = os.time()
+    
+    -- Update tool success metrics
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            tool.success_metrics.usage_count = tool.success_metrics.usage_count + 1
+            tool.success_metrics.last_used = os.time()
+            
+            -- Update success rate based on pattern usage
+            local total_pattern_usage = 0
+            local total_successful_pattern_usage = 0
+            for _, pattern_usage in pairs(M.tool_pattern_usage[tool_name]) do
+                total_pattern_usage = total_pattern_usage + pattern_usage.total_usage
+                total_successful_pattern_usage = total_successful_pattern_usage + pattern_usage.successful_usage
+            end
+            
+            if total_pattern_usage > 0 then
+                tool.success_metrics.success_rate = total_successful_pattern_usage / total_pattern_usage
+            end
+            break
+        end
+    end
+    
+    return true
+end
+
+-- Get tools for a specific pattern
+function M.get_tools_for_pattern(pattern_id)
+    local tools_for_pattern = {}
+    
+    for _, tool in ipairs(M.mcp_tools) do
+        for _, pattern in ipairs(tool.patterns) do
+            if pattern.pattern_id == pattern_id then
+                table.insert(tools_for_pattern, {
+                    tool_name = tool.name,
+                    relationship_type = pattern.relationship_type,
+                    description = pattern.description,
+                    tool_description = tool.description
+                })
+                break
+            end
+        end
+    end
+    
+    return tools_for_pattern
+end
+
+-- Get patterns for a specific tool
+function M.get_patterns_for_tool(tool_name)
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            return tool.patterns
+        end
+    end
+    
+    return {}
+end
+
+-- Get tool-pattern usage statistics
+function M.get_tool_pattern_usage_stats(tool_name, pattern_id)
+    if not M.tool_pattern_usage[tool_name] or not M.tool_pattern_usage[tool_name][pattern_id] then
+        return nil
+    end
+    
+    local usage = M.tool_pattern_usage[tool_name][pattern_id]
+    return {
+        total_usage = usage.total_usage,
+        successful_usage = usage.successful_usage,
+        success_rate = usage.total_usage > 0 and usage.successful_usage / usage.total_usage or 0,
+        last_used = usage.last_used
+    }
 end
 
 -- Get buffers information
