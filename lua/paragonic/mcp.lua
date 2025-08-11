@@ -319,6 +319,247 @@ function M.get_tool_pattern_usage_stats(tool_name, pattern_id)
     }
 end
 
+-- Get pattern-specific recommendations
+function M.get_pattern_recommendations(pattern_id)
+    local recommendations = {}
+    
+    for _, tool in ipairs(M.mcp_tools) do
+        for _, pattern in ipairs(tool.patterns) do
+            if pattern.pattern_id == pattern_id then
+                local stats = M.get_tool_pattern_usage_stats(tool.name, pattern_id)
+                local success_rate = stats and stats.success_rate or tool.success_metrics.success_rate
+                local usage_count = stats and stats.total_usage or tool.success_metrics.usage_count
+                
+                table.insert(recommendations, {
+                    tool_name = tool.name,
+                    pattern_id = pattern_id,
+                    confidence = success_rate * (1 + math.min(usage_count / 10, 1)),
+                    reason = pattern.description,
+                    success_rate = success_rate,
+                    usage_count = usage_count,
+                    relationship_type = pattern.relationship_type
+                })
+                break
+            end
+        end
+    end
+    
+    -- Sort by confidence (highest first)
+    table.sort(recommendations, function(a, b) return a.confidence > b.confidence end)
+    
+    return recommendations
+end
+
+-- Get context-based recommendations
+function M.get_context_recommendations(context)
+    local recommendations = {}
+    local context_score = {}
+    
+    -- Calculate context relevance scores for each tool
+    for _, tool in ipairs(M.mcp_tools) do
+        local score = 0
+        
+        -- Score based on recent tool usage
+        if context.recent_tools then
+            for _, recent_tool in ipairs(context.recent_tools) do
+                if recent_tool == tool.name then
+                    score = score + 0.3
+                    break
+                end
+            end
+        end
+        
+        -- Score based on active patterns
+        if context.patterns_active then
+            for _, pattern in ipairs(tool.patterns) do
+                for _, active_pattern in ipairs(context.patterns_active) do
+                    if pattern.pattern_id == active_pattern then
+                        score = score + 0.4
+                        break
+                    end
+                end
+            end
+        end
+        
+        -- Score based on current activity
+        if context.current_activity then
+            if context.current_activity == "file_editing" and tool.name == "agent_edit_file" then
+                score = score + 0.3
+            elseif context.current_activity == "file_creation" and tool.name == "agent_create_file" then
+                score = score + 0.3
+            elseif context.current_activity == "file_saving" and tool.name == "agent_save_file" then
+                score = score + 0.3
+            end
+        end
+        
+        -- Add success rate to score
+        score = score + tool.success_metrics.success_rate * 0.2
+        
+        if score > 0 then
+            table.insert(recommendations, {
+                tool_name = tool.name,
+                confidence = score,
+                reason = "Contextually relevant based on current activity and patterns",
+                success_rate = tool.success_metrics.success_rate,
+                usage_count = tool.success_metrics.usage_count
+            })
+        end
+    end
+    
+    -- Sort by confidence (highest first)
+    table.sort(recommendations, function(a, b) return a.confidence > b.confidence end)
+    
+    return recommendations
+end
+
+-- Get top performing tools
+function M.get_top_performing_tools(limit)
+    local tool_performance = {}
+    
+    for _, tool in ipairs(M.mcp_tools) do
+        table.insert(tool_performance, {
+            tool_name = tool.name,
+            success_rate = tool.success_metrics.success_rate,
+            usage_count = tool.success_metrics.usage_count,
+            last_used = tool.success_metrics.last_used
+        })
+    end
+    
+    -- Sort by success rate (highest first)
+    table.sort(tool_performance, function(a, b) return a.success_rate > b.success_rate end)
+    
+    -- Return top N tools
+    if limit then
+        return {table.unpack(tool_performance, 1, math.min(limit, #tool_performance))}
+    else
+        return tool_performance
+    end
+end
+
+-- Get task-specific recommendations
+function M.get_task_recommendations(task_type)
+    local task_patterns = {
+        file_creation = {"knowledge_extraction", "session_summary_generation"},
+        file_editing = {"session_summary_generation", "activity_labeling"},
+        file_saving = {"progress_tracking", "session_summary_generation"},
+        session_management = {"session_summary_generation", "activity_labeling"},
+        knowledge_management = {"knowledge_extraction", "activity_labeling"}
+    }
+    
+    local recommendations = {}
+    local patterns = task_patterns[task_type] or {}
+    
+    for _, pattern_id in ipairs(patterns) do
+        local pattern_recs = M.get_pattern_recommendations(pattern_id)
+        for _, rec in ipairs(pattern_recs) do
+            table.insert(recommendations, rec)
+        end
+    end
+    
+    -- Remove duplicates and sort by confidence
+    local seen = {}
+    local unique_recommendations = {}
+    for _, rec in ipairs(recommendations) do
+        if not seen[rec.tool_name] then
+            seen[rec.tool_name] = true
+            table.insert(unique_recommendations, rec)
+        end
+    end
+    
+    table.sort(unique_recommendations, function(a, b) return a.confidence > b.confidence end)
+    
+    return unique_recommendations
+end
+
+-- Get collaborative recommendations
+function M.get_collaborative_recommendations(tool_name)
+    local collaborative_tools = {
+        agent_edit_file = {"agent_save_file"},
+        agent_create_file = {"agent_edit_file", "agent_save_file"},
+        agent_save_file = {"agent_edit_file"}
+    }
+    
+    local recommendations = {}
+    local collaborators = collaborative_tools[tool_name] or {}
+    
+    for _, collab_tool_name in ipairs(collaborators) do
+        for _, tool in ipairs(M.mcp_tools) do
+            if tool.name == collab_tool_name then
+                table.insert(recommendations, {
+                    tool_name = tool.name,
+                    confidence = tool.success_metrics.success_rate,
+                    reason = "Frequently used together with " .. tool_name,
+                    success_rate = tool.success_metrics.success_rate,
+                    usage_count = tool.success_metrics.usage_count
+                })
+                break
+            end
+        end
+    end
+    
+    -- Sort by confidence (highest first)
+    table.sort(recommendations, function(a, b) return a.confidence > b.confidence end)
+    
+    return recommendations
+end
+
+-- Get filtered recommendations
+function M.get_filtered_recommendations(filters)
+    local all_recommendations = {}
+    
+    -- Get all tools as recommendations
+    for _, tool in ipairs(M.mcp_tools) do
+        local rec = {
+            tool_name = tool.name,
+            success_rate = tool.success_metrics.success_rate,
+            usage_count = tool.success_metrics.usage_count,
+            last_used = tool.success_metrics.last_used
+        }
+        
+        -- Add pattern information
+        for _, pattern in ipairs(tool.patterns) do
+            if filters.pattern_ids then
+                for _, filter_pattern in ipairs(filters.pattern_ids) do
+                    if pattern.pattern_id == filter_pattern then
+                        rec.pattern_id = pattern.pattern_id
+                        rec.relationship_type = pattern.relationship_type
+                        break
+                    end
+                end
+            end
+        end
+        
+        table.insert(all_recommendations, rec)
+    end
+    
+    -- Apply filters
+    local filtered_recommendations = {}
+    for _, rec in ipairs(all_recommendations) do
+        local include = true
+        
+        if filters.min_success_rate and rec.success_rate < filters.min_success_rate then
+            include = false
+        end
+        
+        if filters.max_usage_count and rec.usage_count > filters.max_usage_count then
+            include = false
+        end
+        
+        if filters.pattern_ids and not rec.pattern_id then
+            include = false
+        end
+        
+        if include then
+            table.insert(filtered_recommendations, rec)
+        end
+    end
+    
+    -- Sort by success rate (highest first)
+    table.sort(filtered_recommendations, function(a, b) return a.success_rate > b.success_rate end)
+    
+    return filtered_recommendations
+end
+
 -- Get buffers information
 function M.get_buffers_info()
     local buffers = vim.api.nvim_list_bufs()
