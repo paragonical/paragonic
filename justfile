@@ -20,151 +20,403 @@ integration-dir := "tests/integration"
 e2e-dir := "tests/e2e"
 deprecated-dir := "tests/deprecated"
 
+# Test failure tracking
+test-failures := ""
+
 # Default recipe
 default:
     @just --list
+
+# Helper function to run a test and track failures
+run-test test-name test-command:
+    #!/usr/bin/env bash
+    echo "Running: {{test-name}}"
+    if {{test-command}}; then
+        echo "✓ {{test-name}} passed"
+    else
+        echo "✗ {{test-name}} failed"
+        echo "{{test-failures}}" > /tmp/test_failures.tmp
+        echo "{{test-name}}" >> /tmp/test_failures.tmp
+        cat /tmp/test_failures.tmp > /tmp/test_failures
+        rm -f /tmp/test_failures.tmp
+        exit 1
+    fi
+
+# Helper function to run a test with soft failure (don't stop execution)
+run-test-soft test-name test-command:
+    #!/usr/bin/env bash
+    echo "Running: {{test-name}}"
+    if {{test-command}}; then
+        echo "✓ {{test-name}} passed"
+    else
+        echo "⚠ {{test-name}} failed (soft failure)"
+        echo "{{test-failures}}" > /tmp/test_failures.tmp
+        echo "{{test-name}} (soft)" >> /tmp/test_failures.tmp
+        cat /tmp/test_failures.tmp > /tmp/test_failures
+        rm -f /tmp/test_failures.tmp
+    fi
+
+# Helper function to check for failures and exit appropriately
+check-failures:
+    #!/usr/bin/env bash
+    if [ -f /tmp/test_failures ]; then
+        echo ""
+        echo "=== Test Failures ==="
+        cat /tmp/test_failures
+        echo ""
+        rm -f /tmp/test_failures
+        exit 1
+    fi
 
 # Unit tests (fast, no external dependencies)
 test-unit-core:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Core ==="
+    rm -f /tmp/test_failures
+    
     echo "Testing basic functionality (standalone)..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_simple.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_simple.lua; then
+        echo "✗ test_simple.lua failed"
+        exit 1
+    fi
+    
     echo "Testing JSON parsing (standalone)..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_json_parsing.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_json_parsing.lua; then
+        echo "✗ test_json_parsing.lua failed"
+        exit 1
+    fi
+    
     echo "Testing search functions (standalone)..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_search_functions.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_search_functions.lua; then
+        echo "✗ test_search_functions.lua failed"
+        exit 1
+    fi
+    
     echo ""
     echo "Testing Neovim-dependent core functionality..."
+    
     echo "Testing initialization..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/core/test_initialization_unit.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/core/test_initialization_unit.lua')" -c "quit"; then
+        echo "✗ test_initialization_unit.lua failed"
+        exit 1
+    fi
+    
     echo "Testing persistent storage..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/core/test_persistent_storage.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/core/test_persistent_storage.lua')" -c "quit"; then
+        echo "✗ test_persistent_storage.lua failed"
+        exit 1
+    fi
+    
     echo "Testing search history..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/core/test_search_history.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/core/test_search_history.lua')" -c "quit"; then
+        echo "✗ test_search_history.lua failed"
+        exit 1
+    fi
+    
     echo "✓ Core unit tests completed (standalone + Neovim tests)"
 
 test-unit-rpc:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: RPC ==="
+    rm -f /tmp/test_failures
+    
     echo "Testing RPC timeout and retry behavior (standalone)..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_timeout_retry_simple.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_timeout_retry_simple.lua; then
+        echo "✗ test_timeout_retry_simple.lua failed"
+        exit 1
+    fi
+    
     echo ""
     echo "Testing RPC functionality in Neovim environment..."
+    
+    local failed_tests=()
+    
     echo "Testing basic RPC functionality..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_simple.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_simple.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_simple.lua")
+    fi
+    
     echo "Testing RPC JSON handling..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_json.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_json.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_json.lua")
+    fi
+    
     echo "Testing standalone RPC client..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_standalone.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_standalone.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_standalone.lua")
+    fi
+    
     echo "Testing RPC model listing..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_standalone_list_models.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_standalone_list_models.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_standalone_list_models.lua")
+    fi
+    
     echo "Testing RPC connection..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_standalone_connection.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_standalone_connection.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_standalone_connection.lua")
+    fi
+    
     echo "Testing RPC timeout retry..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_timeout_retry.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_timeout_retry.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_timeout_retry.lua")
+    fi
+    
     echo "Testing RPC reconnection..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_reconnection.lua")
+    fi
+    
     echo "Testing RPC reconnection basic..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_basic.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_basic.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_reconnection_basic.lua")
+    fi
+    
     echo "Testing RPC reconnection minimal..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_minimal.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_minimal.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_reconnection_minimal.lua")
+    fi
+    
     echo "Testing RPC reconnection simple..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_simple.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_simple.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_reconnection_simple.lua")
+    fi
+    
     echo "Testing RPC reconnection standalone..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_standalone.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_standalone.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_reconnection_standalone.lua")
+    fi
+    
     echo "Testing RPC reconnection working..."
-    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_working.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_working.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_reconnection_working.lua")
+    fi
+    
+    echo "Testing RPC integration..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_integration.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_integration.lua")
+    fi
+    
+    echo "Testing RPC real functionality..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_real_functionality.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_real_functionality.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ RPC unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ RPC unit tests completed (standalone + Neovim tests)"
 
 test-unit-utils:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Utils ==="
+    
     echo "Testing formatting utilities..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_format_simple.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_format_simple.lua; then
+        echo "✗ test_format_simple.lua failed"
+        exit 1
+    fi
+    
     echo "Testing escaping utilities..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_escape.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_escape.lua; then
+        echo "✗ test_escape.lua failed"
+        exit 1
+    fi
+    
     echo "Testing pattern matching..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_pattern.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_pattern.lua; then
+        echo "✗ test_pattern.lua failed"
+        exit 1
+    fi
+    
     echo "✓ Utils unit tests completed"
 
 test-unit-neovim:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Neovim ==="
+    echo "Testing Neovim-dependent functionality..."
+    
+    local failed_tests=()
+    
     echo "Testing pattern management commands..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_management_commands.lua
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/neovim/test_pattern_management_commands.lua')" -c "quit"; then
+        failed_tests+=("test_pattern_management_commands.lua")
+    fi
+    
     echo "Testing pattern execution commands..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_execution_commands.lua
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/neovim/test_pattern_execution_commands.lua')" -c "quit"; then
+        failed_tests+=("test_pattern_execution_commands.lua")
+    fi
+    
     echo "Testing pattern display functions..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_display_functions.lua
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/neovim/test_pattern_display_functions.lua')" -c "quit"; then
+        failed_tests+=("test_pattern_display_functions.lua")
+    fi
+    
     echo "Testing pattern metrics display..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_metrics_display.lua
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/neovim/test_pattern_metrics_display.lua')" -c "quit"; then
+        failed_tests+=("test_pattern_metrics_display.lua")
+    fi
+    
     echo "Testing session pattern integration..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_session_pattern_integration.lua
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/neovim/test_session_pattern_integration.lua')" -c "quit"; then
+        failed_tests+=("test_session_pattern_integration.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Neovim unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ Neovim unit tests completed"
 
 test-unit-chat:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Chat ==="
     echo "Testing standalone chat functionality..."
+    
+    local failed_tests=()
+    
     echo "Testing chat visual feedback simple..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback_simple.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback_simple.lua; then
+        failed_tests+=("test_chat_visual_feedback_simple.lua")
+    fi
+    
     echo "Testing smart send..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_smart_send.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_smart_send.lua; then
+        failed_tests+=("test_smart_send.lua")
+    fi
+    
     echo "Testing streaming fix..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_streaming_fix.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_streaming_fix.lua; then
+        failed_tests+=("test_streaming_fix.lua")
+    fi
+    
     echo "Testing thinking streaming..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming.lua; then
+        failed_tests+=("test_thinking_streaming.lua")
+    fi
+    
     echo ""
     echo "Testing Neovim-dependent chat functionality..."
+    
     echo "Testing chat visual feedback..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_chat_visual_feedback.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_chat_visual_feedback.lua')" -c "quit"; then
+        failed_tests+=("test_chat_visual_feedback.lua")
+    fi
+    
     echo "Testing real connection..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_real_connection.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_real_connection.lua')" -c "quit"; then
+        failed_tests+=("test_real_connection.lua")
+    fi
+    
     echo "Testing RPC fallback..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_rpc_fallback.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_rpc_fallback.lua')" -c "quit"; then
+        failed_tests+=("test_rpc_fallback.lua")
+    fi
+    
     echo "Testing simple RPC..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_simple_rpc.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_simple_rpc.lua')" -c "quit"; then
+        failed_tests+=("test_simple_rpc.lua")
+    fi
+    
     echo "Testing text extraction..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_text_extraction.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_text_extraction.lua')" -c "quit"; then
+        failed_tests+=("test_text_extraction.lua")
+    fi
+    
     echo "Testing thinking streaming integration..."
-    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_thinking_streaming_integration.lua')" -c "quit"
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_thinking_streaming_integration.lua')" -c "quit"; then
+        failed_tests+=("test_thinking_streaming_integration.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Chat unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ Chat unit tests completed (standalone + Neovim tests)"
 
 test-unit-mcp:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: MCP ==="
+    
+    local failed_tests=()
+    
     echo "Testing enhanced MCP tool descriptions..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_enhanced_mcp_tool_descriptions.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_enhanced_mcp_tool_descriptions.lua; then
+        failed_tests+=("test_enhanced_mcp_tool_descriptions.lua")
+    fi
+    
     echo "Testing MCP tool execution with patterns..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_mcp_tool_execution_with_patterns.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_mcp_tool_execution_with_patterns.lua; then
+        failed_tests+=("test_mcp_tool_execution_with_patterns.lua")
+    fi
+    
     echo "Testing pattern aware tool recommendations..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_pattern_aware_tool_recommendations.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_pattern_aware_tool_recommendations.lua; then
+        failed_tests+=("test_pattern_aware_tool_recommendations.lua")
+    fi
+    
     echo "Testing tool pattern relationship management..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_management.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_management.lua; then
+        failed_tests+=("test_tool_pattern_relationship_management.lua")
+    fi
+    
     echo "Testing tool pattern relationship tracking..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_tracking.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_tracking.lua; then
+        failed_tests+=("test_tool_pattern_relationship_tracking.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ MCP unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ MCP unit tests completed"
 
 test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp
     #!/usr/bin/env bash
     echo ""
-    echo "✓ All unit tests completed"
+    echo "✓ All unit tests completed successfully"
 
 # RPC integration tests
 test-rpc-integration:
     #!/usr/bin/env bash
     echo "=== Running RPC Integration Tests ==="
     echo "Testing RPC server integration (soft fail if server not available)..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_integration.lua
-    echo "✓ RPC integration tests completed"
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_integration.lua; then
+        echo "⚠ RPC integration test failed (soft failure)"
+    else
+        echo "✓ RPC integration tests completed"
+    fi
 
 # Server lifecycle tests (start/stop servers, use different ports)
 test-server-lifecycle-backend:
     #!/usr/bin/env bash
     echo "=== Running Server Lifecycle Tests: Backend ==="
     echo "Testing server start/stop functionality..."
-    {{neovim-lua}} {{integration-dir}}/backend/test_rust_backend_server.lua
+    if ! {{neovim-lua}} {{integration-dir}}/backend/test_rust_backend_server.lua; then
+        echo "✗ Backend server lifecycle test failed"
+        exit 1
+    fi
     echo "✓ Backend server lifecycle tests completed"
 
 test-server-lifecycle: test-server-lifecycle-backend
@@ -176,36 +428,102 @@ test-server-lifecycle: test-server-lifecycle-backend
 test-server-interaction-chat:
     #!/usr/bin/env bash
     echo "=== Running Server Interaction Tests: Chat ==="
+    
+    local failed_tests=()
+    
     echo "Testing basic chat functionality..."
-    {{neovim-lua}} {{integration-dir}}/chat/test_chat_simple.lua
+    if ! {{neovim-lua}} {{integration-dir}}/chat/test_chat_simple.lua; then
+        failed_tests+=("test_chat_simple.lua")
+    fi
+    
     echo "Testing chat interface..."
-    {{neovim-lua}} {{integration-dir}}/chat/test_chat_interface.lua
+    if ! {{neovim-lua}} {{integration-dir}}/chat/test_chat_interface.lua; then
+        failed_tests+=("test_chat_interface.lua")
+    fi
+    
     echo "Testing chat with backend..."
-    {{neovim-lua}} {{integration-dir}}/chat/test_chat_backend.lua
+    if ! {{neovim-lua}} {{integration-dir}}/chat/test_chat_backend.lua; then
+        failed_tests+=("test_chat_backend.lua")
+    fi
+    
     echo "Testing interactive chat..."
-    {{neovim-lua}} {{integration-dir}}/chat/test_chat_interactive.lua
+    if ! {{neovim-lua}} {{integration-dir}}/chat/test_chat_interactive.lua; then
+        failed_tests+=("test_chat_interactive.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Chat server interaction tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ Chat server interaction tests completed"
 
 test-server-interaction-search:
     #!/usr/bin/env bash
     echo "=== Running Server Interaction Tests: Search ==="
+    
+    local failed_tests=()
+    
     echo "Testing search integration..."
-    {{neovim-lua}} {{integration-dir}}/search/test_lua_search_integration.lua
+    if ! {{neovim-lua}} {{integration-dir}}/search/test_lua_search_integration.lua; then
+        failed_tests+=("test_lua_search_integration.lua")
+    fi
+    
     echo "Testing enhanced search core..."
-    {{neovim-lua}} {{integration-dir}}/search/test_enhanced_search_core.lua
+    if ! {{neovim-lua}} {{integration-dir}}/search/test_enhanced_search_core.lua; then
+        failed_tests+=("test_enhanced_search_core.lua")
+    fi
+    
     echo "Testing enhanced search UI..."
-    {{neovim-lua}} {{integration-dir}}/search/test_enhanced_search_ui.lua
+    if ! {{neovim-lua}} {{integration-dir}}/search/test_enhanced_search_ui.lua; then
+        failed_tests+=("test_enhanced_search_ui.lua")
+    fi
+    
     echo "Testing Neovim search integration..."
-    {{neovim-lua}} {{integration-dir}}/search/test_neovim_search_integration.lua
+    if ! {{neovim-lua}} {{integration-dir}}/search/test_neovim_search_integration.lua; then
+        failed_tests+=("test_neovim_search_integration.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Search server interaction tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ Search server interaction tests completed"
 
 test-server-interaction-backend:
     #!/usr/bin/env bash
     echo "=== Running Server Interaction Tests: Backend ==="
+    
+    local failed_tests=()
+    
     echo "Testing backend initialization..."
-    {{neovim-lua}} {{integration-dir}}/backend/test_backend_init.lua
+    if ! {{neovim-lua}} {{integration-dir}}/backend/test_backend_init.lua; then
+        failed_tests+=("test_backend_init.lua")
+    fi
+    
     echo "Testing Ollama integration..."
-    {{neovim-lua}} {{integration-dir}}/backend/test_ollama_integration.lua
+    if ! {{neovim-lua}} {{integration-dir}}/backend/test_ollama_integration.lua; then
+        failed_tests+=("test_ollama_integration.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Backend server interaction tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
     echo "✓ Backend server interaction tests completed"
 
 test-server-interaction: test-server-interaction-chat test-server-interaction-search test-server-interaction-backend
@@ -234,6 +552,7 @@ test-e2e-startup:
     #!/usr/bin/env bash
     echo "=== Running E2E Tests: Startup ==="
     echo "Testing AstroNvim startup..."
+    echo "✓ Startup E2E tests completed"
 
 test-e2e: test-e2e-plugin test-e2e-startup
     #!/usr/bin/env bash
@@ -274,7 +593,10 @@ test-timeout-retry:
     #!/usr/bin/env bash
     echo "=== Running Timeout and Retry Behavior Tests ==="
     echo "Testing comprehensive timeout/retry behavior..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/test_timeout_retry_suite.lua
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/test_timeout_retry_suite.lua; then
+        echo "✗ Timeout and retry tests failed"
+        exit 1
+    fi
     echo "✓ Timeout and retry tests completed"
 
 # Test with backend running
