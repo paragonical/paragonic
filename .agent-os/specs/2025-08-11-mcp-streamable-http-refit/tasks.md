@@ -52,13 +52,13 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 5.6 Test error handling and recovery scenarios
   - [x] 5.7 Verify all tests pass
 
-- [ ] 6. MCP Protocol Integration
-  - [ ] 6.1 Write tests for full MCP initialization workflow
-  - [ ] 6.2 Integrate HTTP transport with existing MCP message handling
-  - [ ] 6.3 Implement protocol version negotiation and validation
-  - [ ] 6.4 Add streaming support for long-running operations
-  - [ ] 6.5 Test session management across multiple requests
-  - [ ] 6.6 Verify all tests pass
+- [x] 6. MCP Protocol Integration
+  - [x] 6.1 Write tests for full MCP initialization workflow
+  - [x] 6.2 Integrate HTTP transport with existing MCP message handling
+  - [x] 6.3 Implement protocol version negotiation and validation
+  - [x] 6.4 Add streaming support for long-running operations
+  - [x] 6.5 Test session management across multiple requests
+  - [x] 6.6 Verify all tests pass
 
 - [ ] 7. Backward Compatibility and Migration
   - [ ] 7.1 Write tests for backward compatibility with existing functionality
