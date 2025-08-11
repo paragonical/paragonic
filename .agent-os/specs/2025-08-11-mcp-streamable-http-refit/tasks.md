@@ -25,14 +25,14 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 2.6 Test concurrent session handling
   - [x] 2.7 Verify all tests pass
 
-- [ ] 3. SSE Stream Management Implementation (Rust)
-  - [ ] 3.1 Write tests for SSE stream creation and lifecycle
-  - [ ] 3.2 Implement SSE stream initialization and management
-  - [ ] 3.3 Add event ID generation and uniqueness
-  - [ ] 3.4 Implement stream resumption with Last-Event-ID
-  - [ ] 3.5 Add multiple concurrent streams support
-  - [ ] 3.6 Implement proper stream cleanup and resource management
-  - [ ] 3.7 Verify all tests pass
+- [x] 3. SSE Stream Management Implementation (Rust)
+  - [x] 3.1 Write tests for SSE stream creation and lifecycle
+  - [x] 3.2 Implement SSE stream initialization and management
+  - [x] 3.3 Add event ID generation and uniqueness
+  - [x] 3.4 Implement stream resumption with Last-Event-ID
+  - [x] 3.5 Add multiple concurrent streams support
+  - [x] 3.6 Implement proper stream cleanup and resource management
+  - [x] 3.7 Verify all tests pass
 
 - [ ] 4. HTTP Client Implementation (Lua)
   - [ ] 4.1 Write tests for HTTP request building and sending
