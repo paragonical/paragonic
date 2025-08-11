@@ -14,6 +14,7 @@ local debug = require("paragonic.debug")
 local events = require("paragonic.events")
 local keymaps = require("paragonic.keymaps")
 local mcp = require("paragonic.mcp")
+local patterns = require("paragonic.patterns")
 local search = require("paragonic.search")
 local text = require("paragonic.text")
 local ui = require("paragonic.ui")
@@ -28,6 +29,7 @@ M.debug = debug
 M.events = events
 M.keymaps = keymaps
 M.mcp = mcp
+M.patterns = patterns
 M.search = search
 M.text = text
 M.ui = ui
@@ -296,6 +298,17 @@ function M.setup(opts)
             else
                 vim.notify("AI agent executed sequence with errors (" .. result.successful_actions .. "/" .. result.total_actions .. " successful)", vim.log.levels.WARN)
             end
+        end, opts = {nargs = "*"}},
+        
+        -- Pattern management commands
+        {name = "ParagonicPatternList", func = M.patterns.pattern_list_command, opts = {}},
+        {name = "ParagonicPatternExecute", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            M.patterns.execute_pattern_command(pattern_name)
         end, opts = {nargs = "*"}},
         
         -- Connection management commands

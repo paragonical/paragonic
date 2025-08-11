@@ -87,10 +87,10 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 6.9 Verify all tests pass
 
 - [ ] 7. **Neovim Integration and UI**
-  - [ ] 7.1 Write tests for pattern management commands
-  - [ ] 7.2 Implement ParagonicPatternList command
-  - [ ] 7.3 Write tests for pattern execution commands
-  - [ ] 7.4 Implement ParagonicPatternExecute command
+  - [x] 7.1 Write tests for pattern management commands
+  - [x] 7.2 Implement ParagonicPatternList command
+  - [x] 7.3 Write tests for pattern execution commands
+  - [x] 7.4 Implement ParagonicPatternExecute command
   - [ ] 7.5 Write tests for pattern display functions
   - [ ] 7.6 Implement pattern display in floating windows
   - [ ] 7.7 Write tests for session pattern integration
