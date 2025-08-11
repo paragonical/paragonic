@@ -32,6 +32,10 @@ function M._setup_keymaps()
     vim.api.nvim_set_keymap("n", "<leader>par", ":ParagonicAIAgentReceive ", {noremap = true, silent = false, desc = "Receive AI Agent Message"})
     vim.api.nvim_set_keymap("n", "<leader>pac", ":ParagonicAIAgentCommand ", {noremap = true, silent = false, desc = "Execute AI Agent Command"})
     
+    -- Pattern-aware session keymaps
+    vim.api.nvim_set_keymap("n", "<leader>pap", ":ParagonicAIAgentExecutePattern ", {noremap = true, silent = false, desc = "Execute Pattern in Session"})
+    vim.api.nvim_set_keymap("n", "<leader>pat", ":ParagonicAIAgentCheckPatterns<CR>", {noremap = true, silent = true, desc = "Check Pattern Triggers"})
+    
     -- MCP keymaps
     vim.api.nvim_set_keymap("n", "<leader>pmi", ":ParagonicMCPInit<CR>", {noremap = true, silent = true, desc = "Initialize MCP Server"})
     vim.api.nvim_set_keymap("n", "<leader>pmr", ":ParagonicMCPResources<CR>", {noremap = true, silent = true, desc = "Show MCP Resources"})

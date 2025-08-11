@@ -38,6 +38,14 @@ function M.start_ai_agent_session(agent_name, capabilities)
     agent_collaboration_mode = true
     
     vim.notify("Started AI agent collaboration session: " .. session_id, vim.log.levels.INFO)
+    
+    -- Execute session start patterns
+    M.execute_session_pattern("Session Summary Generation", {
+        event_type = "session_start",
+        agent_name = agent_name,
+        capabilities = capabilities
+    })
+    
     return session_id
 end
 
@@ -61,6 +69,11 @@ function M.stop_ai_agent_session()
         
         vim.notify("Stopped AI agent collaboration session: " .. active_agent_id .. " (Duration: " .. session.duration .. "s)", vim.log.levels.INFO)
     end
+    
+    -- Execute session stop patterns before clearing session
+    M.execute_session_pattern("Session Summary Generation", {
+        event_type = "session_stop"
+    })
     
     agent_collaboration_mode = false
     active_agent_id = nil
@@ -103,6 +116,9 @@ function M.send_ai_agent_message(message, message_type)
     -- Notify user of AI message
     vim.notify("🤖 AI Agent: " .. message, vim.log.levels.INFO)
     
+    -- Check for pattern triggers after message
+    M.check_and_trigger_patterns()
+    
     return true, message_obj.id
 end
 
@@ -140,6 +156,9 @@ function M.receive_ai_agent_message(message, message_type)
     
     -- Log the received message
     vim.notify("📥 Neovim: " .. message, vim.log.levels.INFO)
+    
+    -- Check for pattern triggers after message
+    M.check_and_trigger_patterns()
     
     return true, message_obj.id
 end
@@ -196,6 +215,11 @@ function M.execute_ai_agent_command(command, description)
     -- Notify user of AI command execution
     local status_icon = success and "✅" or "❌"
     vim.notify(status_icon .. " AI Agent Command: " .. command, vim.log.levels.INFO)
+    
+    -- Check for pattern triggers after command
+    if success then
+        M.check_and_trigger_patterns()
+    end
     
     return success, action_obj.id, action_obj.result
 end
@@ -1083,5 +1107,113 @@ function M.agent_save_file()
     
     vim.notify("Saved file: " .. file_path, vim.log.levels.INFO)
 end
+
+-- Pattern integration functions
+function M.execute_session_pattern(pattern_name, context)
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Import patterns module
+    local patterns = require("paragonic.patterns")
+    
+    -- Prepare session context
+    local session_context = context or {}
+    session_context.session_id = session.id
+    session_context.session_name = session.name
+    session_context.session_duration = os.time() - session.start_time
+    session_context.interaction_count = #session.interactions
+    
+    -- Execute pattern with session context
+    local result = patterns.execute_pattern(pattern_name, session_context)
+    
+    if result.success then
+        -- Track pattern execution in session
+        local pattern_interaction = {
+            id = #session.interactions + 1,
+            timestamp = os.time(),
+            type = "pattern_execution",
+            content = pattern_name,
+            description = "Pattern execution: " .. pattern_name,
+            from_agent = true,
+            status = "completed",
+            result = result.result
+        }
+        
+        table.insert(session.interactions, pattern_interaction)
+        
+        -- Update session context
+        session.context = {
+            current_file = vim.fn.expand("%"),
+            current_directory = vim.fn.getcwd(),
+            buffer_count = #vim.api.nvim_list_bufs(),
+            mode = vim.fn.mode()
+        }
+        
+        vim.notify("✅ Pattern executed in session: " .. pattern_name, vim.log.levels.INFO)
+    else
+        vim.notify("❌ Pattern execution failed: " .. pattern_name, vim.log.levels.ERROR)
+    end
+    
+    return result.success, result
+end
+
+function M.check_and_trigger_patterns()
+    if not agent_collaboration_mode or not active_agent_id then
+        return false, "No active AI agent collaboration session"
+    end
+    
+    local session = ai_agent_sessions[active_agent_id]
+    if not session then
+        return false, "Session data not found"
+    end
+    
+    -- Import patterns module
+    local patterns = require("paragonic.patterns")
+    
+    -- Get all patterns
+    local all_patterns = patterns.list_patterns()
+    local triggered_patterns = {}
+    
+    -- Check for patterns that should be triggered based on session state
+    for _, pattern in ipairs(all_patterns) do
+        local should_trigger = false
+        
+        -- Check session duration triggers
+        local session_duration = os.time() - session.start_time
+        if pattern.name == "Session Summary Generation" and session_duration > 300 then
+            should_trigger = true
+        elseif pattern.name == "Activity Labeling" and #session.interactions > 2 then
+            should_trigger = true
+        elseif pattern.name == "Self-Reflection" and #session.interactions > 5 then
+            should_trigger = true
+        end
+        
+        if should_trigger then
+            table.insert(triggered_patterns, pattern)
+        end
+    end
+    
+    -- Execute triggered patterns
+    local executed_patterns = {}
+    for _, pattern in ipairs(triggered_patterns) do
+        local success, result = M.execute_session_pattern(pattern.name)
+        if success then
+            table.insert(executed_patterns, pattern.name)
+        end
+    end
+    
+    return true, {
+        triggered_patterns = triggered_patterns,
+        executed_patterns = executed_patterns
+    }
+end
+
+
 
 return M

@@ -311,6 +311,31 @@ function M.setup(opts)
             M.patterns.execute_pattern_command(pattern_name)
         end, opts = {nargs = "*"}},
         
+        -- Pattern-aware session commands
+        {name = "ParagonicAIAgentExecutePattern", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            local success, result = M.ai_agent.execute_session_pattern(pattern_name)
+            if success then
+                vim.notify("Pattern executed in session: " .. pattern_name, vim.log.levels.INFO)
+            else
+                vim.notify("Failed to execute pattern: " .. tostring(result), vim.log.levels.ERROR)
+            end
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicAIAgentCheckPatterns", func = function()
+            local success, result = M.ai_agent.check_and_trigger_patterns()
+            if success then
+                local triggered_count = #result.triggered_patterns
+                local executed_count = #result.executed_patterns
+                vim.notify("Pattern check completed: " .. triggered_count .. " triggered, " .. executed_count .. " executed", vim.log.levels.INFO)
+            else
+                vim.notify("Pattern check failed: " .. tostring(result), vim.log.levels.ERROR)
+            end
+        end, opts = {}},
+        
         -- Connection management commands
         {name = "ParagonicReconnect", func = function()
             local success = M.backend.force_reconnect()
