@@ -20,6 +20,10 @@ M.cancellation_state = {
 M.tool_pattern_usage = {}
 M.pattern_tool_mappings = {}
 
+-- Pattern execution tracking
+M.pattern_execution_history = {}
+M.execution_counter = 0
+
 -- Initialize MCP server
 function M.initialize_mcp_server()
     if M.mcp_server_initialized then
@@ -558,6 +562,249 @@ function M.get_filtered_recommendations(filters)
     table.sort(filtered_recommendations, function(a, b) return a.success_rate > b.success_rate end)
     
     return filtered_recommendations
+end
+
+-- Execute tool with pattern tracking
+function M.execute_tool_with_pattern(tool_name, args, pattern_id)
+    M.execution_counter = M.execution_counter + 1
+    local execution_id = "exec_" .. M.execution_counter
+    
+    -- Validate pattern exists for this tool
+    local valid_pattern = false
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            for _, pattern in ipairs(tool.patterns) do
+                if pattern.pattern_id == pattern_id then
+                    valid_pattern = true
+                    break
+                end
+            end
+            break
+        end
+    end
+    
+    if not valid_pattern then
+        return {
+            success = false,
+            error = "Invalid pattern " .. pattern_id .. " for tool " .. tool_name,
+            execution_id = execution_id
+        }
+    end
+    
+    -- Simulate tool execution (in real implementation, this would call the actual tool)
+    local success = true
+    local result = "Tool " .. tool_name .. " executed successfully with pattern " .. pattern_id
+    
+    -- Track the execution
+    M.track_tool_pattern_usage(tool_name, pattern_id, success)
+    
+    -- Record in execution history
+    table.insert(M.pattern_execution_history, {
+        execution_id = execution_id,
+        tool_name = tool_name,
+        pattern_id = pattern_id,
+        args = args,
+        success = success,
+        timestamp = os.time(),
+        result = result
+    })
+    
+    return {
+        success = success,
+        pattern_tracked = true,
+        execution_id = execution_id,
+        result = result
+    }
+end
+
+-- Execute tool with automatic pattern detection
+function M.execute_tool_with_auto_pattern_detection(tool_name, args)
+    M.execution_counter = M.execution_counter + 1
+    local execution_id = "exec_" .. M.execution_counter
+    
+    local detected_patterns = {}
+    
+    -- Find the tool and its patterns
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            -- Simple pattern detection based on tool name and args
+            if tool_name == "agent_create_file" and args.file_name then
+                if string.find(args.file_name, "summary") or string.find(args.file_name, "summary") then
+                    table.insert(detected_patterns, {pattern_id = "session_summary_generation", confidence = 0.9})
+                end
+                if args.content and string.find(args.content, "knowledge") then
+                    table.insert(detected_patterns, {pattern_id = "knowledge_extraction", confidence = 0.8})
+                end
+            elseif tool_name == "agent_edit_file" then
+                table.insert(detected_patterns, {pattern_id = "activity_labeling", confidence = 0.7})
+            elseif tool_name == "agent_save_file" then
+                table.insert(detected_patterns, {pattern_id = "progress_tracking", confidence = 0.8})
+            end
+            
+            -- Add all tool patterns with lower confidence
+            for _, pattern in ipairs(tool.patterns) do
+                local found = false
+                for _, detected in ipairs(detected_patterns) do
+                    if detected.pattern_id == pattern.pattern_id then
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    table.insert(detected_patterns, {pattern_id = pattern.pattern_id, confidence = 0.5})
+                end
+            end
+            break
+        end
+    end
+    
+    -- Track usage for detected patterns
+    for _, pattern in ipairs(detected_patterns) do
+        M.track_tool_pattern_usage(tool_name, pattern.pattern_id, true)
+    end
+    
+    return {
+        success = true,
+        detected_patterns = detected_patterns,
+        execution_id = execution_id
+    }
+end
+
+-- Execute tool with pattern validation
+function M.execute_tool_with_pattern_validation(tool_name, args, pattern_id)
+    -- Check if pattern is valid for this tool
+    local valid = false
+    local error_msg = nil
+    
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            for _, pattern in ipairs(tool.patterns) do
+                if pattern.pattern_id == pattern_id then
+                    valid = true
+                    break
+                end
+            end
+            if not valid then
+                error_msg = "Pattern " .. pattern_id .. " is not valid for tool " .. tool_name
+            end
+            break
+        end
+    end
+    
+    if not valid then
+        return {
+            valid = false,
+            error = error_msg
+        }
+    end
+    
+    -- Execute the tool if validation passes
+    local result = M.execute_tool_with_pattern(tool_name, args, pattern_id)
+    result.valid = true
+    
+    return result
+end
+
+-- Execute tool with pattern-based recommendations
+function M.execute_tool_with_pattern_recommendations(tool_name, args, pattern_id)
+    -- Get recommendations for the pattern
+    local recommendations = M.get_pattern_recommendations(pattern_id)
+    
+    -- Execute the tool
+    local result = M.execute_tool_with_pattern(tool_name, args, pattern_id)
+    
+    -- Add recommendations to result
+    result.recommendations = recommendations
+    
+    return result
+end
+
+-- Execute tool with pattern execution history
+function M.execute_tool_with_pattern_history(tool_name, args, pattern_id)
+    -- Execute the tool
+    local result = M.execute_tool_with_pattern(tool_name, args, pattern_id)
+    
+    -- Get execution history for this tool-pattern combination
+    local history = {}
+    for _, entry in ipairs(M.pattern_execution_history) do
+        if entry.tool_name == tool_name and entry.pattern_id == pattern_id then
+            table.insert(history, {
+                tool_name = entry.tool_name,
+                pattern_id = entry.pattern_id,
+                timestamp = entry.timestamp,
+                success = entry.success,
+                execution_id = entry.execution_id
+            })
+        end
+    end
+    
+    result.history = history
+    
+    return result
+end
+
+-- Execute tool with pattern performance metrics
+function M.execute_tool_with_pattern_metrics(tool_name, args, pattern_id)
+    local start_time = os.clock()
+    
+    -- Execute the tool
+    local result = M.execute_tool_with_pattern(tool_name, args, pattern_id)
+    
+    local execution_time = os.clock() - start_time
+    
+    -- Get performance metrics
+    local stats = M.get_tool_pattern_usage_stats(tool_name, pattern_id)
+    local tool_stats = nil
+    for _, tool in ipairs(M.mcp_tools) do
+        if tool.name == tool_name then
+            tool_stats = tool.success_metrics
+            break
+        end
+    end
+    
+    result.metrics = {
+        execution_time = execution_time,
+        pattern_success_rate = stats and stats.success_rate or 0,
+        tool_success_rate = tool_stats and tool_stats.success_rate or 0
+    }
+    
+    return result
+end
+
+-- Execute tool with pattern learning
+function M.execute_tool_with_pattern_learning(tool_name, args, pattern_id, success)
+    -- Execute the tool
+    local result = M.execute_tool_with_pattern(tool_name, args, pattern_id)
+    
+    -- Apply learning (update success rates based on actual outcome)
+    if success ~= nil then
+        M.track_tool_pattern_usage(tool_name, pattern_id, success)
+        
+        -- Update tool success metrics
+        for _, tool in ipairs(M.mcp_tools) do
+            if tool.name == tool_name then
+                -- Recalculate success rate based on all pattern usage
+                local total_usage = 0
+                local total_successful = 0
+                for _, pattern_usage in pairs(M.tool_pattern_usage[tool_name] or {}) do
+                    total_usage = total_usage + pattern_usage.total_usage
+                    total_successful = total_successful + pattern_usage.successful_usage
+                end
+                
+                if total_usage > 0 then
+                    tool.success_metrics.success_rate = total_successful / total_usage
+                end
+                break
+            end
+        end
+        
+        result.learning_applied = true
+        result.pattern_adapted = true
+        result.new_success_rate = M.get_tool_pattern_usage_stats(tool_name, pattern_id) and 
+                                 M.get_tool_pattern_usage_stats(tool_name, pattern_id).success_rate or 0
+    end
+    
+    return result
 end
 
 -- Get buffers information
