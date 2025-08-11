@@ -8,6 +8,9 @@ lua-module-path := "./lua/?.lua;./lua/?/init.lua"
 # Try to find the best Lua runner available
 neovim-lua := env_var_or_default("NEOVIM_LUA", "lua")
 
+# Set Lua path for module loading
+lua-path := env_var_or_default("LUA_PATH", "./lua/?.lua;./lua/?/init.lua;;")
+
 # Test directories
 unit-dir := "tests/unit"
 integration-dir := "tests/integration"
@@ -23,17 +26,17 @@ test-unit-core:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Core ==="
     echo "Testing basic functionality..."
-    {{neovim-lua}} {{unit-dir}}/core/test_simple.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_simple.lua
     echo "Testing JSON parsing..."
-    {{neovim-lua}} {{unit-dir}}/core/test_json_parsing.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_json_parsing.lua
     echo "Testing initialization..."
-    {{neovim-lua}} {{unit-dir}}/core/test_initialization_unit.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_initialization_unit.lua
     echo "Testing persistent storage..."
-    {{neovim-lua}} {{unit-dir}}/core/test_persistent_storage.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_persistent_storage.lua
     echo "Testing search functions..."
-    {{neovim-lua}} {{unit-dir}}/core/test_search_functions.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_search_functions.lua
     echo "Testing search history..."
-    {{neovim-lua}} {{unit-dir}}/core/test_search_history.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_search_history.lua
     echo "✓ Core unit tests completed"
 
 test-unit-rpc:
@@ -41,97 +44,97 @@ test-unit-rpc:
     echo "=== Running Unit Tests: RPC ==="
     echo "Note: Most RPC tests require Neovim environment (vim global)"
     echo "Testing basic RPC functionality..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_simple.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_simple.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC JSON handling..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_json.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_json.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing standalone RPC client..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_standalone.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_standalone.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC model listing..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_standalone_list_models.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_standalone_list_models.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC connection..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_standalone_connection.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_standalone_connection.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC timeout and retry behavior..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_timeout_retry_simple.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_timeout_retry_simple.lua
     echo "Testing RPC timeout retry..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_timeout_retry.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_timeout_retry.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC reconnection..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC reconnection basic..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_basic.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_basic.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC reconnection minimal..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_minimal.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_minimal.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC reconnection simple..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_simple.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_simple.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC reconnection standalone..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_standalone.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_standalone.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "Testing RPC reconnection working..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_working.lua || echo "⚠️  Failed (expected - requires vim)"
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_reconnection_working.lua || echo "⚠️  Failed (expected - requires vim)"
     echo "✓ RPC unit tests completed (some failures expected in standalone mode)"
 
 test-unit-utils:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Utils ==="
     echo "Testing formatting utilities..."
-    {{neovim-lua}} {{unit-dir}}/utils/test_format_simple.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_format_simple.lua
     echo "Testing escaping utilities..."
-    {{neovim-lua}} {{unit-dir}}/utils/test_escape.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_escape.lua
     echo "Testing pattern matching..."
-    {{neovim-lua}} {{unit-dir}}/utils/test_pattern.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/utils/test_pattern.lua
     echo "✓ Utils unit tests completed"
 
 test-unit-neovim:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Neovim ==="
     echo "Testing pattern management commands..."
-    {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_management_commands.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_management_commands.lua
     echo "Testing pattern execution commands..."
-    {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_execution_commands.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_execution_commands.lua
     echo "Testing pattern display functions..."
-    {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_display_functions.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_display_functions.lua
     echo "Testing pattern metrics display..."
-    {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_metrics_display.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_pattern_metrics_display.lua
     echo "Testing session pattern integration..."
-    {{neovim-lua}} {{unit-dir}}/neovim/test_session_pattern_integration.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/neovim/test_session_pattern_integration.lua
     echo "✓ Neovim unit tests completed"
 
 test-unit-chat:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Chat ==="
     echo "Testing chat visual feedback simple..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback_simple.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback_simple.lua
     echo "Testing chat visual feedback..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback.lua
     echo "Testing real connection..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_real_connection.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_real_connection.lua
     echo "Testing RPC fallback..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_rpc_fallback.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_rpc_fallback.lua
     echo "Testing simple RPC..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_simple_rpc.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_simple_rpc.lua
     echo "Testing smart send..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_smart_send.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_smart_send.lua
     echo "Testing streaming fix..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_streaming_fix.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_streaming_fix.lua
     echo "Testing text extraction..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_text_extraction.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_text_extraction.lua
     echo "Testing thinking streaming..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming.lua
     echo "Testing thinking streaming integration..."
-    {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming_integration.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming_integration.lua
     echo "✓ Chat unit tests completed"
 
 test-unit-mcp:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: MCP ==="
     echo "Testing enhanced MCP tool descriptions..."
-    {{neovim-lua}} {{unit-dir}}/mcp/test_enhanced_mcp_tool_descriptions.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_enhanced_mcp_tool_descriptions.lua
     echo "Testing MCP tool execution with patterns..."
-    {{neovim-lua}} {{unit-dir}}/mcp/test_mcp_tool_execution_with_patterns.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_mcp_tool_execution_with_patterns.lua
     echo "Testing pattern aware tool recommendations..."
-    {{neovim-lua}} {{unit-dir}}/mcp/test_pattern_aware_tool_recommendations.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_pattern_aware_tool_recommendations.lua
     echo "Testing tool pattern relationship management..."
-    {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_management.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_management.lua
     echo "Testing tool pattern relationship tracking..."
-    {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_tracking.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_tool_pattern_relationship_tracking.lua
     echo "✓ MCP unit tests completed"
 
 test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp
@@ -144,7 +147,7 @@ test-rpc-integration:
     #!/usr/bin/env bash
     echo "=== Running RPC Integration Tests ==="
     echo "Testing RPC server integration (soft fail if server not available)..."
-    {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_integration.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_integration.lua
     echo "✓ RPC integration tests completed"
 
 # Server lifecycle tests (start/stop servers, use different ports)
@@ -262,7 +265,7 @@ test-timeout-retry:
     #!/usr/bin/env bash
     echo "=== Running Timeout and Retry Behavior Tests ==="
     echo "Testing comprehensive timeout/retry behavior..."
-    {{neovim-lua}} {{unit-dir}}/test_timeout_retry_suite.lua
+    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/test_timeout_retry_suite.lua
     echo "✓ Timeout and retry tests completed"
 
 # Test with backend running
