@@ -11,6 +11,9 @@ neovim-lua := env_var_or_default("NEOVIM_LUA", "lua")
 # Set Lua path for module loading
 lua-path := env_var_or_default("LUA_PATH", "./lua/?.lua;./lua/?/init.lua;;")
 
+# Neovim executable
+neovim-cmd := env_var_or_default("NEOVIM_CMD", "nvim")
+
 # Test directories
 unit-dir := "tests/unit"
 integration-dir := "tests/integration"
@@ -25,37 +28,54 @@ default:
 test-unit-core:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Core ==="
-    echo "Testing basic functionality..."
+    echo "Testing basic functionality (standalone)..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_simple.lua
-    echo "Testing JSON parsing..."
+    echo "Testing JSON parsing (standalone)..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_json_parsing.lua
-    echo "Testing initialization..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_initialization_unit.lua
-    echo "Testing persistent storage..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_persistent_storage.lua
-    echo "Testing search functions..."
+    echo "Testing search functions (standalone)..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_search_functions.lua
+    echo ""
+    echo "Testing Neovim-dependent core functionality..."
+    echo "Testing initialization..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/core/test_initialization_unit.lua')" -c "quit"
+    echo "Testing persistent storage..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/core/test_persistent_storage.lua')" -c "quit"
     echo "Testing search history..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_search_history.lua
-    echo "✓ Core unit tests completed"
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/core/test_search_history.lua')" -c "quit"
+    echo "✓ Core unit tests completed (standalone + Neovim tests)"
 
 test-unit-rpc:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: RPC ==="
-    echo "Note: Most RPC tests require Neovim environment (vim global)"
     echo "Testing RPC timeout and retry behavior (standalone)..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_timeout_retry_simple.lua
     echo ""
-    echo "⚠️  Skipping other RPC tests - they require Neovim environment:"
-    echo "  - test_rpc_simple.lua (requires vim)"
-    echo "  - test_rpc_json.lua (requires vim)"
-    echo "  - test_rpc_standalone.lua (requires vim)"
-    echo "  - test_rpc_standalone_list_models.lua (requires vim)"
-    echo "  - test_rpc_standalone_connection.lua (requires vim)"
-    echo "  - test_rpc_timeout_retry.lua (requires vim)"
-    echo "  - test_rpc_reconnection*.lua (require vim)"
-    echo ""
-    echo "✓ RPC unit tests completed (only standalone tests run)"
+    echo "Testing RPC functionality in Neovim environment..."
+    echo "Testing basic RPC functionality..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_simple.lua')" -c "quit"
+    echo "Testing RPC JSON handling..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_json.lua')" -c "quit"
+    echo "Testing standalone RPC client..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_standalone.lua')" -c "quit"
+    echo "Testing RPC model listing..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_standalone_list_models.lua')" -c "quit"
+    echo "Testing RPC connection..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/rpc/test_rpc_standalone_connection.lua')" -c "quit"
+    echo "Testing RPC timeout retry..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_timeout_retry.lua')" -c "quit"
+    echo "Testing RPC reconnection..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection.lua')" -c "quit"
+    echo "Testing RPC reconnection basic..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_basic.lua')" -c "quit"
+    echo "Testing RPC reconnection minimal..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_minimal.lua')" -c "quit"
+    echo "Testing RPC reconnection simple..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_simple.lua')" -c "quit"
+    echo "Testing RPC reconnection standalone..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_standalone.lua')" -c "quit"
+    echo "Testing RPC reconnection working..."
+    {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/rpc/test_rpc_reconnection_working.lua')" -c "quit"
+    echo "✓ RPC unit tests completed (standalone + Neovim tests)"
 
 test-unit-utils:
     #!/usr/bin/env bash
@@ -86,27 +106,30 @@ test-unit-neovim:
 test-unit-chat:
     #!/usr/bin/env bash
     echo "=== Running Unit Tests: Chat ==="
+    echo "Testing standalone chat functionality..."
     echo "Testing chat visual feedback simple..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback_simple.lua
-    echo "Testing chat visual feedback..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_chat_visual_feedback.lua
-    echo "Testing real connection..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_real_connection.lua
-    echo "Testing RPC fallback..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_rpc_fallback.lua
-    echo "Testing simple RPC..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_simple_rpc.lua
     echo "Testing smart send..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_smart_send.lua
     echo "Testing streaming fix..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_streaming_fix.lua
-    echo "Testing text extraction..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_text_extraction.lua
     echo "Testing thinking streaming..."
     LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming.lua
+    echo ""
+    echo "Testing Neovim-dependent chat functionality..."
+    echo "Testing chat visual feedback..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_chat_visual_feedback.lua')" -c "quit"
+    echo "Testing real connection..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_real_connection.lua')" -c "quit"
+    echo "Testing RPC fallback..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_rpc_fallback.lua')" -c "quit"
+    echo "Testing simple RPC..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_simple_rpc.lua')" -c "quit"
+    echo "Testing text extraction..."
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_text_extraction.lua')" -c "quit"
     echo "Testing thinking streaming integration..."
-    LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_thinking_streaming_integration.lua
-    echo "✓ Chat unit tests completed"
+    {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/chat/test_thinking_streaming_integration.lua')" -c "quit"
+    echo "✓ Chat unit tests completed (standalone + Neovim tests)"
 
 test-unit-mcp:
     #!/usr/bin/env bash
