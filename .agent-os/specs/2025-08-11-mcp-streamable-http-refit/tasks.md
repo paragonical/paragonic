@@ -7,14 +7,14 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
 
 ## Tasks
 
-- [ ] 1. HTTP Server Implementation (Rust)
-  - [ ] 1.1 Write tests for HTTP server endpoint creation and routing
-  - [ ] 1.2 Implement basic HTTP server with axum framework
-  - [ ] 1.3 Add MCP endpoint (/mcp) with POST/GET/DELETE support
-  - [ ] 1.4 Implement header validation and security checks
-  - [ ] 1.5 Add JSON-RPC message validation and parsing
-  - [ ] 1.6 Implement proper HTTP status codes and error responses
-  - [ ] 1.7 Verify all tests pass
+- [x] 1. HTTP Server Implementation (Rust)
+  - [x] 1.1 Write tests for HTTP server endpoint creation and routing
+  - [x] 1.2 Implement basic HTTP server with axum framework
+  - [x] 1.3 Add MCP endpoint (/mcp) with POST/GET/DELETE support
+  - [x] 1.4 Implement header validation and security checks
+  - [x] 1.5 Add JSON-RPC message validation and parsing
+  - [x] 1.6 Implement proper HTTP status codes and error responses
+  - [x] 1.7 Verify all tests pass
 
 - [ ] 2. Session Management Implementation (Rust)
   - [ ] 2.1 Write tests for session creation, validation, and cleanup
