@@ -654,6 +654,12 @@ help:
     echo "  test-timeout-retry - Timeout and retry behavior tests"
     echo "  test-with-backend - Server interaction tests (requires backend running)"
     echo ""
+    echo "Rust test targets:"
+    echo "  test-rust         - All Rust tests (unit + integration)"
+    echo "  test-rust-unit    - Rust unit tests only"
+    echo "  test-rust-integration - Rust integration tests only"
+    echo "  test-combined     - All tests (Lua + Rust)"
+    echo ""
     echo "Server interaction test categories:"
     echo "  test-server-interaction-chat    - Chat functionality"
     echo "  test-server-interaction-search  - Search functionality"
@@ -671,8 +677,10 @@ help:
     echo "  clean-makefiles   - Remove old Makefile versions"
     echo ""
     echo "Examples:"
-    echo "  just test              # Quick development test"
-    echo "  just test-unit         # Fast unit tests"
+    echo "  just test              # Quick development test (Lua only)"
+    echo "  just test-unit         # Fast unit tests (Lua only)"
+    echo "  just test-rust         # Rust tests only"
+    echo "  just test-combined     # All tests (Lua + Rust)"
     echo "  just test-unit-neovim  # Neovim integration tests only"
     echo "  just test-server-interaction  # Tests using running server"
     echo "  just test-server-lifecycle    # Tests that manage servers"
@@ -681,6 +689,40 @@ help:
     echo "Backend setup:"
     echo "  cargo run -- --no-database &  # Start backend"
     echo "  just test-with-backend        # Run server interaction tests"
+
+# Rust tests
+test-rust:
+    #!/usr/bin/env bash
+    echo "=== Running Rust Tests ==="
+    if ! cargo test; then
+        echo "✗ Rust tests failed"
+        exit 1
+    fi
+    echo "✓ Rust tests completed"
+
+test-rust-unit:
+    #!/usr/bin/env bash
+    echo "=== Running Rust Unit Tests ==="
+    if ! cargo test --lib; then
+        echo "✗ Rust unit tests failed"
+        exit 1
+    fi
+    echo "✓ Rust unit tests completed"
+
+test-rust-integration:
+    #!/usr/bin/env bash
+    echo "=== Running Rust Integration Tests ==="
+    if ! cargo test --test "*"; then
+        echo "✗ Rust integration tests failed"
+        exit 1
+    fi
+    echo "✓ Rust integration tests completed"
+
+# Combined tests (Lua + Rust)
+test-combined: test-unit test-rust
+    #!/usr/bin/env bash
+    echo ""
+    echo "✓ All tests completed (Lua + Rust)"
 
 # Legacy targets for backward compatibility
 test-lua: test
