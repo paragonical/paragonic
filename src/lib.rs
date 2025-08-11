@@ -12,6 +12,7 @@ pub mod schema;
 pub mod embeddings;
 pub mod embeddings_local;
 pub mod rpc;
+pub mod http_server;
 pub mod vector;
 // pub mod fulltext; // TODO: Fix type annotation issue in Tantivy integration
 pub mod operations;

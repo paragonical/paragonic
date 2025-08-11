@@ -64,7 +64,13 @@ markdown = "1.0"
 # CLI argument parsing (for development/testing)
 clap = { version = "4.0", features = ["derive"] }
 
-# JSON-RPC for Lua-Rust communication and MCP
+# HTTP server for MCP Streamable HTTP transport
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# JSON-RPC for Lua-Rust communication and MCP (legacy TCP transport)
 tokio-jsonrpc = "0.9.1"
 tokio-core = "0.1"
 futures = "0.1"
