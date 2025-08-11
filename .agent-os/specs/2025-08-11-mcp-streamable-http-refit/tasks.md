@@ -34,14 +34,14 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 3.6 Implement proper stream cleanup and resource management
   - [x] 3.7 Verify all tests pass
 
-- [ ] 4. HTTP Client Implementation (Lua)
-  - [ ] 4.1 Write tests for HTTP request building and sending
-  - [ ] 4.2 Implement HTTP client with request/response handling
-  - [ ] 4.3 Add session ID persistence and management
-  - [ ] 4.4 Implement reconnection logic and error recovery
-  - [ ] 4.5 Add timeout and retry mechanisms
-  - [ ] 4.6 Test error handling and edge cases
-  - [ ] 4.7 Verify all tests pass
+- [x] 4. HTTP Client Implementation (Lua)
+  - [x] 4.1 Write tests for HTTP request building and sending
+  - [x] 4.2 Implement HTTP client with request/response handling
+  - [x] 4.3 Add session ID persistence and management
+  - [x] 4.4 Implement reconnection logic and error recovery
+  - [x] 4.5 Add timeout and retry mechanisms
+  - [x] 4.6 Test error handling and edge cases
+  - [x] 4.7 Verify all tests pass
 
 - [ ] 5. SSE Client Implementation (Lua)
   - [ ] 5.1 Write tests for SSE connection establishment
