@@ -36,6 +36,13 @@ function M._setup_keymaps()
     vim.api.nvim_set_keymap("n", "<leader>pap", ":ParagonicAIAgentExecutePattern ", {noremap = true, silent = false, desc = "Execute Pattern in Session"})
     vim.api.nvim_set_keymap("n", "<leader>pat", ":ParagonicAIAgentCheckPatterns<CR>", {noremap = true, silent = true, desc = "Check Pattern Triggers"})
     
+    -- Pattern metrics visualization keymaps
+    vim.api.nvim_set_keymap("n", "<leader>pms", ":ParagonicPatternStats ", {noremap = true, silent = false, desc = "Show Pattern Statistics"})
+    vim.api.nvim_set_keymap("n", "<leader>pmm", ":ParagonicPatternMetrics ", {noremap = true, silent = false, desc = "Show Pattern Metrics"})
+    vim.api.nvim_set_keymap("n", "<leader>pmh", ":ParagonicPatternHistory ", {noremap = true, silent = false, desc = "Show Pattern History"})
+    vim.api.nvim_set_keymap("n", "<leader>pmc", ":ParagonicPatternChart ", {noremap = true, silent = false, desc = "Show Pattern Chart"})
+    vim.api.nvim_set_keymap("n", "<leader>pmt", ":ParagonicPatternTrends ", {noremap = true, silent = false, desc = "Show Pattern Trends"})
+    
     -- MCP keymaps
     vim.api.nvim_set_keymap("n", "<leader>pmi", ":ParagonicMCPInit<CR>", {noremap = true, silent = true, desc = "Initialize MCP Server"})
     vim.api.nvim_set_keymap("n", "<leader>pmr", ":ParagonicMCPResources<CR>", {noremap = true, silent = true, desc = "Show MCP Resources"})

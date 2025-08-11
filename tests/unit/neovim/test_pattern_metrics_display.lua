@@ -31,6 +31,29 @@ local mock_vim = {
         end,
         nvim_buf_delete = function(buf, opts)
             -- Mock buffer deletion
+        end,
+        nvim_list_bufs = function()
+            return {1, 2, 3}  -- Mock buffer list
+        end,
+        nvim_buf_get_name = function(buf)
+            return "mock_buffer_" .. buf  -- Mock buffer name
+        end,
+        nvim_buf_get_option = function(buf, option)
+            if option == "filetype" then
+                return "lua"
+            elseif option == "buftype" then
+                return ""
+            end
+            return nil
+        end,
+        nvim_buf_set_name = function(buf, name)
+            -- Mock setting buffer name
+        end,
+        nvim_buf_is_valid = function(buf)
+            return true  -- Mock buffer validity
+        end,
+        nvim_buf_get_lines = function(buf, start, end_idx, strict_indexing)
+            return {"Mock buffer content"}  -- Mock buffer lines
         end
     },
     keymap = {
@@ -48,139 +71,56 @@ local mock_vim = {
     }
 }
 
--- Mock the paragonic module for testing
-package.loaded.paragonic = {
-    patterns = {
-        get_pattern_by_name = function(name)
-            if name == "Session Summary Generation" then
-                return {
-                    id = "test-pattern-1",
-                    name = "Session Summary Generation",
-                    category = "SessionManagement",
-                    description = "Generates comprehensive session summaries"
-                }
-            end
-            return nil
-        end,
-        get_pattern_statistics = function(pattern_name)
-            return {
-                total_executions = 25,
-                successful_executions = 22,
-                failed_executions = 3,
-                average_execution_time_ms = 1250.5,
-                last_executed = "2025-08-08T10:30:00Z",
-                success_rate = 0.88
-            }
-        end,
-        get_pattern_metrics = function(pattern_id, days)
-            return {
-                pattern_id = pattern_id,
-                pattern_name = "Session Summary Generation",
-                metrics = {
-                    {
-                        metric_name = "success_rate",
-                        metric_value = 0.88,
-                        metric_unit = "percentage",
-                        time_period = "daily",
-                        period_start = "2025-08-01T00:00:00Z",
-                        period_end = "2025-08-08T23:59:59Z"
-                    },
-                    {
-                        metric_name = "execution_time",
-                        metric_value = 1250.5,
-                        metric_unit = "milliseconds",
-                        time_period = "daily",
-                        period_start = "2025-08-01T00:00:00Z",
-                        period_end = "2025-08-08T23:59:59Z"
-                    },
-                    {
-                        metric_name = "usage_frequency",
-                        metric_value = 3.5,
-                        metric_unit = "executions_per_day",
-                        time_period = "daily",
-                        period_start = "2025-08-01T00:00:00Z",
-                        period_end = "2025-08-08T23:59:59Z"
-                    }
-                },
-                summary = {
-                    total_executions = 25,
-                    success_rate = 0.88,
-                    average_execution_time_ms = 1250.5,
-                    last_execution_at = "2025-08-08T10:30:00Z"
-                }
-            }
-        end,
-        get_execution_history = function(pattern_name)
-            return {
-                {
-                    execution_id = "exec-1",
-                    pattern_name = pattern_name,
-                    execution_status = "completed",
-                    execution_time_ms = 1200,
-                    created_at = "2025-08-08T10:30:00Z",
-                    result_summary = "Successfully generated session summary"
-                },
-                {
-                    execution_id = "exec-2",
-                    pattern_name = pattern_name,
-                    execution_status = "completed",
-                    execution_time_ms = 1300,
-                    created_at = "2025-08-08T09:15:00Z",
-                    result_summary = "Successfully generated session summary"
-                },
-                {
-                    execution_id = "exec-3",
-                    pattern_name = pattern_name,
-                    execution_status = "failed",
-                    execution_time_ms = 500,
-                    created_at = "2025-08-08T08:45:00Z",
-                    result_summary = "Failed to generate summary due to missing data"
-                }
-            }
-        end
-    },
-    rpc = {
-        call = function(method, params)
-            if method == "get_pattern_metrics" then
-                return {
-                    success = true,
-                    result = {
-                        pattern_id = params.pattern_id,
-                        pattern_name = "Session Summary Generation",
-                        metrics = {
-                            {
-                                metric_name = "success_rate",
-                                metric_value = 0.88,
-                                metric_unit = "percentage",
-                                time_period = "daily"
-                            },
-                            {
-                                metric_name = "execution_time",
-                                metric_value = 1250.5,
-                                metric_unit = "milliseconds",
-                                time_period = "daily"
-                            }
-                        },
-                        summary = {
-                            total_executions = 25,
-                            success_rate = 0.88,
-                            average_execution_time_ms = 1250.5,
-                            last_execution_at = "2025-08-08T10:30:00Z"
-                        }
-                    }
-                }
-            end
-            return { success = false, error = "Method not found" }
-        end
-    }
-}
+-- Mock Neovim API before loading the module
+local original_vim = vim
+vim = mock_vim
 
 -- Mock the debug module
+package.loaded.paragonic = package.loaded.paragonic or {}
 package.loaded.paragonic.debug = {
     debug_print = function(msg, level)
         print("DEBUG: " .. msg .. " (level: " .. tostring(level) .. ")")
     end
 }
+
+-- Mock the RPC module
+package.loaded.paragonic.rpc = {
+    call = function(method, params)
+        if method == "get_pattern_metrics" then
+            return {
+                success = true,
+                result = {
+                    pattern_id = params.pattern_id,
+                    pattern_name = "Session Summary Generation",
+                    metrics = {
+                        {
+                            metric_name = "success_rate",
+                            metric_value = 0.88,
+                            metric_unit = "percentage",
+                            time_period = "daily"
+                        },
+                        {
+                            metric_name = "execution_time",
+                            metric_value = 1250.5,
+                            metric_unit = "milliseconds",
+                            time_period = "daily"
+                        }
+                    },
+                    summary = {
+                        total_executions = 25,
+                        success_rate = 0.88,
+                        average_execution_time_ms = 1250.5,
+                        last_execution_at = "2025-08-08T10:30:00Z"
+                    }
+                }
+            }
+        end
+        return { success = false, error = "Method not found" }
+    end
+}
+
+-- Load the actual paragonic module for testing
+local paragonic = require("paragonic.patterns")
 
 -- Test function for pattern metrics display
 local function test_pattern_metrics_display()
@@ -188,19 +128,19 @@ local function test_pattern_metrics_display()
     
     -- Test 1: Check if pattern metrics functions exist
     print("  Testing pattern metrics function availability...")
-    if package.loaded.paragonic.patterns.get_pattern_statistics then
+    if paragonic.get_pattern_statistics then
         print("  ✅ get_pattern_statistics function available")
     else
         print("  ❌ get_pattern_statistics function not available")
     end
     
-    if package.loaded.paragonic.patterns.get_pattern_metrics then
+    if paragonic.get_pattern_metrics then
         print("  ✅ get_pattern_metrics function available")
     else
         print("  ❌ get_pattern_metrics function not available")
     end
     
-    if package.loaded.paragonic.patterns.get_execution_history then
+    if paragonic.get_execution_history then
         print("  ✅ get_execution_history function available")
     else
         print("  ❌ get_execution_history function not available")
@@ -208,7 +148,7 @@ local function test_pattern_metrics_display()
     
     -- Test 2: Test pattern statistics retrieval
     print("  Testing pattern statistics retrieval...")
-    local stats = package.loaded.paragonic.patterns.get_pattern_statistics("Session Summary Generation")
+    local stats = paragonic.get_pattern_statistics("Session Summary Generation")
     assert(stats, "Pattern statistics should be returned")
     assert(type(stats.total_executions) == "number", "Total executions should be a number")
     assert(type(stats.success_rate) == "number", "Success rate should be a number")
@@ -219,7 +159,7 @@ local function test_pattern_metrics_display()
     
     -- Test 3: Test pattern metrics retrieval
     print("  Testing pattern metrics retrieval...")
-    local metrics = package.loaded.paragonic.patterns.get_pattern_metrics("test-pattern-1", 7)
+    local metrics = paragonic.get_pattern_metrics("test-pattern-1", 7)
     assert(metrics, "Pattern metrics should be returned")
     assert(metrics.pattern_id, "Pattern ID should be present")
     assert(metrics.pattern_name, "Pattern name should be present")
@@ -231,7 +171,7 @@ local function test_pattern_metrics_display()
     
     -- Test 4: Test execution history retrieval
     print("  Testing execution history retrieval...")
-    local history = package.loaded.paragonic.patterns.get_execution_history("Session Summary Generation")
+    local history = paragonic.get_execution_history("Session Summary Generation")
     assert(history, "Execution history should be returned")
     assert(type(history) == "table", "History should be a table")
     assert(#history > 0, "History should contain entries")
@@ -259,7 +199,7 @@ local function test_pattern_metrics_display()
     
     -- Test 6: Test metrics data structure validation
     print("  Testing metrics data structure validation...")
-    local metrics_data = package.loaded.paragonic.patterns.get_pattern_metrics("test-pattern-1", 7)
+    local metrics_data = paragonic.get_pattern_metrics("test-pattern-1", 7)
     
     -- Validate metrics array structure
     for _, metric in ipairs(metrics_data.metrics) do
@@ -278,8 +218,8 @@ local function test_pattern_metrics_display()
     
     -- Test 7: Test metrics calculation accuracy
     print("  Testing metrics calculation accuracy...")
-    local stats = package.loaded.paragonic.patterns.get_pattern_statistics("Session Summary Generation")
-    local metrics = package.loaded.paragonic.patterns.get_pattern_metrics("test-pattern-1", 7)
+    local stats = paragonic.get_pattern_statistics("Session Summary Generation")
+    local metrics = paragonic.get_pattern_metrics("test-pattern-1", 7)
     
     -- Verify that statistics match metrics summary
     assert(stats.total_executions == metrics.summary.total_executions, 
@@ -292,7 +232,7 @@ local function test_pattern_metrics_display()
     
     -- Test 8: Test error handling for invalid pattern
     print("  Testing error handling for invalid pattern...")
-    local invalid_stats = package.loaded.paragonic.patterns.get_pattern_statistics("Invalid Pattern")
+    local invalid_stats = paragonic.get_pattern_statistics("Invalid Pattern")
     -- This should return nil or throw an error for invalid patterns
     if invalid_stats == nil then
         print("  ✅ Invalid pattern handling works (returns nil)")
@@ -302,8 +242,8 @@ local function test_pattern_metrics_display()
     
     -- Test 9: Test metrics time period filtering
     print("  Testing metrics time period filtering...")
-    local daily_metrics = package.loaded.paragonic.patterns.get_pattern_metrics("test-pattern-1", 1)
-    local weekly_metrics = package.loaded.paragonic.patterns.get_pattern_metrics("test-pattern-1", 7)
+    local daily_metrics = paragonic.get_pattern_metrics("test-pattern-1", 1)
+    local weekly_metrics = paragonic.get_pattern_metrics("test-pattern-1", 7)
     
     assert(daily_metrics, "Daily metrics should be returned")
     assert(weekly_metrics, "Weekly metrics should be returned")
@@ -312,7 +252,7 @@ local function test_pattern_metrics_display()
     
     -- Test 10: Test execution history filtering
     print("  Testing execution history filtering...")
-    local history = package.loaded.paragonic.patterns.get_execution_history("Session Summary Generation")
+    local history = paragonic.get_execution_history("Session Summary Generation")
     
     -- Count successful vs failed executions
     local successful_count = 0
@@ -334,11 +274,11 @@ local function test_pattern_metrics_display()
     return true
 end
 
--- Test function for metrics visualization functions (to be implemented)
+-- Test function for metrics visualization functions
 local function test_metrics_visualization_functions()
     print("📈 Testing metrics visualization function availability...")
     
-    -- These functions would be implemented in task 7.10
+    -- These functions should now be implemented in task 7.10
     local visualization_functions = {
         "show_pattern_metrics",
         "show_pattern_statistics", 
@@ -348,10 +288,10 @@ local function test_metrics_visualization_functions()
     }
     
     for _, func_name in ipairs(visualization_functions) do
-        if package.loaded.paragonic.patterns[func_name] then
+        if paragonic[func_name] then
             print("  ✅ " .. func_name .. " function available")
         else
-            print("  ⚠ " .. func_name .. " function not implemented yet (task 7.10)")
+            print("  ❌ " .. func_name .. " function not available")
         end
     end
     
@@ -364,7 +304,7 @@ local function test_metrics_display_integration()
     print("🔗 Testing metrics display integration...")
     
     -- Test that metrics data can be properly formatted for display
-    local metrics = package.loaded.paragonic.patterns.get_pattern_metrics("test-pattern-1", 7)
+    local metrics = paragonic.get_pattern_metrics("test-pattern-1", 7)
     
     -- Test metrics formatting for display
     local formatted_metrics = {}

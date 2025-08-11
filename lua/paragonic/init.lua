@@ -311,6 +311,48 @@ function M.setup(opts)
             M.patterns.execute_pattern_command(pattern_name)
         end, opts = {nargs = "*"}},
         
+        -- Pattern metrics visualization commands
+        {name = "ParagonicPatternStats", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            M.patterns.show_pattern_statistics(pattern_name)
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicPatternMetrics", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            M.patterns.show_pattern_metrics(pattern_name)
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicPatternHistory", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            M.patterns.show_execution_history(pattern_name)
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicPatternChart", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            M.patterns.show_metrics_chart(pattern_name)
+        end, opts = {nargs = "*"}},
+        {name = "ParagonicPatternTrends", func = function(args)
+            if #args == 0 then
+                vim.notify("Pattern name is required", vim.log.levels.WARN)
+                return
+            end
+            local pattern_name = table.concat(args, " ")
+            M.patterns.show_performance_trends(pattern_name)
+        end, opts = {nargs = "*"}},
+        
         -- Pattern-aware session commands
         {name = "ParagonicAIAgentExecutePattern", func = function(args)
             if #args == 0 then
