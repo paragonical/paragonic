@@ -77,7 +77,7 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
 
 - [ ] 6. **MCP Tool Integration**
   - [x] 6.1 Write tests for enhanced MCP tool descriptions
-  - [ ] 6.2 Enhance existing MCP tools with pattern information
+  - [x] 6.2 Enhance existing MCP tools with pattern information
   - [ ] 6.3 Write tests for tool-pattern relationship tracking
   - [ ] 6.4 Implement tool-pattern relationship management
   - [ ] 6.5 Write tests for pattern-aware tool recommendations

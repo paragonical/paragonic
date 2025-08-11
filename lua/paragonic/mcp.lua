@@ -92,6 +92,92 @@ function M.initialize_mcp_server()
                 usage_count = 0,
                 last_used = nil
             }
+        },
+        {
+            name = "agent_create_file",
+            description = "Create a new file in the current Neovim session",
+            inputSchema = {
+                type = "object",
+                properties = {
+                    file_name = {
+                        type = "string",
+                        description = "Name of the file to create"
+                    },
+                    content = {
+                        type = "string",
+                        description = "Initial content for the file"
+                    },
+                    open_in_window = {
+                        type = "boolean",
+                        description = "Whether to open the file in a new window"
+                    }
+                },
+                required = {"file_name"}
+            },
+            patterns = {
+                {
+                    pattern_id = "session_summary_generation",
+                    relationship_type = "input",
+                    description = "Used to create summary files during session summary generation"
+                },
+                {
+                    pattern_id = "activity_labeling",
+                    relationship_type = "enhance",
+                    description = "Enhances activity labeling by tracking file creation activities"
+                },
+                {
+                    pattern_id = "knowledge_extraction",
+                    relationship_type = "output",
+                    description = "Creates files to store extracted knowledge and insights"
+                }
+            },
+            usage_guidance = "Use this tool when you need to create new files. The file_name parameter is required. Content is optional and will create an empty file if not provided. Set open_in_window to true if you want the file to open in a new window.",
+            success_metrics = {
+                success_rate = 0.92,
+                usage_count = 0,
+                last_used = nil
+            }
+        },
+        {
+            name = "agent_save_file",
+            description = "Save files to disk in the current Neovim session",
+            inputSchema = {
+                type = "object",
+                properties = {
+                    file_path = {
+                        type = "string",
+                        description = "Path to the file to save (optional, uses current buffer if not specified)"
+                    },
+                    force = {
+                        type = "boolean",
+                        description = "Force save even if file is read-only"
+                    }
+                },
+                required = {}
+            },
+            patterns = {
+                {
+                    pattern_id = "progress_tracking",
+                    relationship_type = "enhance",
+                    description = "Enhances progress tracking by recording file save events"
+                },
+                {
+                    pattern_id = "activity_labeling",
+                    relationship_type = "enhance",
+                    description = "Enhances activity labeling by tracking file save activities"
+                },
+                {
+                    pattern_id = "session_summary_generation",
+                    relationship_type = "input",
+                    description = "Used to save files before generating session summaries"
+                }
+            },
+            usage_guidance = "Use this tool when you need to save files to disk. If file_path is not specified, it will save the current buffer. Use force=true to save read-only files. This tool is essential for persisting changes.",
+            success_metrics = {
+                success_rate = 0.98,
+                usage_count = 0,
+                last_used = nil
+            }
         }
     }
     
