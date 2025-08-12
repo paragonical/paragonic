@@ -59,9 +59,39 @@ local TransportAdapterError = {
 function mcp_transport_adapter.init(config)
     config = config or {}
     
-    adapter_state.transport_type = config.transport_type or DEFAULT_TRANSPORT_TYPE
-    adapter_state.fallback_timeout = config.fallback_timeout or DEFAULT_FALLBACK_TIMEOUT
-    adapter_state.health_check_interval = config.health_check_interval or DEFAULT_HEALTH_CHECK_INTERVAL
+    -- Validate transport type
+    local transport_type = config.transport_type or DEFAULT_TRANSPORT_TYPE
+    if type(transport_type) ~= "string" then
+        return false, "Invalid transport_type: must be a string"
+    end
+    
+    local valid_types = {TransportType.AUTO, TransportType.HTTP, TransportType.TCP}
+    local is_valid = false
+    for _, valid_type in ipairs(valid_types) do
+        if transport_type == valid_type then
+            is_valid = true
+            break
+        end
+    end
+    
+    if not is_valid then
+        return false, "Invalid transport_type: must be one of auto, http, tcp"
+    end
+    
+    -- Validate timeouts
+    local fallback_timeout = config.fallback_timeout or DEFAULT_FALLBACK_TIMEOUT
+    if type(fallback_timeout) ~= "number" or fallback_timeout <= 0 then
+        return false, "Invalid fallback_timeout: must be a positive number"
+    end
+    
+    local health_check_interval = config.health_check_interval or DEFAULT_HEALTH_CHECK_INTERVAL
+    if type(health_check_interval) ~= "number" or health_check_interval <= 0 then
+        return false, "Invalid health_check_interval: must be a positive number"
+    end
+    
+    adapter_state.transport_type = transport_type
+    adapter_state.fallback_timeout = fallback_timeout
+    adapter_state.health_check_interval = health_check_interval
     
     -- Initialize based on transport type
     if adapter_state.transport_type == TransportType.HTTP then
@@ -99,9 +129,9 @@ function mcp_transport_adapter._init_http_transport(config)
         event_buffer_size = config.event_buffer_size or 100,
     }
     
-    local success = mcp_http_transport.init(http_config)
+    local success, err = mcp_http_transport.init(http_config)
     if not success then
-        return false, "Failed to initialize HTTP transport"
+        return false, err or "Failed to initialize HTTP transport"
     end
     
     adapter_state.current_transport = "http"

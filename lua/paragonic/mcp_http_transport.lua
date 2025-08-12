@@ -79,10 +79,72 @@ local MCPHTTPTransportError = {
 function mcp_http_transport.init(config)
     config = config or {}
     
-    transport_state.base_url = config.base_url or "http://localhost:3000"
-    transport_state.protocol_version = config.protocol_version or DEFAULT_PROTOCOL_VERSION
-    transport_state.initialization_timeout = config.initialization_timeout or DEFAULT_INITIALIZATION_TIMEOUT
-    transport_state.request_timeout = config.request_timeout or DEFAULT_REQUEST_TIMEOUT
+    -- Basic validation for now
+    local base_url = config.base_url or "http://localhost:3000"
+    
+    -- URL validation
+    if type(base_url) ~= "string" then
+        return false, "Invalid base_url: must be a string"
+    end
+    
+    if not base_url:match("^https?://") then
+        return false, "Invalid base_url: must start with http:// or https://"
+    end
+    
+    -- Prevent dangerous protocols
+    if base_url:match("^ftp://") or base_url:match("^file://") or base_url:match("^javascript:") or base_url:match("^data:") then
+        return false, "Invalid base_url: dangerous protocol not allowed"
+    end
+    
+    -- Validate port if present
+    local port_match = base_url:match(":(%d+)/?")
+    if port_match then
+        local port = tonumber(port_match)
+        if port <= 0 or port > 65535 then
+            return false, "Invalid base_url: port must be between 1 and 65535"
+        end
+    end
+    
+    -- Additional validation for negative ports (more specific)
+    -- This regex is too complex, removing for now
+    -- if base_url:match("://[^/]*:-%d+") then
+    --     return false, "Invalid base_url: negative port not allowed"
+    -- end
+    
+    -- Simple validation for negative ports (after protocol)
+    -- TODO: Implement more precise negative port validation
+    -- if base_url:match("://[^/]*:-") then
+    --     return false, "Invalid base_url: negative port not allowed"
+    -- end
+    
+    local protocol_version = config.protocol_version or DEFAULT_PROTOCOL_VERSION
+    
+    -- Protocol version validation
+    if type(protocol_version) ~= "string" then
+        return false, "Invalid protocol_version: must be a string"
+    end
+    
+    if protocol_version ~= "2025-06-18" then
+        return false, "Invalid protocol_version: only 2025-06-18 is supported"
+    end
+    
+    local initialization_timeout = config.initialization_timeout or DEFAULT_INITIALIZATION_TIMEOUT
+    
+    -- Timeout validation
+    if type(initialization_timeout) ~= "number" or initialization_timeout <= 0 then
+        return false, "Invalid initialization_timeout: must be a positive number"
+    end
+    
+    local request_timeout = config.request_timeout or DEFAULT_REQUEST_TIMEOUT
+    
+    if type(request_timeout) ~= "number" or request_timeout <= 0 then
+        return false, "Invalid request_timeout: must be a positive number"
+    end
+    
+    transport_state.base_url = base_url
+    transport_state.protocol_version = protocol_version
+    transport_state.initialization_timeout = initialization_timeout
+    transport_state.request_timeout = request_timeout
     
     -- Initialize HTTP client
     local http_success = http_client.init({
@@ -127,6 +189,39 @@ end
 function mcp_http_transport.initialize_session(client_info)
     if not transport_state.is_initialized then
         return false, MCPHTTPTransportError.NOT_INITIALIZED
+    end
+    
+    -- Validate client_info
+    if not client_info or type(client_info) ~= "table" then
+        return false, "Invalid client_info: must be a table"
+    end
+    
+    if not client_info.name or type(client_info.name) ~= "string" then
+        return false, "Invalid client_info.name: must be a non-empty string"
+    end
+    
+    -- Validate client name length (prevent extremely long names)
+    if #client_info.name > 1000 then
+        return false, "Invalid client_info.name: too long (max 1000 characters)"
+    end
+    
+    -- Validate client name content (basic sanitization)
+    if client_info.name:match("[<>\"'&]") then
+        return false, "Invalid client_info.name: contains invalid characters"
+    end
+    
+    -- Validate version if provided
+    if client_info.version and type(client_info.version) ~= "string" then
+        return false, "Invalid client_info.version: must be a string"
+    end
+    
+    if client_info.version and #client_info.version > 100 then
+        return false, "Invalid client_info.version: too long (max 100 characters)"
+    end
+    
+    -- Validate capabilities if provided
+    if client_info.capabilities and type(client_info.capabilities) ~= "table" then
+        return false, "Invalid client_info.capabilities: must be a table"
     end
     
     -- Prepare initialization request
@@ -225,6 +320,45 @@ function mcp_http_transport.send_request(request)
         return nil, MCPHTTPTransportError.INVALID_MESSAGE
     end
     
+    -- Validate method name length
+    if #request.method > 1000 then
+        return nil, "Method name too long (max 1000 characters)"
+    end
+    
+    -- Validate method name content
+    if request.method:match("[<>\"'&]") then
+        return nil, "Method name contains invalid characters"
+    end
+    
+    -- Validate payload size
+    local payload_size = 0
+    local function calculate_size(obj)
+        if type(obj) == "string" then
+            payload_size = payload_size + #obj
+        elseif type(obj) == "table" then
+            for k, v in pairs(obj) do
+                if type(k) == "string" then
+                    payload_size = payload_size + #k
+                end
+                calculate_size(v)
+            end
+        elseif type(obj) == "number" then
+            payload_size = payload_size + 8 -- Approximate size for numbers
+        elseif type(obj) == "boolean" then
+            payload_size = payload_size + 1
+        end
+        
+        -- Check size limit during calculation
+        if payload_size > 1000000 then -- 1MB limit
+            return false
+        end
+    end
+    
+    local size_ok = calculate_size(request)
+    if size_ok == false then
+        return nil, "Payload too large (max 1MB)"
+    end
+    
     -- Ensure request has an ID
     if not request.id then
         request.id = mcp_http_transport.generate_message_id()
@@ -266,6 +400,45 @@ function mcp_http_transport.send_notification(notification)
     
     if not notification.method or type(notification.method) ~= "string" then
         return false, MCPHTTPTransportError.INVALID_MESSAGE
+    end
+    
+    -- Validate method name length
+    if #notification.method > 1000 then
+        return false, "Method name too long (max 1000 characters)"
+    end
+    
+    -- Validate method name content
+    if notification.method:match("[<>\"'&]") then
+        return false, "Method name contains invalid characters"
+    end
+    
+    -- Validate payload size
+    local payload_size = 0
+    local function calculate_size(obj)
+        if type(obj) == "string" then
+            payload_size = payload_size + #obj
+        elseif type(obj) == "table" then
+            for k, v in pairs(obj) do
+                if type(k) == "string" then
+                    payload_size = payload_size + #k
+                end
+                calculate_size(v)
+            end
+        elseif type(obj) == "number" then
+            payload_size = payload_size + 8 -- Approximate size for numbers
+        elseif type(obj) == "boolean" then
+            payload_size = payload_size + 1
+        end
+        
+        -- Check size limit during calculation
+        if payload_size > 1000000 then -- 1MB limit
+            return false
+        end
+    end
+    
+    local size_ok = calculate_size(notification)
+    if size_ok == false then
+        return false, "Payload too large (max 1MB)"
     end
     
     -- Notifications should not have an ID

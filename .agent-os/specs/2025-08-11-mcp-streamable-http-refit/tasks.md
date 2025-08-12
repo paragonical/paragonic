@@ -68,14 +68,14 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 7.5 Ensure existing Neovim commands continue to work
   - [x] 7.6 Verify all tests pass
 
-- [ ] 8. Integration and End-to-End Testing
-  - [ ] 8.1 Write comprehensive integration tests for client-server communication
-  - [ ] 8.2 Test multiple concurrent client connections
-  - [ ] 8.3 Test session persistence across reconnections
-  - [ ] 8.4 Test streaming responses and notifications
-  - [ ] 8.5 Test error handling and recovery scenarios
-  - [ ] 8.6 Test performance and load handling
-  - [ ] 8.7 Verify all tests pass
+- [x] 8. Integration and End-to-End Testing
+  - [x] 8.1 Write comprehensive integration tests for client-server communication
+  - [x] 8.2 Test multiple concurrent client connections
+  - [x] 8.3 Test session persistence across reconnections
+  - [x] 8.4 Test streaming responses and notifications
+  - [x] 8.5 Test error handling and recovery scenarios
+  - [x] 8.6 Test performance and load handling
+  - [x] 8.7 Verify all tests pass
 
 - [ ] 9. Security and Performance Optimization
   - [ ] 9.1 Write security tests for input validation and access control
