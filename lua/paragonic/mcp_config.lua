@@ -100,12 +100,8 @@ function mcp_config.set_transport_type(transport_type)
         mcp_config.load()
     end
     
-    if transport_type == "auto" or transport_type == "http" or transport_type == "tcp" then
-        current_config.transport.type = transport_type
-        return true
-    else
-        return false, "Invalid transport type: " .. tostring(transport_type)
-    end
+    current_config.transport.type = transport_type
+    return true
 end
 
 -- Get transport type

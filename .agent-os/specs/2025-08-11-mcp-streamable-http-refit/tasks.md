@@ -60,13 +60,13 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 6.5 Test session management across multiple requests
   - [x] 6.6 Verify all tests pass
 
-- [ ] 7. Backward Compatibility and Migration
-  - [ ] 7.1 Write tests for backward compatibility with existing functionality
-  - [ ] 7.2 Implement fallback mechanisms for TCP transport
-  - [ ] 7.3 Add configuration options for transport selection
-  - [ ] 7.4 Test migration from TCP to HTTP transport
-  - [ ] 7.5 Ensure existing Neovim commands continue to work
-  - [ ] 7.6 Verify all tests pass
+- [x] 7. Backward Compatibility and Migration
+  - [x] 7.1 Write tests for backward compatibility with existing functionality
+  - [x] 7.2 Implement fallback mechanisms for TCP transport
+  - [x] 7.3 Add configuration options for transport selection
+  - [x] 7.4 Test migration from TCP to HTTP transport
+  - [x] 7.5 Ensure existing Neovim commands continue to work
+  - [x] 7.6 Verify all tests pass
 
 - [ ] 8. Integration and End-to-End Testing
   - [ ] 8.1 Write comprehensive integration tests for client-server communication
