@@ -52,6 +52,22 @@ else
     end
 end
 
+-- Try to load performance monitoring module with different paths
+local mcp_performance
+local success4, result4 = pcall(require, "paragonic.mcp_performance")
+if success4 then
+    mcp_performance = result4
+else
+    -- Fallback to relative path
+    success4, result4 = pcall(require, "mcp_performance")
+    if success4 then
+        mcp_performance = result4
+    else
+        -- Final fallback to absolute path
+        mcp_performance = require("../../lua/paragonic/mcp_performance")
+    end
+end
+
 local json = vim.json
 
 -- MCP HTTP transport configuration
@@ -195,6 +211,36 @@ function mcp_http_transport.init(config)
     end
     
     transport_state.is_initialized = true
+    
+    -- Initialize performance monitoring if available
+    if mcp_performance then
+        local perf_config = {
+            METRICS = {
+                ENABLE_REAL_TIME_MONITORING = true,
+                COLLECTION_INTERVAL = 5, -- 5 seconds for MCP
+                MAX_METRICS_ENTRIES = 720, -- 1 hour at 5s intervals
+            },
+            THRESHOLDS = {
+                REQUEST_TIMEOUT_WARNING = 2000, -- 2 seconds
+                REQUEST_TIMEOUT_CRITICAL = 10000, -- 10 seconds
+                MEMORY_USAGE_WARNING = 100, -- 100 MB
+                MEMORY_USAGE_CRITICAL = 200, -- 200 MB
+            },
+            OPTIMIZATION = {
+                ENAABLE_CONNECTION_POOLING = true,
+                POOL_SIZE = 5, -- Smaller pool for MCP
+                ENABLE_REQUEST_CACHING = true,
+                CACHE_SIZE = 500, -- Smaller cache for MCP
+                CACHE_TTL = 60, -- 1 minute TTL
+            },
+        }
+        
+        local perf_success = mcp_performance.init(perf_config)
+        if not perf_success then
+            print("[MCP] Warning: Performance monitoring initialization failed")
+        end
+    end
+    
     return true
 end
 
@@ -438,8 +484,25 @@ function mcp_http_transport.send_request(request)
         request.id = mcp_http_transport.generate_message_id()
     end
     
+    -- Performance monitoring
+    local start_time = os.clock()
+    local success = false
+    
     -- Send HTTP POST request
     local response, err = http_client.post("/mcp", request)
+    if not response then
+        success = false
+    else
+        success = true
+    end
+    
+    local end_time = os.clock()
+    
+    -- Record performance metrics
+    if mcp_performance then
+        mcp_performance.record_request(start_time, end_time, success)
+    end
+    
     if not response then
         return nil, err or MCPHTTPTransportError.CONNECTION_FAILED
     end
@@ -520,8 +583,25 @@ function mcp_http_transport.send_notification(notification)
         return false, MCPHTTPTransportError.INVALID_MESSAGE
     end
     
+    -- Performance monitoring
+    local start_time = os.clock()
+    local success = false
+    
     -- Send HTTP POST request
     local response, err = http_client.post("/mcp", notification)
+    if not response then
+        success = false
+    else
+        success = true
+    end
+    
+    local end_time = os.clock()
+    
+    -- Record performance metrics
+    if mcp_performance then
+        mcp_performance.record_request(start_time, end_time, success)
+    end
+    
     if not response then
         return false, err or MCPHTTPTransportError.CONNECTION_FAILED
     end
@@ -662,6 +742,22 @@ function mcp_http_transport.get_stream_id()
     return transport_state.stream_id
 end
 
+-- Get performance metrics
+function mcp_http_transport.get_performance_metrics()
+    if mcp_performance then
+        return mcp_performance.get_metrics()
+    end
+    return nil
+end
+
+-- Get performance summary
+function mcp_http_transport.get_performance_summary()
+    if mcp_performance then
+        return mcp_performance.get_summary()
+    end
+    return nil
+end
+
 -- Clean up resources
 function mcp_http_transport.cleanup()
     -- Shutdown if initialized
@@ -672,6 +768,11 @@ function mcp_http_transport.cleanup()
     -- Clean up clients
     http_client.cleanup()
     sse_client.cleanup()
+    
+    -- Cleanup performance monitoring
+    if mcp_performance then
+        mcp_performance.cleanup()
+    end
     
     -- Reset state
     transport_state = {
