@@ -381,6 +381,11 @@ test-unit-mcp:
         failed_tests+=("test_tool_pattern_relationship_tracking.lua")
     fi
     
+    echo "Testing memory usage and resource cleanup..."
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/mcp/test_memory_usage_resource_cleanup_standalone.lua; then
+        failed_tests+=("test_memory_usage_resource_cleanup_standalone.lua")
+    fi
+    
     if [ ${#failed_tests[@]} -gt 0 ]; then
         echo ""
         echo "✗ MCP unit tests failed:"
