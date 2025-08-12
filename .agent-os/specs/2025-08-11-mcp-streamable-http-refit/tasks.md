@@ -82,8 +82,8 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 9.2 Implement comprehensive security measures
          - [x] 9.2.1 Implement OWASP Top 10 security enhancements
        - [x] 9.3 Add performance monitoring and optimization
-       - [ ] 9.4 Test memory usage and resource cleanup
-  - [ ] 9.5 Implement connection pooling and optimization
+       - [x] 9.4 Test memory usage and resource cleanup
+  - [x] 9.5 Implement connection pooling and optimization
   - [ ] 9.6 Test under various load conditions
   - [ ] 9.7 Verify all tests pass
 

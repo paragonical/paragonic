@@ -20,6 +20,21 @@ local client_state = {
     retry_attempts = DEFAULT_RETRY_ATTEMPTS,
     retry_delay = DEFAULT_RETRY_DELAY,
     headers = {},
+    -- Connection pooling state
+    connection_pool = {
+        connections = {},
+        active = 0,
+        max_size = 5, -- Default pool size
+        connection_timeout = 30,
+        idle_timeout = 300,
+    },
+    -- Optimization settings
+    optimization = {
+        enable_keep_alive = true,
+        keep_alive_timeout = 30,
+        max_idle_connections = 5,
+        connection_timeout = 10,
+    },
 }
 
 -- HTTP client errors
@@ -73,6 +88,203 @@ end
 -- Get current session ID
 function http_client.get_session_id()
     return client_state.session_id
+end
+
+-- Connection pooling methods
+
+-- Get connection pool configuration
+function http_client.get_connection_pool_config()
+    return {
+        pool_size = client_state.connection_pool.max_size,
+        active_connections = client_state.connection_pool.active,
+        available_connections = #client_state.connection_pool.connections,
+        connection_timeout = client_state.connection_pool.connection_timeout,
+        idle_timeout = client_state.connection_pool.idle_timeout,
+    }
+end
+
+-- Set connection pool size
+function http_client.set_connection_pool_size(pool_size)
+    if not pool_size or type(pool_size) ~= "number" then
+        return false, "Pool size must be a number"
+    end
+    
+    if pool_size <= 0 then
+        return false, "Pool size must be greater than 0"
+    end
+    
+    client_state.connection_pool.max_size = pool_size
+    return true
+end
+
+-- Get connection from pool
+function http_client.get_connection()
+    local pool = client_state.connection_pool
+    
+    -- Check if we have available connections
+    if #pool.connections > 0 then
+        local connection = table.remove(pool.connections)
+        pool.active = pool.active + 1
+        connection.last_used = os.time()
+        return connection
+    end
+    
+    -- Check if we can create a new connection
+    if pool.active < pool.max_size then
+        local connection = http_client._create_connection()
+        if connection then
+            pool.active = pool.active + 1
+            return connection
+        end
+    end
+    
+    return nil, "No available connections"
+end
+
+-- Return connection to pool
+function http_client.return_connection(connection)
+    if not connection then
+        return false, "Invalid connection"
+    end
+    
+    local pool = client_state.connection_pool
+    
+    -- Check if connection is still valid
+    if http_client.is_connection_valid(connection) then
+        table.insert(pool.connections, connection)
+    end
+    
+    pool.active = pool.active - 1
+    return true
+end
+
+-- Create a new connection (internal)
+function http_client._create_connection()
+    return {
+        id = http_client._generate_connection_id(),
+        created_at = os.time(),
+        last_used = os.time(),
+        host = client_state.base_url:match("^https?://([^:/]+)"),
+        port = client_state.base_url:match(":(%d+)") or "80",
+    }
+end
+
+-- Check if connection is still valid
+function http_client.is_connection_valid(connection)
+    if not connection then
+        return false
+    end
+    
+    local current_time = os.time()
+    local idle_timeout = client_state.connection_pool.idle_timeout
+    
+    -- Check if connection has been idle too long
+    if current_time - connection.last_used > idle_timeout then
+        return false
+    end
+    
+    return true
+end
+
+-- Generate unique connection ID
+function http_client._generate_connection_id()
+    local charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    local id = ""
+    
+    for i = 1, 8 do
+        local random_index = math.random(1, #charset)
+        id = id .. charset:sub(random_index, random_index)
+    end
+    
+    return id
+end
+
+-- Cleanup expired connections
+function http_client.cleanup_expired_connections()
+    local pool = client_state.connection_pool
+    local valid_connections = {}
+    
+    for _, connection in ipairs(pool.connections) do
+        if http_client.is_connection_valid(connection) then
+            table.insert(valid_connections, connection)
+        end
+    end
+    
+    pool.connections = valid_connections
+    return true
+end
+
+-- Get connection pool metrics
+function http_client.get_connection_pool_metrics()
+    local pool = client_state.connection_pool
+    local total = pool.active + #pool.connections
+    local usage_percentage = total > 0 and (pool.active / total) * 100 or 0
+    
+    return {
+        active_connections = pool.active,
+        available_connections = #pool.connections,
+        total_connections = total,
+        usage_percentage = usage_percentage,
+        max_size = pool.max_size,
+    }
+end
+
+-- Configure request pooling
+function http_client.configure_request_pooling(request_config)
+    if not request_config or type(request_config) ~= "table" then
+        return false, "Invalid request config"
+    end
+    
+    -- Store pooling configuration for the request
+    request_config.use_connection_pool = request_config.use_connection_pool or true
+    return true
+end
+
+-- Set optimization configuration
+function http_client.set_optimization_config(config)
+    if not config or type(config) ~= "table" then
+        return false, "Invalid optimization config"
+    end
+    
+    if config.enable_keep_alive ~= nil then
+        client_state.optimization.enable_keep_alive = config.enable_keep_alive
+    end
+    
+    if config.keep_alive_timeout then
+        client_state.optimization.keep_alive_timeout = config.keep_alive_timeout
+    end
+    
+    if config.max_idle_connections then
+        client_state.optimization.max_idle_connections = config.max_idle_connections
+    end
+    
+    if config.connection_timeout then
+        client_state.optimization.connection_timeout = config.connection_timeout
+    end
+    
+    return true
+end
+
+-- Get optimization configuration
+function http_client.get_optimization_config()
+    return {
+        enable_keep_alive = client_state.optimization.enable_keep_alive,
+        keep_alive_timeout = client_state.optimization.keep_alive_timeout,
+        max_idle_connections = client_state.optimization.max_idle_connections,
+        connection_timeout = client_state.optimization.connection_timeout,
+    }
+end
+
+-- Reset connection pool for testing
+function http_client.reset_connection_pool()
+    client_state.connection_pool = {
+        connections = {},
+        active = 0,
+        max_size = 5, -- Default pool size
+        connection_timeout = 30,
+        idle_timeout = 300,
+    }
+    return true
 end
 
 -- Build HTTP request
@@ -169,6 +381,20 @@ function http_client._send_single_request(request)
         return nil, HTTPClientError.INVALID_RESPONSE
     end
     
+    -- Get connection from pool if pooling is enabled
+    local connection = nil
+    local use_pooling = request.use_connection_pool ~= false -- Default to true
+    
+    if use_pooling then
+        connection = http_client.get_connection()
+        if connection then
+            -- Add connection-specific headers for keep-alive
+            if client_state.optimization.enable_keep_alive then
+                request.headers["Connection"] = "keep-alive"
+            end
+        end
+    end
+    
     -- Use curl for HTTP requests (fallback to system curl if available)
     local curl_cmd = "curl"
     local args = {
@@ -179,6 +405,12 @@ function http_client._send_single_request(request)
         "-H", "Accept: application/json, text/event-stream",
         "-H", "MCP-Protocol-Version: 2025-06-18",
     }
+    
+    -- Add keep-alive options if enabled
+    if client_state.optimization.enable_keep_alive and connection then
+        table.insert(args, "--keepalive-time")
+        table.insert(args, tostring(client_state.optimization.keep_alive_timeout))
+    end
     
     -- Add session ID header if available
     if client_state.session_id then
@@ -214,6 +446,11 @@ function http_client._send_single_request(request)
     -- Execute curl command
     local output = vim.fn.system(table.concat(args, " "))
     local exit_code = vim.v.shell_error
+    
+    -- Return connection to pool if we used one
+    if connection then
+        http_client.return_connection(connection)
+    end
     
     if exit_code ~= 0 then
         return nil, HTTPClientError.CONNECTION_FAILED
@@ -304,6 +541,21 @@ function http_client.cleanup()
         retry_attempts = DEFAULT_RETRY_ATTEMPTS,
         retry_delay = DEFAULT_RETRY_DELAY,
         headers = {},
+        -- Connection pooling state
+        connection_pool = {
+            connections = {},
+            active = 0,
+            max_size = 5, -- Default pool size
+            connection_timeout = 30,
+            idle_timeout = 300,
+        },
+        -- Optimization settings
+        optimization = {
+            enable_keep_alive = true,
+            keep_alive_timeout = 30,
+            max_idle_connections = 5,
+            connection_timeout = 10,
+        },
     }
 end
 
