@@ -11,6 +11,7 @@ local config = {
     ollama_model = "deepseek-r1:1.5b",
     database_path = nil, -- Will be set in setup() if vim is available
     log_level = "info",
+    backend_base_url = "http://127.0.0.1:3000", -- Default MCP HTTP server
 }
 
 -- Model capabilities configuration
