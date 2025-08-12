@@ -1,4 +1,4 @@
-use paragonic::{initialize, start_rpc_server, iragl::{demonstrate_iragl_capabilities, index_file_for_iragl, IndexFileRequest, search_iragl_index, IraglSearchQuery, SearchType, SearchFilters}};
+use paragonic::{initialize, start_http_server, iragl::{demonstrate_iragl_capabilities, index_file_for_iragl, IndexFileRequest, search_iragl_index, IraglSearchQuery, SearchType, SearchFilters}};
 use std::process;
 use std::env;
 use uuid::Uuid;
@@ -243,16 +243,16 @@ async fn main() {
     }
     
     let server_addr = format!("127.0.0.1:{}", port);
-    tracing::info!("Starting RPC server on {}...", server_addr);
+    tracing::info!("Starting MCP HTTP server on {}...", server_addr);
 
-    // Start the RPC server (this is not async, it just sets up the server)
-    if let Err(e) = start_rpc_server(&server_addr) {
-        tracing::error!("Failed to start RPC server: {}", e);
+    // Start the MCP HTTP server
+    if let Err(e) = start_http_server(&server_addr).await {
+        tracing::error!("Failed to start MCP HTTP server: {}", e);
         process::exit(1);
     }
 
-    tracing::info!("RPC server started successfully");
-    println!("RPC server started successfully on {}", server_addr);
+    tracing::info!("MCP HTTP server started successfully");
+    println!("MCP HTTP server started successfully on {}", server_addr);
     println!("Press Ctrl+C to stop the server");
     println!("Log level: {}", log_level);
 

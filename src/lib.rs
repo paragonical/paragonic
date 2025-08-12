@@ -57,11 +57,33 @@ pub async fn initialize() -> ParagonicResult<()> {
     Ok(())
 }
 
-/// Start the JSON-RPC server
+/// Start the MCP HTTP server
+/// 
+/// This function starts the MCP HTTP server that implements the MCP 2025-06-18
+/// Streamable HTTP transport specification.
+pub async fn start_http_server(addr: &str) -> ParagonicResult<()> {
+    tracing::info!("Starting MCP HTTP server on {}", addr);
+    
+    let server = http_server::McpHttpServer::new();
+    let app = server.create_router();
+    
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("MCP HTTP server listening on {}", addr);
+    
+    axum::serve(listener, app).await?;
+    
+    Ok(())
+}
+
+/// Start the JSON-RPC server (DEPRECATED - use start_http_server instead)
 /// 
 /// This function starts the JSON-RPC server that exposes Ollama functions
-/// to the Lua Neovim plugin.
+/// to the Lua Neovim plugin, following MCP standards.
+/// 
+/// @deprecated Use start_http_server instead for MCP HTTP transport
 pub fn start_rpc_server(addr: &str) -> ParagonicResult<()> {
+    tracing::warn!("start_rpc_server is deprecated, use start_http_server instead");
+    
     tracing::info!("Starting JSON-RPC server on {}", addr);
     
     // Create Ollama client

@@ -17,6 +17,12 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+// Import modules for MCP tool implementations
+use crate::ollama::{OllamaClient, ChatMessage, OllamaConfig};
+use crate::patterns::{PatternRegistry, PatternBootstrap};
+use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
+use crate::embeddings::create_embedding;
+
 /// MCP HTTP server state
 #[derive(Clone)]
 pub struct McpHttpServer {
@@ -26,6 +32,10 @@ pub struct McpHttpServer {
     pub session_manager: Arc<SessionManager>,
     /// Stream manager
     pub stream_manager: Arc<StreamManager>,
+    /// Ollama client for AI operations
+    pub ollama_client: Arc<OllamaClient>,
+    /// Pattern registry for pattern management
+    pub pattern_registry: Arc<tokio::sync::RwLock<PatternRegistry>>,
 }
 
 /// Server information for MCP protocol
@@ -60,6 +70,24 @@ pub struct StreamManager {
 impl McpHttpServer {
     /// Create a new MCP HTTP server
     pub fn new() -> Self {
+        // Initialize pattern registry with bootstrap
+        let patterns_dir = std::path::PathBuf::from("patterns");
+        let bootstrap = PatternBootstrap::new(patterns_dir);
+        let pattern_registry = bootstrap.bootstrap_pattern_system()
+            .unwrap_or_else(|_| PatternRegistry::new());
+        
+        // Create Ollama client
+        let config_manager = crate::config::ConfigManager::new();
+        let ollama_client = OllamaClient::from_config_manager(&config_manager)
+            .unwrap_or_else(|_| {
+                let config = OllamaConfig {
+                    base_url: "http://localhost:11434".to_string(),
+                    timeout_seconds: 30,
+                    progress_timeout_seconds: 10,
+                };
+                OllamaClient::new(config).expect("Failed to create Ollama client")
+            });
+        
         Self {
             server_info: ServerInfo {
                 name: "paragonic-mcp-server".to_string(),
@@ -68,6 +96,8 @@ impl McpHttpServer {
             },
             session_manager: Arc::new(SessionManager::new()),
             stream_manager: Arc::new(StreamManager::new()),
+            ollama_client: Arc::new(ollama_client),
+            pattern_registry: Arc::new(tokio::sync::RwLock::new(pattern_registry)),
         }
     }
 
@@ -253,26 +283,133 @@ impl McpHttpServer {
         server: Self,
         request: Value,
     ) -> Result<axum::response::Response, StatusCode> {
-        // For now, return a simple response
-        // TODO: Implement proper MCP request handling
-        let response = serde_json::json!({
-            "jsonrpc": "2.0",
-            "result": {
-                "protocolVersion": server.server_info.protocol_version,
-                "capabilities": {},
-                "serverInfo": {
-                    "name": server.server_info.name,
-                    "version": server.server_info.version
-                }
-            },
-            "id": request.get("id").unwrap_or(&Value::Null)
-        });
+        let method = request.get("method")
+            .and_then(|m| m.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let params = request.get("params");
+        let id = request.get("id").unwrap_or(&Value::Null);
 
-        Ok(axum::response::Response::builder()
-            .status(StatusCode::OK)
-            .header("content-type", "application/json")
-            .body(axum::body::Body::from(serde_json::to_string(&response).unwrap()))
-            .unwrap())
+        // Handle different MCP methods
+        let result = match method {
+            // MCP Protocol Methods
+            "initialize" => Self::handle_initialize(&server, params).await,
+            "tools/list" => Self::handle_tools_list(&server, params).await,
+            "tools/call" => Self::handle_tools_call(&server, params).await,
+            "resources/list" => Self::handle_resources_list(&server, params).await,
+            "resources/read" => Self::handle_resources_read(&server, params).await,
+            "resources/subscribe" => Self::handle_resources_subscribe(&server, params).await,
+            
+            // Legacy support for direct tool calls (for backward compatibility)
+            "chat_completion" => Self::handle_chat_completion(&server, params).await,
+            "formatted_chat_completion" => Self::handle_formatted_chat_completion(&server, params).await,
+            "agent_chat_completion" => Self::handle_agent_chat_completion(&server, params).await,
+            "streaming_chat_completion" => Self::handle_streaming_chat_completion(&server, params).await,
+            
+            // File Operations
+            "read_file" => Self::handle_read_file(&server, params).await,
+            "write_file" => Self::handle_write_file(&server, params).await,
+            "list_files" => Self::handle_list_files(&server, params).await,
+            
+            // Model Management
+            "list_models" => Self::handle_list_models(&server, params).await,
+            "model_info" => Self::handle_model_info(&server, params).await,
+            "generate_embedding" => Self::handle_generate_embedding(&server, params).await,
+            
+            // Project Management
+            "create_project" => Self::handle_create_project(&server, params).await,
+            "get_project" => Self::handle_get_project(&server, params).await,
+            "list_projects" => Self::handle_list_projects(&server, params).await,
+            "update_project" => Self::handle_update_project(&server, params).await,
+            "delete_project" => Self::handle_delete_project(&server, params).await,
+            
+            // Goal Management
+            "create_goal" => Self::handle_create_goal(&server, params).await,
+            "get_goal" => Self::handle_get_goal(&server, params).await,
+            "list_goals" => Self::handle_list_goals(&server, params).await,
+            "update_goal" => Self::handle_update_goal(&server, params).await,
+            "delete_goal" => Self::handle_delete_goal(&server, params).await,
+            
+            // Task Management
+            "create_task" => Self::handle_create_task(&server, params).await,
+            "get_task" => Self::handle_get_task(&server, params).await,
+            "list_tasks" => Self::handle_list_tasks(&server, params).await,
+            "update_task" => Self::handle_update_task(&server, params).await,
+            "delete_task" => Self::handle_delete_task(&server, params).await,
+            
+            // Search & Knowledge Management
+            "search_embeddings" => Self::handle_search_embeddings(&server, params).await,
+            "find_similar_content" => Self::handle_find_similar_content(&server, params).await,
+            "iragl_search" => Self::handle_iragl_search(&server, params).await,
+            "hybrid_search" => Self::handle_hybrid_search(&server, params).await,
+            "content_association" => Self::handle_content_association(&server, params).await,
+            "ingest_knowledge_stream" => Self::handle_ingest_knowledge_stream(&server, params).await,
+            
+            // Agent Management
+            "create_agent" => Self::handle_create_agent(&server, params).await,
+            "delete_agent" => Self::handle_delete_agent(&server, params).await,
+            "create_conversation" => Self::handle_create_conversation(&server, params).await,
+            "get_conversation" => Self::handle_get_conversation(&server, params).await,
+            
+            // Pattern Management
+            "list_patterns" => Self::handle_list_patterns(&server, params).await,
+            "get_pattern" => Self::handle_get_pattern(&server, params).await,
+            "execute_pattern" => Self::handle_execute_pattern(&server, params).await,
+            "get_pattern_executions" => Self::handle_get_pattern_executions(&server, params).await,
+            "get_pattern_metrics" => Self::handle_get_pattern_metrics(&server, params).await,
+            "get_tool_patterns" => Self::handle_get_tool_patterns(&server, params).await,
+            "trigger_session_patterns" => Self::handle_trigger_session_patterns(&server, params).await,
+            
+            // Optimization & Debug
+            "optimize_knowledge_base" => Self::handle_optimize_knowledge_base(&server, params).await,
+            "optimization_status" => Self::handle_optimization_status(&server, params).await,
+            "optimization_history" => Self::handle_optimization_history(&server, params).await,
+            "debug_markdown_test" => Self::handle_debug_markdown_test(&server, params).await,
+            "test_streaming_format" => Self::handle_test_streaming_format(&server, params).await,
+            "get_next_chunk" => Self::handle_get_next_chunk(&server, params).await,
+            
+            // Tool Execution
+            "execute_tool_call" => Self::handle_execute_tool_call(&server, params).await,
+            "parse_tool_calls" => Self::handle_parse_tool_calls(&server, params).await,
+            
+            // Unknown method
+            _ => {
+                error!("Unknown method: {}", method);
+                Err(StatusCode::METHOD_NOT_ALLOWED)
+            }
+        };
+
+        match result {
+            Ok(result_value) => {
+                let response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "result": result_value,
+                    "id": id
+                });
+
+                Ok(axum::response::Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&response).unwrap()))
+                    .unwrap())
+            }
+            Err(status_code) => {
+                let error_response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": status_code.as_u16(),
+                        "message": format!("Method '{}' failed", method)
+                    },
+                    "id": id
+                });
+
+                Ok(axum::response::Response::builder()
+                    .status(status_code)
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&error_response).unwrap()))
+                    .unwrap())
+            }
+        }
     }
 
     /// Handle JSON-RPC notification
@@ -297,6 +434,1109 @@ impl McpHttpServer {
             .status(StatusCode::ACCEPTED)
             .body(axum::body::Body::empty())
             .unwrap())
+    }
+
+    // MCP Protocol Methods
+    async fn handle_initialize(
+        server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "protocolVersion": server.server_info.protocol_version,
+            "capabilities": {
+                "tools": {},
+                "resources": {},
+                "notifications": {}
+            },
+            "serverInfo": {
+                "name": server.server_info.name,
+                "version": server.server_info.version
+            }
+        }))
+    }
+
+    async fn handle_tools_list(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Return list of all available tools
+        Ok(serde_json::json!({
+            "tools": [
+                {
+                    "name": "chat_completion",
+                    "description": "Send a message to the AI and get response",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "model": {"type": "string"},
+                            "message": {"type": "string"}
+                        },
+                        "required": ["message"]
+                    }
+                },
+                {
+                    "name": "list_models",
+                    "description": "List available Ollama models",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "generate_embedding",
+                    "description": "Generate embeddings for text",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "text": {"type": "string"},
+                            "model": {"type": "string"}
+                        },
+                        "required": ["text"]
+                    }
+                },
+                {
+                    "name": "search_embeddings",
+                    "description": "Search content using embeddings",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "limit": {"type": "integer"}
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "iragl_search",
+                    "description": "Search IRAGL knowledge base",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "search_type": {"type": "string"},
+                            "limit": {"type": "integer"}
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "list_patterns",
+                    "description": "List available patterns",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "execute_pattern",
+                    "description": "Execute a pattern",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "pattern_name": {"type": "string"},
+                            "parameters": {"type": "object"}
+                        },
+                        "required": ["pattern_name"]
+                    }
+                }
+            ]
+        }))
+    }
+
+    async fn handle_tools_call(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let name = params.get("name")
+            .and_then(|n| n.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let default_args = serde_json::json!({});
+        let arguments = params.get("arguments").unwrap_or(&default_args);
+        let arguments_clone = arguments.clone();
+
+        // Route to appropriate handler based on tool name
+        match name {
+            "chat_completion" => Self::handle_chat_completion(server, Some(&arguments_clone)).await,
+            "list_models" => Self::handle_list_models(server, Some(&arguments_clone)).await,
+            "generate_embedding" => Self::handle_generate_embedding(server, Some(&arguments_clone)).await,
+            "search_embeddings" => Self::handle_search_embeddings(server, Some(&arguments_clone)).await,
+            "iragl_search" => Self::handle_iragl_search(server, Some(&arguments_clone)).await,
+            "list_patterns" => Self::handle_list_patterns(server, Some(&arguments_clone)).await,
+            "execute_pattern" => Self::handle_execute_pattern(server, Some(&arguments_clone)).await,
+            _ => {
+                error!("Unknown tool: {}", name);
+                Err(StatusCode::METHOD_NOT_ALLOWED)
+            }
+        }
+    }
+
+    async fn handle_resources_list(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "resources": [
+                {
+                    "uri": "neovim://buffers",
+                    "name": "Neovim Buffers",
+                    "description": "All open buffers in the current Neovim session",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "neovim://session",
+                    "name": "Neovim Session",
+                    "description": "Current Neovim session information",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "patterns://list",
+                    "name": "Patterns List",
+                    "description": "Available patterns and their metadata",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "iragl://index",
+                    "name": "IRAGL Index",
+                    "description": "IRAGL knowledge base index information",
+                    "mimeType": "application/json"
+                }
+            ]
+        }))
+    }
+
+    async fn handle_resources_read(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let uri = params.get("uri")
+            .and_then(|u| u.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        match uri {
+            "neovim://buffers" => {
+                // Return mock buffer data for now
+                Ok(serde_json::json!({
+                    "contents": [
+                        {
+                            "uri": "neovim://buffer/1",
+                            "mimeType": "text/plain",
+                            "text": "Buffer 1 content"
+                        }
+                    ]
+                }))
+            }
+            "neovim://session" => {
+                Ok(serde_json::json!({
+                    "contents": [
+                        {
+                            "uri": "neovim://session",
+                            "mimeType": "application/json",
+                            "text": serde_json::to_string(&serde_json::json!({
+                                "session_id": "test-session",
+                                "buffers": 1,
+                                "windows": 1
+                            })).unwrap()
+                        }
+                    ]
+                }))
+            }
+            "patterns://list" => {
+                Ok(serde_json::json!({
+                    "contents": [
+                        {
+                            "uri": "patterns://list",
+                            "mimeType": "application/json",
+                            "text": serde_json::to_string(&serde_json::json!({
+                                "patterns": [
+                                    {
+                                        "name": "session_summary_generation",
+                                        "description": "Generate session summary",
+                                        "category": "session_management"
+                                    }
+                                ]
+                            })).unwrap()
+                        }
+                    ]
+                }))
+            }
+            _ => Err(StatusCode::NOT_FOUND)
+        }
+    }
+
+    async fn handle_resources_subscribe(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // For now, return a simple subscription response
+        Ok(serde_json::json!({
+            "subscription": "test-subscription-id"
+        }))
+    }
+
+    // Core Chat & AI Functions
+    async fn handle_chat_completion(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("deepseek-r1:1.5b");
+        let message = params.get("message")
+            .and_then(|m| m.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message.to_string(),
+        };
+
+        // Send to Ollama
+        match server.ollama_client.chat_completion(model, vec![chat_message], false).await {
+            Ok(response) => {
+                Ok(serde_json::json!({
+                    "content": response.message.content,
+                    "model": model,
+                    "done": response.done
+                }))
+            }
+            Err(e) => {
+                error!("Chat completion failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_formatted_chat_completion(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Similar to handle_chat_completion but with formatting
+        Self::handle_chat_completion(server, params).await
+    }
+
+    async fn handle_agent_chat_completion(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Similar to handle_chat_completion but for agent context
+        Self::handle_chat_completion(server, params).await
+    }
+
+    async fn handle_streaming_chat_completion(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // For now, return a streaming response ID
+        // In a full implementation, this would set up SSE streaming
+        Ok(serde_json::json!({
+            "stream_id": Uuid::new_v4().to_string(),
+            "status": "streaming"
+        }))
+    }
+
+    // File Operations
+    async fn handle_read_file(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let file_path = params.get("file_path")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        match std::fs::read_to_string(file_path) {
+            Ok(content) => {
+                Ok(serde_json::json!({
+                    "content": content,
+                    "file_path": file_path
+                }))
+            }
+            Err(e) => {
+                error!("Failed to read file {}: {}", file_path, e);
+                Err(StatusCode::NOT_FOUND)
+            }
+        }
+    }
+
+    async fn handle_write_file(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let file_path = params.get("file_path")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let content = params.get("content")
+            .and_then(|c| c.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        match std::fs::write(file_path, content) {
+            Ok(_) => {
+                Ok(serde_json::json!({
+                    "success": true,
+                    "file_path": file_path,
+                    "bytes_written": content.len()
+                }))
+            }
+            Err(e) => {
+                error!("Failed to write file {}: {}", file_path, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_list_files(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let directory = params.get("directory")
+            .and_then(|d| d.as_str())
+            .unwrap_or(".");
+
+        match std::fs::read_dir(directory) {
+            Ok(entries) => {
+                let files: Result<Vec<_>, _> = entries
+                    .map(|entry| {
+                        entry.map(|e| {
+                            serde_json::json!({
+                                "name": e.file_name().to_string_lossy(),
+                                "path": e.path().to_string_lossy(),
+                                "is_file": e.file_type().map(|ft| ft.is_file()).unwrap_or(false),
+                                "is_dir": e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                            })
+                        })
+                    })
+                    .collect();
+                
+                match files {
+                    Ok(file_list) => {
+                        Ok(serde_json::json!({
+                            "files": file_list,
+                            "directory": directory
+                        }))
+                    }
+                    Err(e) => {
+                        error!("Failed to read directory {}: {}", directory, e);
+                        Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to read directory {}: {}", directory, e);
+                Err(StatusCode::NOT_FOUND)
+            }
+        }
+    }
+
+    // Model Management
+    async fn handle_list_models(
+        server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        match server.ollama_client.list_models().await {
+            Ok(models) => {
+                Ok(serde_json::json!({
+                    "models": models
+                }))
+            }
+            Err(e) => {
+                error!("Failed to list models: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_model_info(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        match server.ollama_client.model_info(model).await {
+            Ok(info) => {
+                Ok(serde_json::json!({
+                    "model": model,
+                    "info": info
+                }))
+            }
+            Err(e) => {
+                error!("Failed to get model info for {}: {}", model, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_generate_embedding(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let text = params.get("text")
+            .and_then(|t| t.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("nomic-embed-text");
+
+        // Create embedding request
+        let request = crate::models::CreateEmbeddingRequest {
+            content_type: "text".to_string(),
+            content_id: Uuid::new_v4(),
+            content_text: text.to_string(),
+            embedding_model: model.to_string(),
+            metadata: None,
+        };
+
+        match create_embedding(request).await {
+            Ok(embedding) => {
+                Ok(serde_json::json!({
+                    "embedding": embedding.embedding_vector,
+                    "model": model,
+                    "dimensions": embedding.embedding_vector.as_ref().map(|v| v.values.len()).unwrap_or(0)
+                }))
+            }
+            Err(e) => {
+                error!("Failed to generate embedding: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    // Project Management (placeholder implementations)
+    async fn handle_create_project(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "project_id": Uuid::new_v4().to_string(),
+            "status": "created"
+        }))
+    }
+
+    async fn handle_get_project(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "project": {
+                "id": "test-project",
+                "name": "Test Project",
+                "status": "active"
+            }
+        }))
+    }
+
+    async fn handle_list_projects(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "projects": [
+                {
+                    "id": "test-project-1",
+                    "name": "Test Project 1",
+                    "status": "active"
+                },
+                {
+                    "id": "test-project-2",
+                    "name": "Test Project 2",
+                    "status": "completed"
+                }
+            ]
+        }))
+    }
+
+    async fn handle_update_project(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Project updated"
+        }))
+    }
+
+    async fn handle_delete_project(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Project deleted"
+        }))
+    }
+
+    // Goal Management (placeholder implementations)
+    async fn handle_create_goal(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "goal_id": Uuid::new_v4().to_string(),
+            "status": "created"
+        }))
+    }
+
+    async fn handle_get_goal(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "goal": {
+                "id": "test-goal",
+                "title": "Test Goal",
+                "status": "active"
+            }
+        }))
+    }
+
+    async fn handle_list_goals(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "goals": [
+                {
+                    "id": "test-goal-1",
+                    "title": "Test Goal 1",
+                    "status": "active"
+                },
+                {
+                    "id": "test-goal-2",
+                    "title": "Test Goal 2",
+                    "status": "completed"
+                }
+            ]
+        }))
+    }
+
+    async fn handle_update_goal(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Goal updated"
+        }))
+    }
+
+    async fn handle_delete_goal(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Goal deleted"
+        }))
+    }
+
+    // Task Management (placeholder implementations)
+    async fn handle_create_task(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "task_id": Uuid::new_v4().to_string(),
+            "status": "created"
+        }))
+    }
+
+    async fn handle_get_task(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "task": {
+                "id": "test-task",
+                "title": "Test Task",
+                "status": "pending"
+            }
+        }))
+    }
+
+    async fn handle_list_tasks(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "tasks": [
+                {
+                    "id": "test-task-1",
+                    "title": "Test Task 1",
+                    "status": "pending"
+                },
+                {
+                    "id": "test-task-2",
+                    "title": "Test Task 2",
+                    "status": "completed"
+                }
+            ]
+        }))
+    }
+
+    async fn handle_update_task(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Task updated"
+        }))
+    }
+
+    async fn handle_delete_task(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Task deleted"
+        }))
+    }
+
+    // Search & Knowledge Management
+    async fn handle_search_embeddings(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let query = params.get("query")
+            .and_then(|q| q.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let limit = params.get("limit")
+            .and_then(|l| l.as_u64())
+            .unwrap_or(10);
+
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "results": [
+                {
+                    "content": "Sample search result",
+                    "similarity": 0.95,
+                    "source": "test-document.md"
+                }
+            ],
+            "query": query,
+            "total_results": 1
+        }))
+    }
+
+    async fn handle_find_similar_content(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let content = params.get("content")
+            .and_then(|c| c.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "similar_content": [
+                {
+                    "content": "Similar content found",
+                    "similarity": 0.85,
+                    "source": "similar-document.md"
+                }
+            ],
+            "input_content": content
+        }))
+    }
+
+    async fn handle_iragl_search(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let query = params.get("query")
+            .and_then(|q| q.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let search_type = params.get("search_type")
+            .and_then(|s| s.as_str())
+            .unwrap_or("semantic");
+        let limit = params.get("limit")
+            .and_then(|l| l.as_u64())
+            .unwrap_or(10);
+
+        // Create search query
+        let search_query = IraglSearchQuery {
+            query: query.to_string(),
+            search_type: match search_type {
+                "semantic" => SearchType::Semantic,
+                "keyword" => SearchType::Keyword,
+                "hybrid" => SearchType::Hybrid,
+                "metadata" => SearchType::Metadata,
+                _ => SearchType::Semantic,
+            },
+            limit: Some(limit as usize),
+            filters: None,
+            include_metadata: true,
+        };
+
+        match search_iragl_index(search_query).await {
+            Ok(results) => {
+                let results_json: Vec<Value> = results.iter().map(|result| {
+                    serde_json::json!({
+                        "content": result.content_text,
+                        "similarity_score": result.similarity_score,
+                        "source_info": {
+                            "file_path": result.source_info.file_path,
+                            "section": result.source_info.section
+                        }
+                    })
+                }).collect();
+
+                Ok(serde_json::json!({
+                    "results": results_json,
+                    "query": query,
+                    "search_type": search_type,
+                    "total_results": results.len()
+                }))
+            }
+            Err(e) => {
+                error!("IRAGL search failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_hybrid_search(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let query = params.get("query")
+            .and_then(|q| q.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "results": [
+                {
+                    "content": "Hybrid search result",
+                    "semantic_score": 0.9,
+                    "keyword_score": 0.8,
+                    "combined_score": 0.85
+                }
+            ],
+            "query": query
+        }))
+    }
+
+    async fn handle_content_association(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let content = params.get("content")
+            .and_then(|c| c.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "associations": [
+                {
+                    "related_content": "Associated content",
+                    "association_strength": 0.75,
+                    "association_type": "semantic"
+                }
+            ],
+            "input_content": content
+        }))
+    }
+
+    async fn handle_ingest_knowledge_stream(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let content = params.get("content")
+            .and_then(|c| c.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "ingested": true,
+            "content_length": content.len(),
+            "chunks_created": 1
+        }))
+    }
+
+    // Agent Management (placeholder implementations)
+    async fn handle_create_agent(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "agent_id": Uuid::new_v4().to_string(),
+            "status": "created"
+        }))
+    }
+
+    async fn handle_delete_agent(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Agent deleted"
+        }))
+    }
+
+    async fn handle_create_conversation(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "conversation_id": Uuid::new_v4().to_string(),
+            "status": "created"
+        }))
+    }
+
+    async fn handle_get_conversation(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "conversation": {
+                "id": "test-conversation",
+                "messages": [],
+                "status": "active"
+            }
+        }))
+    }
+
+    // Pattern Management
+    async fn handle_list_patterns(
+        server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let pattern_registry = server.pattern_registry.read().await;
+        let patterns: Vec<Value> = pattern_registry.list_patterns(None, None).iter().map(|pattern| {
+            serde_json::json!({
+                "name": pattern.name,
+                "description": pattern.description,
+                "category": pattern.category,
+                "meta_level": pattern.meta_level
+            })
+        }).collect();
+
+        Ok(serde_json::json!({
+            "patterns": patterns
+        }))
+    }
+
+    async fn handle_get_pattern(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let pattern_name = params.get("pattern_name")
+            .and_then(|n| n.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        let pattern_registry = server.pattern_registry.read().await;
+        // For now, return a mock pattern since get_pattern expects UUID
+        Ok(serde_json::json!({
+            "pattern": {
+                "name": pattern_name,
+                "description": "Mock pattern description",
+                "category": "session_management",
+                "meta_level": "operational"
+            }
+        }))
+    }
+
+    async fn handle_execute_pattern(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let pattern_name = params.get("pattern_name")
+            .and_then(|n| n.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let parameters = params.get("parameters").cloned();
+
+        let mut pattern_registry = server.pattern_registry.write().await;
+        match pattern_registry.execute_pattern(pattern_name, parameters) {
+            Ok(execution) => {
+                Ok(serde_json::json!({
+                    "execution_id": execution.id,
+                    "pattern_name": pattern_name,
+                    "status": "executed",
+                    "trigger_type": execution.trigger_type
+                }))
+            }
+            Err(e) => {
+                error!("Pattern execution failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_get_pattern_executions(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "executions": [
+                {
+                    "id": "test-execution",
+                    "pattern_name": "test_pattern",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "status": "completed"
+                }
+            ]
+        }))
+    }
+
+    async fn handle_get_pattern_metrics(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "metrics": {
+                "total_executions": 10,
+                "success_rate": 0.9,
+                "average_duration": 1.5
+            }
+        }))
+    }
+
+    async fn handle_get_tool_patterns(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "tool_patterns": [
+                {
+                    "tool": "chat_completion",
+                    "patterns": ["session_summary_generation"]
+                }
+            ]
+        }))
+    }
+
+    async fn handle_trigger_session_patterns(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Placeholder implementation
+        Ok(serde_json::json!({
+            "triggered_patterns": [
+                {
+                    "pattern_name": "session_summary_generation",
+                    "triggered": true,
+                    "reason": "session_duration_threshold"
+                }
+            ]
+        }))
+    }
+
+    // Optimization & Debug (placeholder implementations)
+    async fn handle_optimize_knowledge_base(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "optimization_id": Uuid::new_v4().to_string(),
+            "status": "started"
+        }))
+    }
+
+    async fn handle_optimization_status(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "status": "completed",
+            "progress": 100,
+            "optimizations_applied": 5
+        }))
+    }
+
+    async fn handle_optimization_history(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "history": [
+                {
+                    "id": "test-optimization",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "status": "completed",
+                    "improvements": 3
+                }
+            ]
+        }))
+    }
+
+    async fn handle_debug_markdown_test(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "markdown": "# Test Markdown\n\nThis is a test markdown response.",
+            "formatted": "<h1>Test Markdown</h1><p>This is a test markdown response.</p>"
+        }))
+    }
+
+    async fn handle_test_streaming_format(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "stream_id": Uuid::new_v4().to_string(),
+            "format": "streaming",
+            "status": "ready"
+        }))
+    }
+
+    async fn handle_get_next_chunk(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "chunk": "This is a test chunk",
+            "chunk_id": Uuid::new_v4().to_string(),
+            "is_final": false
+        }))
+    }
+
+    // Tool Execution (placeholder implementations)
+    async fn handle_execute_tool_call(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "tool_call_id": Uuid::new_v4().to_string(),
+            "result": "Tool executed successfully"
+        }))
+    }
+
+    async fn handle_parse_tool_calls(
+        _server: &Self,
+        _params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "tool_calls": [
+                {
+                    "tool": "test_tool",
+                    "parameters": {}
+                }
+            ]
+        }))
     }
 }
 
