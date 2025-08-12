@@ -84,8 +84,8 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
        - [x] 9.3 Add performance monitoring and optimization
        - [x] 9.4 Test memory usage and resource cleanup
   - [x] 9.5 Implement connection pooling and optimization
-  - [ ] 9.6 Test under various load conditions
-  - [ ] 9.7 Verify all tests pass
+  - [x] 9.6 Test under various load conditions
+  - [x] 9.7 Verify all tests pass
 
 - [ ] 10. Documentation and Deployment
   - [ ] 10.1 Write comprehensive documentation for HTTP transport
