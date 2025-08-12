@@ -36,6 +36,22 @@ else
     end
 end
 
+-- Try to load OWASP security module with different paths
+local mcp_owasp_security
+local success3, result3 = pcall(require, "paragonic.mcp_owasp_security")
+if success3 then
+    mcp_owasp_security = result3
+else
+    -- Fallback to relative path
+    success3, result3 = pcall(require, "mcp_owasp_security")
+    if success3 then
+        mcp_owasp_security = result3
+    else
+        -- Final fallback to absolute path
+        mcp_owasp_security = require("../../lua/paragonic/mcp_owasp_security")
+    end
+end
+
 local json = vim.json
 
 -- MCP HTTP transport configuration
@@ -94,6 +110,14 @@ function mcp_http_transport.init(config)
     -- Prevent dangerous protocols
     if base_url:match("^ftp://") or base_url:match("^file://") or base_url:match("^javascript:") or base_url:match("^data:") then
         return false, "Invalid base_url: dangerous protocol not allowed"
+    end
+    
+    -- OWASP SSRF protection
+    if mcp_owasp_security then
+        local ssrf_valid, ssrf_err = mcp_owasp_security.validate_url_for_ssrf(base_url)
+        if not ssrf_valid then
+            return false, "SSRF protection: " .. ssrf_err
+        end
     end
     
     -- Validate port if present
@@ -210,6 +234,14 @@ function mcp_http_transport.initialize_session(client_info)
         return false, "Invalid client_info.name: contains invalid characters"
     end
     
+    -- OWASP injection detection for client name
+    if mcp_owasp_security then
+        local injection_detected, injection_err = mcp_owasp_security.detect_injection(client_info.name, "client_name")
+        if injection_detected then
+            return false, "Injection detected in client name: " .. injection_err
+        end
+    end
+    
     -- Validate version if provided
     if client_info.version and type(client_info.version) ~= "string" then
         return false, "Invalid client_info.version: must be a string"
@@ -217,6 +249,14 @@ function mcp_http_transport.initialize_session(client_info)
     
     if client_info.version and #client_info.version > 100 then
         return false, "Invalid client_info.version: too long (max 100 characters)"
+    end
+    
+    -- OWASP injection detection for version
+    if client_info.version and mcp_owasp_security then
+        local injection_detected, injection_err = mcp_owasp_security.detect_injection(client_info.version, "client_version")
+        if injection_detected then
+            return false, "Injection detected in client version: " .. injection_err
+        end
     end
     
     -- Validate capabilities if provided
@@ -330,6 +370,14 @@ function mcp_http_transport.send_request(request)
         return nil, "Method name contains invalid characters"
     end
     
+    -- OWASP injection detection for method name
+    if mcp_owasp_security then
+        local injection_detected, injection_err = mcp_owasp_security.detect_injection(request.method, "method_name")
+        if injection_detected then
+            return nil, "Injection detected in method name: " .. injection_err
+        end
+    end
+    
     -- Validate payload size
     local payload_size = 0
     local function calculate_size(obj)
@@ -357,6 +405,32 @@ function mcp_http_transport.send_request(request)
     local size_ok = calculate_size(request)
     if size_ok == false then
         return nil, "Payload too large (max 1MB)"
+    end
+    
+    -- OWASP injection detection for request parameters
+    if request.params and mcp_owasp_security then
+        local function check_params_for_injection(params, path)
+            if type(params) == "string" then
+                local injection_detected, injection_err = mcp_owasp_security.detect_injection(params, path)
+                if injection_detected then
+                    return false, "Injection detected in " .. path .. ": " .. injection_err
+                end
+            elseif type(params) == "table" then
+                for key, value in pairs(params) do
+                    local new_path = path .. "." .. tostring(key)
+                    local check_result, check_err = check_params_for_injection(value, new_path)
+                    if check_result == false then
+                        return false, check_err
+                    end
+                end
+            end
+            return true
+        end
+        
+        local params_ok, params_err = check_params_for_injection(request.params, "request.params")
+        if not params_ok then
+            return nil, params_err
+        end
     end
     
     -- Ensure request has an ID
