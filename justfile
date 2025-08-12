@@ -392,7 +392,56 @@ test-unit-mcp:
     
     echo "✓ MCP unit tests completed"
 
-test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp
+test-unit-security:
+    #!/usr/bin/env bash
+    echo "=== Running Unit Tests: Security ==="
+    
+    local failed_tests=()
+    
+    echo "Testing basic security module..."
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/security/run_security_module_tests.lua; then
+        failed_tests+=("run_security_module_tests.lua")
+    fi
+    
+    echo "Testing OWASP security module..."
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/security/run_owasp_security_tests.lua; then
+        failed_tests+=("run_owasp_security_tests.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Security unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
+    echo "✓ Security unit tests completed"
+
+test-unit-performance:
+    #!/usr/bin/env bash
+    echo "=== Running Unit Tests: Performance ==="
+    
+    local failed_tests=()
+    
+    echo "Testing performance monitoring and optimization..."
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/performance/run_performance_tests.lua; then
+        failed_tests+=("run_performance_tests.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Performance unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
+    echo "✓ Performance unit tests completed"
+
+test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp test-unit-security test-unit-performance
     #!/usr/bin/env bash
     echo ""
     echo "✓ All unit tests completed successfully"
@@ -564,7 +613,7 @@ test-all: test-unit test-e2e
     #!/usr/bin/env bash
     echo ""
     echo "=== Test Summary ==="
-    echo "✓ Unit tests: Core, RPC, Utils, Neovim, Chat, MCP"
+    echo "✓ Unit tests: Core, RPC, Utils, Neovim, Chat, MCP, Security, Performance"
     echo "⚠️  Integration tests: Skipped (require running backend)"
     echo "✓ E2E tests: Plugin, Startup"
     echo ""
@@ -646,6 +695,8 @@ help:
     echo "  test-unit-neovim  - Neovim integration tests"
     echo "  test-unit-chat    - Chat functionality tests"
     echo "  test-unit-mcp     - MCP integration tests"
+    echo "  test-unit-security - Security and OWASP tests"
+    echo "  test-unit-performance - Performance monitoring tests"
     echo "  test-server-interaction - Tests that use already running server"
     echo "  test-server-lifecycle   - Tests that start/stop their own servers"
     echo "  test-e2e          - All E2E tests (full Neovim environment)"
