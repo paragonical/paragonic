@@ -446,7 +446,66 @@ test-unit-performance:
     
     echo "✓ Performance unit tests completed"
 
-test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp test-unit-security test-unit-performance
+test-unit-http:
+    #!/usr/bin/env bash
+    echo "=== Running Unit Tests: HTTP Transport ==="
+    
+    local failed_tests=()
+    
+    echo "Testing HTTP client functionality..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/http/run_http_client_tests.lua')" -c "quit"; then
+        failed_tests+=("run_http_client_tests.lua")
+    fi
+    
+    echo "Testing HTTP connection pooling..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/http/run_http_connection_pooling_tests.lua')" -c "quit"; then
+        failed_tests+=("run_http_connection_pooling_tests.lua")
+    fi
+    
+    echo "Testing HTTP load testing..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/http/run_http_load_testing_suite.lua')" -c "quit"; then
+        failed_tests+=("run_http_load_testing_suite.lua")
+    fi
+    
+    echo "Testing HTTP comprehensive tests..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('{{unit-dir}}/http/run_all_http_tests.lua')" -c "quit"; then
+        failed_tests+=("run_all_http_tests.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ HTTP transport unit tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
+    echo "✓ HTTP transport unit tests completed"
+
+test-deployment:
+    #!/usr/bin/env bash
+    echo "=== Running Deployment Tests ==="
+    
+    local failed_tests=()
+    
+    echo "Testing deployment and configuration..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('tests/deployment/test_deployment_and_configuration.lua')" -c "quit"; then
+        failed_tests+=("test_deployment_and_configuration.lua")
+    fi
+    
+    if [ ${#failed_tests[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Deployment tests failed:"
+        for test in "${failed_tests[@]}"; do
+            echo "  - $test"
+        done
+        exit 1
+    fi
+    
+    echo "✓ Deployment tests completed"
+
+test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp test-unit-security test-unit-performance test-unit-http
     #!/usr/bin/env bash
     echo ""
     echo "✓ All unit tests completed successfully"
@@ -614,13 +673,14 @@ test-e2e: test-e2e-plugin test-e2e-startup
     echo "✓ All E2E tests completed"
 
 # All tests
-test-all: test-unit test-e2e
+test-all: test-unit test-e2e test-deployment
     #!/usr/bin/env bash
     echo ""
     echo "=== Test Summary ==="
-    echo "✓ Unit tests: Core, RPC, Utils, Neovim, Chat, MCP, Security, Performance"
+    echo "✓ Unit tests: Core, RPC, Utils, Neovim, Chat, MCP, Security, Performance, HTTP Transport"
     echo "⚠️  Integration tests: Skipped (require running backend)"
     echo "✓ E2E tests: Plugin, Startup"
+    echo "✓ Deployment tests: Configuration and deployment validation"
     echo ""
     echo "🎉 All tests completed successfully!"
 
@@ -702,6 +762,8 @@ help:
     echo "  test-unit-mcp     - MCP integration tests"
     echo "  test-unit-security - Security and OWASP tests"
     echo "  test-unit-performance - Performance monitoring tests"
+    echo "  test-unit-http    - HTTP transport tests"
+    echo "  test-deployment   - Deployment and configuration tests"
     echo "  test-server-interaction - Tests that use already running server"
     echo "  test-server-lifecycle   - Tests that start/stop their own servers"
     echo "  test-e2e          - All E2E tests (full Neovim environment)"

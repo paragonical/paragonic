@@ -88,10 +88,10 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 9.7 Verify all tests pass
 
 - [ ] 10. Documentation and Deployment
-  - [ ] 10.1 Write comprehensive documentation for HTTP transport
-  - [ ] 10.2 Update API documentation and examples
-  - [ ] 10.3 Create migration guide for existing users
-  - [ ] 10.4 Test deployment and configuration
-  - [ ] 10.5 Update justfile with new test targets
-  - [ ] 10.6 Create release notes and changelog
-  - [ ] 10.7 Verify all tests pass
+  - [x] 10.1 Write comprehensive documentation for HTTP transport
+  - [x] 10.2 Update API documentation and examples
+  - [x] 10.3 Create migration guide for existing users
+  - [x] 10.4 Test deployment and configuration
+  - [x] 10.5 Update justfile with new test targets
+  - [x] 10.6 Create release notes and changelog
+  - [x] 10.7 Verify all tests pass
