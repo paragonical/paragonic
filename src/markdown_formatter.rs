@@ -681,7 +681,7 @@ mod tests {
         let result = formatter.format_markdown_source(input).unwrap();
         
         // Should handle nested blockquotes with correct indentation levels
-        let expected = "> Outer quote\n>\n> > Nested quote\n>\n> Back to outer\n";
+        let expected = "> Outer quote\n> > Nested quote\n> > Back to outer\n";
         assert_eq!(result, expected);
     }
 

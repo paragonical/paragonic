@@ -329,6 +329,7 @@ pub struct IRAGLSearchEngine {
     total_response_time: std::sync::atomic::AtomicU64,
     cache_hits: std::sync::atomic::AtomicU64,
     cache_misses: std::sync::atomic::AtomicU64,
+    cache: std::sync::Mutex<std::collections::HashMap<String, IraglSearchResponse>>,
 }
 
 impl IRAGLSearchEngine {
@@ -343,6 +344,7 @@ impl IRAGLSearchEngine {
             total_response_time: std::sync::atomic::AtomicU64::new(0),
             cache_hits: std::sync::atomic::AtomicU64::new(0),
             cache_misses: std::sync::atomic::AtomicU64::new(0),
+            cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
     
@@ -437,18 +439,31 @@ impl IRAGLSearchEngine {
         })
     }
     
-    pub async fn cache_search_result(&self, _key: &str, _response: &IraglSearchResponse) -> ParagonicResult<()> {
-        // Mock implementation
+    pub async fn cache_search_result(&self, key: &str, response: &IraglSearchResponse) -> ParagonicResult<()> {
+        if self.config.cache_enabled {
+            let mut cache = self.cache.lock().unwrap();
+            cache.insert(key.to_string(), response.clone());
+        }
         Ok(())
     }
     
-    pub async fn get_cached_result(&self, _key: &str) -> ParagonicResult<IraglSearchResponse> {
-        // Mock implementation - always return error (cache miss)
+    pub async fn get_cached_result(&self, key: &str) -> ParagonicResult<IraglSearchResponse> {
+        if self.config.cache_enabled {
+            let cache = self.cache.lock().unwrap();
+            if let Some(response) = cache.get(key) {
+                self.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                return Ok(response.clone());
+            }
+        }
+        self.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Err(ParagonicError::Internal("Cache miss".to_string()))
     }
     
-    pub async fn invalidate_cache(&self, _key: &str) -> ParagonicResult<()> {
-        // Mock implementation
+    pub async fn invalidate_cache(&self, key: &str) -> ParagonicResult<()> {
+        if self.config.cache_enabled {
+            let mut cache = self.cache.lock().unwrap();
+            cache.remove(key);
+        }
         Ok(())
     }
     
