@@ -239,30 +239,58 @@ impl OllamaClient {
                 ParagonicError::Ollama(format!("Streaming response reading failed: {e}"))
             })?;
             
-            // Parse the last non-empty line as the final response
+            info!("🔍 Raw streaming response from Ollama:");
+            info!("   Response length: {} characters", response_text.len());
+            info!("   Response preview: {}", response_text.chars().take(200).collect::<String>());
+            
+            // Parse all non-empty lines and accumulate content
             let lines: Vec<&str> = response_text.lines().filter(|line| !line.trim().is_empty()).collect();
-            if let Some(last_line) = lines.last() {
-                let stream_response: StreamChatCompletionResponse = serde_json::from_str(last_line).map_err(|e| {
-                    error!("Failed to parse streaming response: {}", e);
+            info!("   Number of non-empty lines: {}", lines.len());
+            
+            let mut accumulated_content = String::new();
+            let mut final_model = String::new();
+            let mut final_created_at = String::new();
+            let mut final_done = false;
+            
+            for (i, line) in lines.iter().enumerate() {
+                info!("   Line {}: {}", i, line);
+                let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).map_err(|e| {
+                    error!("Failed to parse streaming response line {}: {}", i, e);
                     ParagonicError::Ollama(format!("Streaming response parsing failed: {e}"))
                 })?;
                 
-                // Convert to ChatCompletionResponse format
-                let chat_response = ChatCompletionResponse {
-                    model: stream_response.model,
-                    created_at: stream_response.created_at,
-                    message: stream_response.message.unwrap_or_else(|| ChatMessage {
-                        role: "assistant".to_string(),
-                        content: stream_response.response.unwrap_or_default(),
-                    }),
-                    done: stream_response.done,
-                };
+                // Accumulate content from message field
+                if let Some(message) = &stream_response.message {
+                    accumulated_content.push_str(&message.content);
+                }
                 
-                info!("Successfully received streaming chat completion from Ollama model: {}", model);
-                return Ok(chat_response);
-            } else {
-                return Err(ParagonicError::Ollama("No valid response in streaming data".to_string()));
+                // Update final values
+                final_model = stream_response.model.clone();
+                final_created_at = stream_response.created_at.clone();
+                final_done = stream_response.done;
+                
+                info!("   Line {} - model: {}, done: {}, content: {:?}", 
+                      i, stream_response.model, stream_response.done, 
+                      stream_response.message.as_ref().map(|m| &m.content));
             }
+            
+            info!("   Accumulated content length: {}", accumulated_content.len());
+            info!("   Final done: {}", final_done);
+            
+            // Convert to ChatCompletionResponse format
+            let chat_response = ChatCompletionResponse {
+                model: final_model,
+                created_at: final_created_at,
+                message: ChatMessage {
+                    role: "assistant".to_string(),
+                    content: accumulated_content,
+                },
+                done: final_done,
+            };
+            
+            info!("   Final chat response content length: {}", chat_response.message.content.len());
+            info!("Successfully received streaming chat completion from Ollama model: {}", model);
+            return Ok(chat_response);
         } else {
             // Non-streaming response
             let chat_response: ChatCompletionResponse = response.json().await.map_err(|e| {

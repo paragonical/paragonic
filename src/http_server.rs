@@ -816,8 +816,13 @@ impl McpHttpServer {
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
+        info!("🔄 Streaming chat completion request:");
+        info!("   Model: {}", model);
+        info!("   Message: {}", message);
+
         // Check if this is a thinking model
         let is_thinking_model = Self::is_thinking_model(model);
+        info!("   Is thinking model: {}", is_thinking_model);
         
         // Create chat message with appropriate prompt for thinking models
         let chat_message = if is_thinking_model {
@@ -826,12 +831,14 @@ impl McpHttpServer {
                 "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
                 message
             );
+            info!("   Using thinking prompt: {}", thinking_prompt);
             ChatMessage {
                 role: "user".to_string(),
                 content: thinking_prompt,
             }
         } else {
             // Regular chat message for non-thinking models
+            info!("   Using regular prompt: {}", message);
             ChatMessage {
                 role: "user".to_string(),
                 content: message.to_string(),
@@ -839,32 +846,30 @@ impl McpHttpServer {
         };
 
         // Send to Ollama with streaming enabled
+        info!("   Sending to Ollama with streaming enabled...");
         match server.ollama_client.chat_completion(model, vec![chat_message], true).await {
             Ok(response) => {
                 let content = response.message.content;
+                info!("   ✅ Ollama response received:");
+                info!("   Content length: {} characters", content.len());
+                info!("   Content preview: {}", content.chars().take(100).collect::<String>());
                 
-                if is_thinking_model {
-                    // For thinking models, return the raw content with thinking tags
-                    Ok(serde_json::json!({
-                        "type": "regular_content",
-                        "chunk": content,
-                        "chunk_index": 0,
-                        "total_chunks": 1,
-                        "remaining_chunks": []
-                    }))
-                } else {
-                    // For regular models, return the content directly
-                    Ok(serde_json::json!({
-                        "type": "regular_content",
-                        "chunk": content,
-                        "chunk_index": 0,
-                        "total_chunks": 1,
-                        "remaining_chunks": []
-                    }))
-                }
+                // The client expects "streaming_chunk" type, not "regular_content"
+                let response_json = serde_json::json!({
+                    "type": "streaming_chunk",
+                    "chunk": content,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                    "remaining_chunks": []
+                });
+                
+                info!("   📤 Sending response to client:");
+                info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
+                
+                Ok(response_json)
             }
             Err(e) => {
-                error!("Streaming chat completion failed: {}", e);
+                error!("❌ Streaming chat completion failed: {}", e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
             }
         }
