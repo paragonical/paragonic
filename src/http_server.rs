@@ -694,10 +694,26 @@ impl McpHttpServer {
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
-        // Create chat message
-        let chat_message = ChatMessage {
-            role: "user".to_string(),
-            content: message.to_string(),
+        // Check if this is a thinking model
+        let is_thinking_model = Self::is_thinking_model(model);
+        
+        // Create chat message with appropriate prompt for thinking models
+        let chat_message = if is_thinking_model {
+            // For thinking models, wrap the message in a thinking prompt
+            let thinking_prompt = format!(
+                "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
+                message
+            );
+            ChatMessage {
+                role: "user".to_string(),
+                content: thinking_prompt,
+            }
+        } else {
+            // Regular chat message for non-thinking models
+            ChatMessage {
+                role: "user".to_string(),
+                content: message.to_string(),
+            }
         };
 
         // Send to Ollama
@@ -720,8 +736,64 @@ impl McpHttpServer {
         server: &Self,
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
-        // Similar to handle_chat_completion but with formatting
-        Self::handle_chat_completion(server, params).await
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("deepseek-r1:1.5b");
+        let message = params.get("message")
+            .and_then(|m| m.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let format_config = params.get("format_config");
+
+        // Check if this is a thinking model
+        let is_thinking_model = Self::is_thinking_model(model);
+        
+        // Create chat message with appropriate prompt for thinking models
+        let chat_message = if is_thinking_model {
+            // For thinking models, wrap the message in a thinking prompt
+            let thinking_prompt = format!(
+                "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
+                message
+            );
+            ChatMessage {
+                role: "user".to_string(),
+                content: thinking_prompt,
+            }
+        } else {
+            // Regular chat message for non-thinking models
+            ChatMessage {
+                role: "user".to_string(),
+                content: message.to_string(),
+            }
+        };
+
+        // Send to Ollama
+        match server.ollama_client.chat_completion(model, vec![chat_message], false).await {
+            Ok(response) => {
+                let content = response.message.content;
+                
+                // Format the response based on format_config
+                let formatted_content = if let Some(config) = format_config {
+                    // Apply formatting based on config
+                    Self::format_response_with_config(&content, config)
+                } else {
+                    // Default formatting
+                    Self::format_response_default(&content)
+                };
+                
+                Ok(serde_json::json!({
+                    "formatted_content": formatted_content,
+                    "original_content": content,
+                    "model": model,
+                    "done": response.done,
+                    "duration_sec": 0.0 // TODO: Calculate actual duration
+                }))
+            }
+            Err(e) => {
+                error!("Formatted chat completion failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
     }
 
     async fn handle_agent_chat_completion(
@@ -744,22 +816,52 @@ impl McpHttpServer {
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
-        // Create chat message
-        let chat_message = ChatMessage {
-            role: "user".to_string(),
-            content: message.to_string(),
+        // Check if this is a thinking model
+        let is_thinking_model = Self::is_thinking_model(model);
+        
+        // Create chat message with appropriate prompt for thinking models
+        let chat_message = if is_thinking_model {
+            // For thinking models, wrap the message in a thinking prompt
+            let thinking_prompt = format!(
+                "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
+                message
+            );
+            ChatMessage {
+                role: "user".to_string(),
+                content: thinking_prompt,
+            }
+        } else {
+            // Regular chat message for non-thinking models
+            ChatMessage {
+                role: "user".to_string(),
+                content: message.to_string(),
+            }
         };
 
         // Send to Ollama with streaming enabled
         match server.ollama_client.chat_completion(model, vec![chat_message], true).await {
             Ok(response) => {
-                Ok(serde_json::json!({
-                    "type": "regular_content",
-                    "chunk": response.message.content,
-                    "chunk_index": 0,
-                    "total_chunks": 1,
-                    "remaining_chunks": []
-                }))
+                let content = response.message.content;
+                
+                if is_thinking_model {
+                    // For thinking models, return the raw content with thinking tags
+                    Ok(serde_json::json!({
+                        "type": "regular_content",
+                        "chunk": content,
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "remaining_chunks": []
+                    }))
+                } else {
+                    // For regular models, return the content directly
+                    Ok(serde_json::json!({
+                        "type": "regular_content",
+                        "chunk": content,
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "remaining_chunks": []
+                    }))
+                }
             }
             Err(e) => {
                 error!("Streaming chat completion failed: {}", e);
@@ -1566,6 +1668,41 @@ impl McpHttpServer {
                 }
             ]
         }))
+    }
+
+    /// Check if a model supports thinking (intermediate reasoning)
+    fn is_thinking_model(model: &str) -> bool {
+        // List of models that support thinking with <think> tags
+        let thinking_models = vec![
+            "deepseek-r1:1.5b",
+            "deepseek-coder:1.3b", 
+            "deepseek-coder:6.7b",
+            "deepseek-coder:33b",
+        ];
+        
+        thinking_models.contains(&model)
+    }
+
+    /// Format response with default formatting (diamond prefix)
+    fn format_response_default(content: &str) -> String {
+        let mut formatted = String::new();
+        for line in content.lines() {
+            if !line.trim().is_empty() {
+                formatted.push_str("🮮   ");
+                formatted.push_str(line);
+                formatted.push('\n');
+            } else {
+                formatted.push('\n');
+            }
+        }
+        formatted
+    }
+
+    /// Format response with custom configuration
+    fn format_response_with_config(content: &str, config: &serde_json::Value) -> String {
+        // For now, use default formatting
+        // TODO: Implement custom formatting based on config
+        Self::format_response_default(content)
     }
 }
 
