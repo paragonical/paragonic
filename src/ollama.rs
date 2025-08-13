@@ -232,13 +232,47 @@ impl OllamaClient {
             return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
         }
 
-        let chat_response: ChatCompletionResponse = response.json().await.map_err(|e| {
-            error!("Failed to parse Ollama chat response: {}", e);
-            ParagonicError::Ollama(format!("Chat response parsing failed: {e}"))
-        })?;
+        if stream {
+            // For streaming responses, we need to read the response as text and parse each line
+            let response_text = response.text().await.map_err(|e| {
+                error!("Failed to read streaming response: {}", e);
+                ParagonicError::Ollama(format!("Streaming response reading failed: {e}"))
+            })?;
+            
+            // Parse the last non-empty line as the final response
+            let lines: Vec<&str> = response_text.lines().filter(|line| !line.trim().is_empty()).collect();
+            if let Some(last_line) = lines.last() {
+                let stream_response: StreamChatCompletionResponse = serde_json::from_str(last_line).map_err(|e| {
+                    error!("Failed to parse streaming response: {}", e);
+                    ParagonicError::Ollama(format!("Streaming response parsing failed: {e}"))
+                })?;
+                
+                // Convert to ChatCompletionResponse format
+                let chat_response = ChatCompletionResponse {
+                    model: stream_response.model,
+                    created_at: stream_response.created_at,
+                    message: stream_response.message.unwrap_or_else(|| ChatMessage {
+                        role: "assistant".to_string(),
+                        content: stream_response.response.unwrap_or_default(),
+                    }),
+                    done: stream_response.done,
+                };
+                
+                info!("Successfully received streaming chat completion from Ollama model: {}", model);
+                return Ok(chat_response);
+            } else {
+                return Err(ParagonicError::Ollama("No valid response in streaming data".to_string()));
+            }
+        } else {
+            // Non-streaming response
+            let chat_response: ChatCompletionResponse = response.json().await.map_err(|e| {
+                error!("Failed to parse Ollama chat response: {}", e);
+                ParagonicError::Ollama(format!("Chat response parsing failed: {e}"))
+            })?;
 
-        info!("Successfully received chat completion from Ollama model: {}", model);
-        Ok(chat_response)
+            info!("Successfully received chat completion from Ollama model: {}", model);
+            Ok(chat_response)
+        }
     }
 
     /// Pull a model from Ollama
