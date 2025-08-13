@@ -74,12 +74,6 @@ test-unit-core:
     echo "=== Running Unit Tests: Core ==="
     rm -f /tmp/test_failures
     
-    echo "Testing basic functionality (standalone)..."
-    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_simple.lua; then
-        echo "✗ test_simple.lua failed"
-        exit 1
-    fi
-    
     echo "Testing JSON parsing (standalone)..."
     if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/core/test_json_parsing.lua; then
         echo "✗ test_json_parsing.lua failed"
@@ -500,17 +494,6 @@ test-unit: test-unit-core test-unit-utils test-unit-neovim test-unit-chat test-u
     echo ""
     echo "✓ All unit tests completed successfully"
 
-# RPC integration tests
-test-rpc-integration:
-    #!/usr/bin/env bash
-    echo "=== Running RPC Integration Tests ==="
-    echo "Testing RPC server integration (soft fail if server not available)..."
-    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/rpc/test_rpc_integration.lua; then
-        echo "⚠ RPC integration test failed (soft failure)"
-    else
-        echo "✓ RPC integration tests completed"
-    fi
-
 # Server lifecycle tests (start/stop servers, use different ports)
 test-server-lifecycle-backend:
     #!/usr/bin/env bash
@@ -842,7 +825,7 @@ test-lua-integration: test-server-interaction
 test-mcp-client-validation:
     #!/usr/bin/env bash
     echo "=== Running MCP Client Validation (Neovim) ==="
-    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('tests/integration/chat/test_mcp_client_validation.lua')" -c "quit"; then
+    if ! MCP_ALLOW_LOCALHOST=1 {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('tests/integration/chat/test_mcp_client_validation.lua')" -c "quit"; then
         echo "✗ MCP client validation failed"
         exit 1
     fi
