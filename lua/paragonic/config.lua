@@ -12,6 +12,7 @@ local config = {
     database_path = nil, -- Will be set in setup() if vim is available
     log_level = "info",
     backend_base_url = "http://127.0.0.1:3000", -- Default MCP HTTP server
+    allow_localhost = true, -- Allow localhost connections for development
 }
 
 -- Model capabilities configuration

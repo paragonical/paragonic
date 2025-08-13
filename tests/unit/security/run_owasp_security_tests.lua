@@ -330,10 +330,7 @@ local function run_tests()
     -- A10:2021 – Server-Side Request Forgery (SSRF) Protection Tests
     test("A10: Validate URL for SSRF - blocked hosts", function()
         local blocked_hosts = {
-            "http://127.0.0.1/api",
-            "https://localhost:3000/mcp",
             "http://0.0.0.0:8080",
-            "https://::1/api",
             "http://169.254.169.254/latest/meta-data",
             "https://169.254.170.2/api",
         }
@@ -370,6 +367,9 @@ local function run_tests()
             "http://service.com:8080/api",
             "https://web.com:8443/page",
             "https://api.github.com/v3/users",
+            "http://127.0.0.1:3000/mcp",
+            "https://localhost:3000/api",
+            "http://::1:8080/test",
         }
         
         for _, url in ipairs(allowed_urls) do

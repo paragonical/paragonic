@@ -104,6 +104,9 @@ end
 
 -- Format clean Markdown source with diamond prefix and 3-space gutter
 function M.wrap_text_with_diamond(text, max_width)
+    -- Set default max_width if not provided
+    max_width = max_width or 80
+    
     if not text or text == "" then
         return {"🮮   "}
     end

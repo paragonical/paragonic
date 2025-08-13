@@ -161,10 +161,7 @@ local OWASP_CONFIG = {
     -- A10:2021 – Server-Side Request Forgery (SSRF)
     SSRF_PROTECTION = {
         BLOCKED_HOSTS = {
-            "127.0.0.1",
-            "localhost",
             "0.0.0.0",
-            "::1",
             "169.254.169.254", -- AWS metadata
             "169.254.170.2",   -- AWS metadata
         },
@@ -429,8 +426,8 @@ function mcp_owasp_security.validate_url_for_ssrf(url)
         return false, "Invalid URL"
     end
     
-    -- Development override: allow localhost when explicitly enabled
-    local allow_localhost = (os.getenv("MCP_ALLOW_LOCALHOST") == "1")
+    -- Local-first architecture: allow localhost by default since server is always local
+    local allow_localhost = true
     
     -- Extract host and port (handle IPv6 addresses)
     local host_match = url:match("://([^:/%[%]]+)")

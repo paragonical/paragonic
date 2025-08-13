@@ -96,14 +96,25 @@ end
 
 -- Send message with server-side formatting
 function M.send_message_formatted(message, model, format_config)
+    local debug = require("paragonic.debug")
+    debug.debug_print("🚀 send_message_formatted() called", "debug")
+    debug.debug_print("🔧 Message: " .. string.format("%q", message), "debug")
+    debug.debug_print("🔧 Model: " .. tostring(model), "debug")
+    
     local backend = require("paragonic.backend")
     local rpc_client = backend._get_rpc_client()
+    
+    debug.debug_print("🔍 rpc_client: " .. tostring(rpc_client ~= nil), "debug")
+    
     if not rpc_client then
+        debug.debug_print("🔧 Backend not available, initializing...", "debug")
         -- Try to initialize backend if not available
         if not backend.initialize_backend() then
+            debug.debug_print("❌ Backend initialization failed", "error")
             return nil, "Backend not available"
         end
         rpc_client = backend._get_rpc_client()
+        debug.debug_print("🔍 rpc_client after init: " .. tostring(rpc_client ~= nil), "debug")
     end
     
     -- Use default model if not specified
@@ -120,8 +131,17 @@ function M.send_message_formatted(message, model, format_config)
     }
     
     -- Send formatted chat completion request
+    debug.debug_print("🔧 About to call rpc_client:formatted_chat_completion", "debug")
     local response = rpc_client:formatted_chat_completion(model, message, format_config)
+    
+    debug.debug_print("🔍 Response: " .. tostring(response ~= nil), "debug")
+    if response then
+        debug.debug_print("🔍 Response type: " .. type(response), "debug")
+        debug.debug_print("🔍 Response preview: " .. string.format("%q", tostring(response):sub(1, 100)), "debug")
+    end
+    
     if not response then
+        debug.debug_print("❌ No response from AI", "error")
         return nil, "Failed to get response from AI"
     end
     
@@ -1205,8 +1225,18 @@ local function extract_backward_to_tombstone(current_buf)
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
     local cursor_line = cursor_pos[1] - 1  -- Convert to 0-indexed
     
+    -- Debug: Print cursor position
+    local debug = require("paragonic.debug")
+    debug.debug_print("🔍 extract_backward_to_tombstone: cursor_line = " .. cursor_line, "debug")
+    
     -- Get all lines from start of buffer to cursor line
     local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, cursor_line + 1, false)
+    
+    -- Debug: Print buffer content
+    debug.debug_print("🔍 Buffer lines (0 to " .. cursor_line .. "):", "debug")
+    for i, line in ipairs(all_lines) do
+        debug.debug_print("  Line " .. (i-1) .. ": " .. string.format("%q", line), "debug")
+    end
     
     -- Find the last tombstone marker (∎) before the cursor
     local tombstone_line = -1
@@ -1214,13 +1244,18 @@ local function extract_backward_to_tombstone(current_buf)
         local line = all_lines[i + 1]  -- Convert back to 1-indexed for array access
         if line and line:match("^%s*∎%s*$") then
             tombstone_line = i
+            debug.debug_print("🔍 Found tombstone at line " .. i, "debug")
             break
         end
     end
     
+    debug.debug_print("🔍 tombstone_line = " .. tombstone_line, "debug")
+    
     -- Extract lines from after the tombstone to the cursor
     local message_lines = {}
     local start_line = tombstone_line + 1
+    
+    debug.debug_print("🔍 Extracting from line " .. start_line .. " to " .. cursor_line, "debug")
     
     for i = start_line, cursor_line do
         local line = all_lines[i + 1]  -- Convert to 1-indexed for array access
@@ -1228,12 +1263,17 @@ local function extract_backward_to_tombstone(current_buf)
             -- Skip empty lines at the beginning but include them in the middle/end
             if #message_lines > 0 or line:match("%S") then
                 table.insert(message_lines, line)
+                debug.debug_print("🔍 Added line: " .. string.format("%q", line), "debug")
+            else
+                debug.debug_print("🔍 Skipped empty line: " .. string.format("%q", line), "debug")
             end
         end
     end
     
     -- Join the lines and trim leading/trailing whitespace
     local message = table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+    
+    debug.debug_print("🔍 Final extracted message: " .. string.format("%q", message), "debug")
     
     return message, start_line
 end
@@ -1306,18 +1346,29 @@ local function extract_complete_range(current_buf)
 end
 
 function M.send_message_command()
+    local debug = require("paragonic.debug")
+    debug.debug_print("🚀 send_message_command() called", "debug")
+    
     local current_buf = vim.api.nvim_get_current_buf()
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
     
+    debug.debug_print("🔍 Current buffer: " .. buf_name, "debug")
+    
     -- Only work in chat buffer
     if buf_name ~= "paragonic://chat" then
+        debug.debug_print("❌ Not in chat buffer", "error")
         vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
         return
     end
     
+    debug.debug_print("✅ In chat buffer, extracting message...", "debug")
+    
     -- Extract multi-line message from cursor to previous tombstone
     local message, start_line = extract_backward_to_tombstone(current_buf)
     local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1  -- Keep for insertion positioning
+    
+    debug.debug_print("🔍 Extracted message: " .. string.format("%q", message), "debug")
+    debug.debug_print("🔍 Message length: " .. #message, "debug")
     
     -- Debug: Show what was extracted
     vim.notify("Extracted message: " .. string.format("%q", message), vim.log.levels.INFO)
@@ -1330,12 +1381,20 @@ function M.send_message_command()
     
     -- Initialize backend if not available
     local backend = require("paragonic.backend")
+    debug.debug_print("🔍 Checking backend._rpc_client: " .. tostring(backend._rpc_client ~= nil), "debug")
+    
     if not backend._rpc_client then
+        debug.debug_print("🔧 Backend not available, initializing...", "debug")
         local success = backend._initialize_backend()
+        debug.debug_print("🔧 Backend initialization result: " .. tostring(success), "debug")
+        
         if not success then
+            debug.debug_print("❌ Backend initialization failed", "error")
             vim.notify("Failed to initialize backend", vim.log.levels.ERROR)
             return
         end
+    else
+        debug.debug_print("✅ Backend already available", "debug")
     end
     
     -- Get buffer width for formatting
@@ -1361,6 +1420,10 @@ function M.send_message_command()
     -- Send the message using server-side formatted function
     local config = require("paragonic.config")
     local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    
+    debug.debug_print("🔧 About to send message to model: " .. default_model, "debug")
+    debug.debug_print("🔧 Message to send: " .. string.format("%q", message), "debug")
+    
     local formatted_response, original_response, server_duration_sec, err = M.send_message_formatted(message, default_model, format_config)
     
     if not formatted_response then

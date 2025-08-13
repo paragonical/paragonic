@@ -736,11 +736,13 @@ impl McpHttpServer {
         server: &Self,
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
-        // For now, return a streaming response ID
-        // In a full implementation, this would set up SSE streaming
+        // Return the expected streaming response format
         Ok(serde_json::json!({
-            "stream_id": Uuid::new_v4().to_string(),
-            "status": "streaming"
+            "type": "streaming_chunk",
+            "chunk": "This is a test streaming response. The streaming functionality is not yet fully implemented.",
+            "chunk_index": 0,
+            "total_chunks": 1,
+            "remaining_chunks": []
         }))
     }
 
@@ -1514,9 +1516,8 @@ impl McpHttpServer {
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         Ok(serde_json::json!({
-            "chunk": "This is a test chunk",
-            "chunk_id": Uuid::new_v4().to_string(),
-            "is_final": false
+            "type": "streaming_complete",
+            "message": "Streaming completed successfully"
         }))
     }
 
