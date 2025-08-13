@@ -1787,17 +1787,26 @@ function M.send_message_command_thinking()
             fold_start_line = thinking_start_line
             
             -- Add thinking start with brain symbol
-            local lines = {chunk}
+            local lines = {}
+            for line in chunk:gmatch("[^\r\n]+") do
+                table.insert(lines, line)
+            end
             vim.api.nvim_buf_set_lines(current_buf, thinking_start_line, thinking_start_line, false, lines)
             
         elseif chunk_type == "thinking_step" then
             -- Add thinking step with proper symbol
-            local lines = {chunk}
+            local lines = {}
+            for line in chunk:gmatch("[^\r\n]+") do
+                table.insert(lines, line)
+            end
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             
         elseif chunk_type == "thinking_content" then
             -- Add thinking content with indentation
-            local lines = {chunk}
+            local lines = {}
+            for line in chunk:gmatch("[^\r\n]+") do
+                table.insert(lines, line)
+            end
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             
         elseif chunk_type == "thinking_end" then
@@ -1805,7 +1814,10 @@ function M.send_message_command_thinking()
             thinking_end_line = response_line_start + #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
             
             -- Add thinking end
-            local lines = {chunk}
+            local lines = {}
+            for line in chunk:gmatch("[^\r\n]+") do
+                table.insert(lines, line)
+            end
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             
             -- Create fold for thinking section

@@ -1184,7 +1184,13 @@ function M.handle_tool_call_with_cancellation(id, params)
         
         -- Perform the edit
         vim.api.nvim_set_current_buf(target_buf)
-        vim.api.nvim_buf_set_lines(target_buf, line_number - 1, line_number, false, {content})
+        
+        -- Split content into lines to handle newlines properly
+        local lines = {}
+        for line in content:gmatch("[^\r\n]+") do
+            table.insert(lines, line)
+        end
+        vim.api.nvim_buf_set_lines(target_buf, line_number - 1, line_number, false, lines)
         
         M.complete_operation(operation_id)
         return {
