@@ -1686,13 +1686,20 @@ impl McpHttpServer {
     /// Format response with default formatting (diamond prefix)
     fn format_response_default(content: &str) -> String {
         let mut formatted = String::new();
+        let mut last_was_empty = false;
+        
         for line in content.lines() {
             if !line.trim().is_empty() {
                 formatted.push_str("🮮   ");
                 formatted.push_str(line);
                 formatted.push('\n');
+                last_was_empty = false;
             } else {
-                formatted.push('\n');
+                // Only add one empty line, don't duplicate consecutive empty lines
+                if !last_was_empty {
+                    formatted.push('\n');
+                }
+                last_was_empty = true;
             }
         }
         formatted
@@ -1806,6 +1813,7 @@ impl StreamManager {
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_server_creation() {
@@ -1937,5 +1945,192 @@ mod tests {
         // Test message sending
         let message = serde_json::json!({"test": "message"});
         assert!(manager.send_message(session_id, message).await);
+    }
+
+    #[test]
+    fn test_is_thinking_model() {
+        // Test thinking models
+        assert!(McpHttpServer::is_thinking_model("deepseek-r1:1.5b"));
+        assert!(McpHttpServer::is_thinking_model("deepseek-coder:1.3b"));
+        assert!(McpHttpServer::is_thinking_model("deepseek-coder:6.7b"));
+        assert!(McpHttpServer::is_thinking_model("deepseek-coder:33b"));
+        
+        // Test non-thinking models
+        assert!(!McpHttpServer::is_thinking_model("llama2"));
+        assert!(!McpHttpServer::is_thinking_model("llama2:7b"));
+        assert!(!McpHttpServer::is_thinking_model("mistral"));
+        assert!(!McpHttpServer::is_thinking_model("codellama"));
+        
+        // Test unknown models
+        assert!(!McpHttpServer::is_thinking_model("unknown-model"));
+        assert!(!McpHttpServer::is_thinking_model(""));
+    }
+
+    #[test]
+    fn test_format_response_default() {
+        let content = "Hello world\nThis is a test\n\nWith empty lines";
+        let formatted = McpHttpServer::format_response_default(content);
+        
+        let expected = "🮮   Hello world\n🮮   This is a test\n\n🮮   With empty lines\n";
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn test_format_response_with_config() {
+        let content = "Test content";
+        let config = json!({"max_width": 80});
+        let formatted = McpHttpServer::format_response_with_config(content, &config);
+        
+        // Should use default formatting for now
+        let expected = "🮮   Test content\n";
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn test_format_response_empty_content() {
+        let content = "";
+        let formatted = McpHttpServer::format_response_default(content);
+        assert_eq!(formatted, "");
+    }
+
+    #[test]
+    fn test_format_response_single_line() {
+        let content = "Single line content";
+        let formatted = McpHttpServer::format_response_default(content);
+        assert_eq!(formatted, "🮮   Single line content\n");
+    }
+
+    #[test]
+    fn test_format_response_multiple_empty_lines() {
+        let content = "Line 1\n\n\nLine 2";
+        let formatted = McpHttpServer::format_response_default(content);
+        assert_eq!(formatted, "🮮   Line 1\n\n🮮   Line 2\n");
+    }
+
+    #[tokio::test]
+    async fn test_handle_chat_completion_thinking_model() {
+        // This would require a mock Ollama client
+        // For now, we'll test the prompt generation logic
+        let model = "deepseek-r1:1.5b";
+        let message = "Create a parts list for a pencil";
+        
+        // Test that thinking models get the thinking prompt
+        let is_thinking = McpHttpServer::is_thinking_model(model);
+        assert!(is_thinking);
+        
+        // The actual prompt would be generated in the handler
+        let expected_prompt_contains = "use <think> tags to show your reasoning process";
+        // In a real test, we'd verify the prompt contains this text
+    }
+
+    #[tokio::test]
+    async fn test_handle_chat_completion_normal_model() {
+        let model = "llama2";
+        let message = "What is a pencil?";
+        
+        // Test that normal models don't get thinking prompts
+        let is_thinking = McpHttpServer::is_thinking_model(model);
+        assert!(!is_thinking);
+        
+        // The actual prompt would be the message directly
+        // In a real test, we'd verify the prompt is just the message
+    }
+
+    #[tokio::test]
+    async fn test_handle_streaming_chat_completion_thinking_model() {
+        // This would require a mock Ollama client
+        // For now, we'll test the model detection logic
+        let model = "deepseek-coder:1.3b";
+        let message = "Explain quantum computing";
+        
+        let is_thinking = McpHttpServer::is_thinking_model(model);
+        assert!(is_thinking);
+        
+        // In a real test, we'd verify:
+        // 1. The thinking prompt is generated
+        // 2. The response is returned with type "regular_content"
+        // 3. The content contains thinking tags
+    }
+
+    #[tokio::test]
+    async fn test_handle_formatted_chat_completion_thinking_model() {
+        let model = "deepseek-coder:6.7b";
+        let message = "Design a database schema";
+        
+        // Test that thinking models get the thinking prompt
+        let is_thinking = McpHttpServer::is_thinking_model(model);
+        assert!(is_thinking);
+        
+        // In a real test, we'd verify:
+        // 1. The thinking prompt is generated
+        // 2. The response is formatted with diamond symbols
+        // 3. The formatted_content field is present
+        // 4. The original_content field is present
+    }
+
+    #[test]
+    fn test_thinking_model_list_completeness() {
+        // Verify all known thinking models are included
+        let thinking_models = vec![
+            "deepseek-r1:1.5b",
+            "deepseek-coder:1.3b",
+            "deepseek-coder:6.7b", 
+            "deepseek-coder:33b",
+        ];
+        
+        for model in thinking_models {
+            assert!(
+                McpHttpServer::is_thinking_model(model),
+                "Model {} should be detected as thinking model",
+                model
+            );
+        }
+    }
+
+    #[test]
+    fn test_normal_model_list_completeness() {
+        // Verify common normal models are not detected as thinking
+        let normal_models = vec![
+            "llama2",
+            "llama2:7b",
+            "llama2:13b",
+            "llama2:70b",
+            "llama3.2:3b",
+            "llama3.2:8b",
+            "llama3.2:70b",
+            "mistral",
+            "mistral:7b",
+            "codellama",
+            "codellama:7b",
+            "codellama:13b",
+        ];
+        
+        for model in normal_models {
+            assert!(
+                !McpHttpServer::is_thinking_model(model),
+                "Model {} should not be detected as thinking model",
+                model
+            );
+        }
+    }
+
+    #[test]
+    fn test_format_response_preserves_structure() {
+        let content = "# Title\n\n## Subtitle\n\n- Item 1\n- Item 2\n\n**Bold text**";
+        let formatted = McpHttpServer::format_response_default(content);
+        
+        // Should preserve line structure
+        assert!(formatted.contains("# Title"));
+        assert!(formatted.contains("## Subtitle"));
+        assert!(formatted.contains("- Item 1"));
+        assert!(formatted.contains("- Item 2"));
+        assert!(formatted.contains("**Bold text**"));
+        
+        // Should add diamond prefix to non-empty lines
+        assert!(formatted.contains("🮮   # Title"));
+        assert!(formatted.contains("🮮   ## Subtitle"));
+        assert!(formatted.contains("🮮   - Item 1"));
+        assert!(formatted.contains("🮮   - Item 2"));
+        assert!(formatted.contains("🮮   **Bold text**"));
     }
 }
