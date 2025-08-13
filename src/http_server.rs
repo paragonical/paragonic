@@ -736,14 +736,36 @@ impl McpHttpServer {
         server: &Self,
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
-        // Return the expected streaming response format
-        Ok(serde_json::json!({
-            "type": "streaming_chunk",
-            "chunk": "This is a test streaming response. The streaming functionality is not yet fully implemented.",
-            "chunk_index": 0,
-            "total_chunks": 1,
-            "remaining_chunks": []
-        }))
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("deepseek-r1:1.5b");
+        let message = params.get("message")
+            .and_then(|m| m.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        // Create chat message
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: message.to_string(),
+        };
+
+        // Send to Ollama with streaming enabled
+        match server.ollama_client.chat_completion(model, vec![chat_message], true).await {
+            Ok(response) => {
+                Ok(serde_json::json!({
+                    "type": "streaming_chunk",
+                    "chunk": response.message.content,
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                    "remaining_chunks": []
+                }))
+            }
+            Err(e) => {
+                error!("Streaming chat completion failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
     }
 
     // File Operations
