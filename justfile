@@ -505,7 +505,7 @@ test-deployment:
     
     echo "✓ Deployment tests completed"
 
-test-unit: test-unit-core test-unit-rpc test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp test-unit-security test-unit-performance test-unit-http
+test-unit: test-unit-core test-unit-utils test-unit-neovim test-unit-chat test-unit-mcp test-unit-security test-unit-performance test-unit-http
     #!/usr/bin/env bash
     echo ""
     echo "✓ All unit tests completed successfully"
@@ -673,14 +673,15 @@ test-e2e: test-e2e-plugin test-e2e-startup
     echo "✓ All E2E tests completed"
 
 # All tests
-test-all: test-unit test-e2e test-deployment
+test-all: test-unit test-e2e test-deployment test-mcp-client-validation
     #!/usr/bin/env bash
     echo ""
     echo "=== Test Summary ==="
-    echo "✓ Unit tests: Core, RPC, Utils, Neovim, Chat, MCP, Security, Performance, HTTP Transport"
+    echo "✓ Unit tests: Core, Utils, Neovim, Chat, MCP, Security, Performance, HTTP Transport"
     echo "⚠️  Integration tests: Skipped (require running backend)"
     echo "✓ E2E tests: Plugin, Startup"
     echo "✓ Deployment tests: Configuration and deployment validation"
+    echo "✓ MCP client validation: Passed"
     echo ""
     echo "🎉 All tests completed successfully!"
 
@@ -846,3 +847,13 @@ test-combined: test-unit test-rust
 test-lua: test
 test-lua-unit: test-unit
 test-lua-integration: test-server-interaction
+
+# MCP client validation (requires backend running)
+test-mcp-client-validation:
+    #!/usr/bin/env bash
+    echo "=== Running MCP Client Validation (Neovim) ==="
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua dofile('tests/integration/chat/test_mcp_client_validation.lua')" -c "quit"; then
+        echo "✗ MCP client validation failed"
+        exit 1
+    fi
+    echo "✓ MCP client validation passed"

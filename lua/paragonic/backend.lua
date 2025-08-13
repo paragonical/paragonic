@@ -306,10 +306,16 @@ end
 
 -- Manually initialize backend when needed
 function M.initialize_backend()
-    if not M._rpc_client then
-        M._initialize_backend()
-    end
-    return M._rpc_client ~= nil
+	if not M._rpc_client then
+		-- If MCP is already initialized and connected, adopt it without reconnecting
+		local ok_mcp, mcp = pcall(require, "paragonic.mcp_http_transport")
+		if ok_mcp and mcp.is_ready() then
+			M._rpc_client = (M._rpc_client or create_mcp_client())
+			return true
+		end
+		M._initialize_backend()
+	end
+	return M._rpc_client ~= nil
 end
 
 -- Get list of available models

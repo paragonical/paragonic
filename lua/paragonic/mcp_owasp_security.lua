@@ -421,6 +421,9 @@ function mcp_owasp_security.validate_url_for_ssrf(url)
         return false, "Invalid URL"
     end
     
+    -- Development override: allow localhost when explicitly enabled
+    local allow_localhost = (os.getenv("MCP_ALLOW_LOCALHOST") == "1")
+    
     -- Extract host and port (handle IPv6 addresses)
     local host_match = url:match("://([^:/%[%]]+)")
     local port_match = url:match(":(%d+)/?")
@@ -439,9 +442,13 @@ function mcp_owasp_security.validate_url_for_ssrf(url)
         return false, "Invalid URL format"
     end
     
-    -- Check blocked hosts
+    -- Check blocked hosts (skip if allow_localhost is set and host is local)
     for _, blocked_host in ipairs(OWASP_CONFIG.SSRF_PROTECTION.BLOCKED_HOSTS) do
         if host_match == blocked_host then
+            if allow_localhost and (blocked_host == "127.0.0.1" or blocked_host == "localhost" or blocked_host == "::1") then
+                -- Allowed for local development
+                break
+            end
             mcp_owasp_security.log_security_event("SSRF_ATTEMPT", {
                 host = host_match,
                 reason = "Blocked host",

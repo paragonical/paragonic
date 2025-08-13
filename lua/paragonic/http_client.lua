@@ -62,6 +62,7 @@ function http_client.init(config)
         ["Content-Type"] = "application/json",
         ["Accept"] = "application/json, text/event-stream",
         ["MCP-Protocol-Version"] = "2025-06-18",
+        ["Origin"] = (config.origin or client_state.base_url or "http://localhost"),
     }
     
     -- Add custom headers if provided
@@ -444,8 +445,16 @@ function http_client._send_single_request(request)
     table.insert(args, request.url)
     
     -- Execute curl command
-    local output = vim.fn.system(table.concat(args, " "))
-    local exit_code = vim.v.shell_error
+    local output
+    local exit_code
+    do
+        local cmd = { curl_cmd }
+        for _, a in ipairs(args) do
+            table.insert(cmd, a)
+        end
+        output = vim.fn.system(cmd)
+        exit_code = vim.v.shell_error
+    end
     
     -- Return connection to pool if we used one
     if connection then

@@ -441,6 +441,10 @@ impl McpHttpServer {
         server: &Self,
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
+        // Create or get a session and prepare an SSE stream
+        let session = server.session_manager.get_or_create_session(None).await;
+        let _stream = server.stream_manager.create_stream(&session.id).await;
+
         Ok(serde_json::json!({
             "protocolVersion": server.server_info.protocol_version,
             "capabilities": {
@@ -451,7 +455,9 @@ impl McpHttpServer {
             "serverInfo": {
                 "name": server.server_info.name,
                 "version": server.server_info.version
-            }
+            },
+            "sessionId": session.id,
+            "streamId": session.id
         }))
     }
 
