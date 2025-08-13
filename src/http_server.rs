@@ -754,7 +754,7 @@ impl McpHttpServer {
         match server.ollama_client.chat_completion(model, vec![chat_message], true).await {
             Ok(response) => {
                 Ok(serde_json::json!({
-                    "type": "streaming_chunk",
+                    "type": "regular_content",
                     "chunk": response.message.content,
                     "chunk_index": 0,
                     "total_chunks": 1,
