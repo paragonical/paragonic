@@ -23,6 +23,12 @@ use crate::patterns::{PatternRegistry, PatternBootstrap};
 use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
 use crate::embeddings::create_embedding;
 
+#[derive(Debug)]
+struct ThinkingChunk {
+    chunk_type: String,
+    content: String,
+}
+
 /// MCP HTTP server state
 #[derive(Clone)]
 pub struct McpHttpServer {
@@ -854,19 +860,57 @@ impl McpHttpServer {
                 info!("   Content length: {} characters", content.len());
                 info!("   Content preview: {}", content.chars().take(100).collect::<String>());
                 
-                // The client expects "streaming_chunk" type, not "regular_content"
-                let response_json = serde_json::json!({
-                    "type": "streaming_chunk",
-                    "chunk": content,
-                    "chunk_index": 0,
-                    "total_chunks": 1,
-                    "remaining_chunks": []
-                });
-                
-                info!("   📤 Sending response to client:");
-                info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
-                
-                Ok(response_json)
+                // Parse thinking content and send as structured chunks
+                if is_thinking_model {
+                    let chunks = Self::parse_thinking_content(&content);
+                    info!("   📤 Sending {} thinking chunks to client", chunks.len());
+                    
+                    // For now, send the first chunk (the client will handle the rest via SSE)
+                    if let Some(first_chunk) = chunks.first() {
+                        let response_json = serde_json::json!({
+                            "type": first_chunk.chunk_type,
+                            "chunk": first_chunk.content,
+                            "chunk_index": 0,
+                            "total_chunks": chunks.len(),
+                            "remaining_chunks": chunks[1..].iter().map(|c| {
+                                serde_json::json!({
+                                    "type": c.chunk_type,
+                                    "chunk": c.content
+                                })
+                            }).collect::<Vec<_>>()
+                        });
+                        
+                        info!("   📤 Sending first chunk to client:");
+                        info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
+                        
+                        Ok(response_json)
+                    } else {
+                        // Fallback to regular content if no thinking chunks found
+                        let response_json = serde_json::json!({
+                            "type": "regular_content",
+                            "chunk": content,
+                            "chunk_index": 0,
+                            "total_chunks": 1,
+                            "remaining_chunks": []
+                        });
+                        
+                        Ok(response_json)
+                    }
+                } else {
+                    // Regular content for non-thinking models
+                    let response_json = serde_json::json!({
+                        "type": "regular_content",
+                        "chunk": content,
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "remaining_chunks": []
+                    });
+                    
+                    info!("   📤 Sending regular content to client:");
+                    info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
+                    
+                    Ok(response_json)
+                }
             }
             Err(e) => {
                 error!("❌ Streaming chat completion failed: {}", e);
@@ -1715,6 +1759,71 @@ impl McpHttpServer {
         // For now, use default formatting
         // TODO: Implement custom formatting based on config
         Self::format_response_default(content)
+    }
+
+    /// Parse thinking content into structured chunks
+    fn parse_thinking_content(content: &str) -> Vec<ThinkingChunk> {
+        let mut chunks = Vec::new();
+        let mut current_chunk = String::new();
+        let mut in_thinking = false;
+        let mut thinking_step_count = 0;
+        
+        for line in content.lines() {
+            let line = line.trim();
+            
+            if line.contains("<think>") {
+                in_thinking = true;
+                // Start thinking section
+                chunks.push(ThinkingChunk {
+                    chunk_type: "thinking_start".to_string(),
+                    content: "Starting thinking process...".to_string(),
+                });
+                continue;
+            }
+            
+            if line.contains("</think>") {
+                in_thinking = false;
+                // End thinking section
+                chunks.push(ThinkingChunk {
+                    chunk_type: "thinking_end".to_string(),
+                    content: "".to_string(),
+                });
+                continue;
+            }
+            
+            if in_thinking {
+                if line.starts_with('>') {
+                    // This is a thinking step
+                    thinking_step_count += 1;
+                    chunks.push(ThinkingChunk {
+                        chunk_type: "thinking_step".to_string(),
+                        content: line[1..].trim().to_string(),
+                    });
+                } else if !line.is_empty() {
+                    // This is thinking content
+                    chunks.push(ThinkingChunk {
+                        chunk_type: "thinking_content".to_string(),
+                        content: line.to_string(),
+                    });
+                }
+            } else {
+                // Regular content after thinking
+                if !line.is_empty() {
+                    current_chunk.push_str(line);
+                    current_chunk.push('\n');
+                }
+            }
+        }
+        
+        // Add any remaining regular content
+        if !current_chunk.trim().is_empty() {
+            chunks.push(ThinkingChunk {
+                chunk_type: "regular_content".to_string(),
+                content: current_chunk.trim().to_string(),
+            });
+        }
+        
+        chunks
     }
 }
 

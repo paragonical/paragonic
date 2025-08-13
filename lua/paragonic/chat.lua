@@ -1778,28 +1778,34 @@ function M.send_message_command_thinking()
     local thinking_start_line = nil
     local thinking_end_line = nil
     local fold_start_line = nil
+    local thinking_step_count = 0
     
     -- Set up chunk callback for thinking streaming
     local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
         if chunk_type == "thinking_start" then
-            -- Start thinking section
+            -- Start thinking section - don't add anything visible yet
+            -- The brain symbol will be added with the first thinking step
             thinking_start_line = response_line_start + #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
             fold_start_line = thinking_start_line
             
-            -- Add thinking start with brain symbol
-            local lines = {}
-            for line in chunk:gmatch("[^\r\n]+") do
-                table.insert(lines, "󰧑   " .. line)
-            end
-            vim.api.nvim_buf_set_lines(current_buf, thinking_start_line, thinking_start_line, false, lines)
-            
         elseif chunk_type == "thinking_step" then
-            -- Add thinking step with vertical ideographic iteration mark
+            -- Add thinking step with brain symbol for first step, iteration mark for others
             local lines = {}
             for line in chunk:gmatch("[^\r\n]+") do
-                table.insert(lines, "〻   " .. line)
+                -- Use brain symbol for first thinking step, iteration mark for others
+                local symbol = "󰧑   "  -- Brain symbol for first step
+                if thinking_step_count and thinking_step_count > 0 then
+                    symbol = "〻   "  -- Iteration mark for subsequent steps
+                end
+                table.insert(lines, symbol .. line)
             end
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+            
+            -- Track thinking step count
+            if not thinking_step_count then
+                thinking_step_count = 0
+            end
+            thinking_step_count = thinking_step_count + 1
             
         elseif chunk_type == "thinking_content" then
             -- Add thinking content with indentation
@@ -1810,32 +1816,8 @@ function M.send_message_command_thinking()
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             
         elseif chunk_type == "thinking_end" then
-            -- End thinking section
-            thinking_end_line = response_line_start + #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
-            
-            -- Add thinking end
-            local lines = {}
-            for line in chunk:gmatch("[^\r\n]+") do
-                table.insert(lines, line)
-            end
-            vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-            
-            -- Create fold for thinking section
-            if fold_start_line and thinking_end_line then
-                vim.api.nvim_buf_set_option(current_buf, "foldmethod", "manual")
-                vim.api.nvim_buf_set_option(current_buf, "foldlevel", 0)
-                
-                -- Create fold from thinking start to thinking end
-                local fold_start = fold_start_line - 1  -- Convert to 0-indexed
-                local fold_end = thinking_end_line - 1   -- Convert to 0-indexed
-                
-                -- Set fold markers
-                vim.api.nvim_buf_set_lines(current_buf, fold_start, fold_start + 1, false, {"{{{ " .. "Thinking Process"})
-                vim.api.nvim_buf_set_lines(current_buf, fold_end, fold_end + 1, false, {"}}}"})
-                
-                -- Create the fold
-                vim.cmd(string.format(":%d,%dfold", fold_start + 1, fold_end + 1))
-            end
+            -- End thinking section - don't add anything visible
+            -- The thinking process is complete, no need for fold markers
             
         elseif chunk_type == "regular_content" then
             -- Add regular content with lozenge symbol
