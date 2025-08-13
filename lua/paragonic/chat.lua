@@ -1417,45 +1417,53 @@ function M.send_message_command()
     -- Add zigzag arrow to indicate request is being sent
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
     
-    -- Send the message using server-side formatted function
-    local config = require("paragonic.config")
-    local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+    -- Force immediate buffer update to show zigzag arrow
+    vim.api.nvim_buf_call(current_buf, function()
+        vim.cmd("redraw!")
+    end)
     
-    debug.debug_print("🔧 About to send message to model: " .. default_model, "debug")
-    debug.debug_print("🔧 Message to send: " .. string.format("%q", message), "debug")
-    
-    local formatted_response, original_response, server_duration_sec, err = M.send_message_formatted(message, default_model, format_config)
-    
-    if not formatted_response then
-        vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    -- Small delay to ensure zigzag arrow is visible
+    vim.defer_fn(function()
+        -- Send the message using server-side formatted function
+        local config = require("paragonic.config")
+        local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
         
-        -- Add error message to chat buffer with error symbol
-        local error_lines = {
-            "🛔  " .. (err or "unknown error")
-        }
-        vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
-        return
-    end
-    
-    -- Since the response is already formatted by the server, we can add it directly
-    local response_lines = {}
-    for line in formatted_response:gmatch("[^\r\n]+") do
-        table.insert(response_lines, line)
-    end
-    
-    -- Add closing line
-    table.insert(response_lines, "")
-    table.insert(response_lines, "∎")
-    
-    -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
-    vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
-    
-    -- Move cursor to the end of the buffer
-    local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-    vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
-    
-    -- Notify success
-    vim.notify("Message sent successfully (server-formatted)", vim.log.levels.INFO)
+        debug.debug_print("🔧 About to send message to model: " .. default_model, "debug")
+        debug.debug_print("🔧 Message to send: " .. string.format("%q", message), "debug")
+        
+        local formatted_response, original_response, server_duration_sec, err = M.send_message_formatted(message, default_model, format_config)
+        
+        if not formatted_response then
+            vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
+            
+            -- Add error message to chat buffer with error symbol
+            local error_lines = {
+                "🛔  " .. (err or "unknown error")
+            }
+            vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
+            return
+        end
+        
+        -- Since the response is already formatted by the server, we can add it directly
+        local response_lines = {}
+        for line in formatted_response:gmatch("[^\r\n]+") do
+            table.insert(response_lines, line)
+        end
+        
+        -- Add closing line
+        table.insert(response_lines, "")
+        table.insert(response_lines, "∎")
+        
+        -- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
+        vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
+        
+        -- Move cursor to the end of the buffer
+        local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+        vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+        
+        -- Notify success
+        vim.notify("Message sent successfully (server-formatted)", vim.log.levels.INFO)
+    end, 100) -- 100ms delay
 end
 
 -- Send message with streaming updates using brain symbol
@@ -1928,6 +1936,22 @@ function M.send_message_smart(message, model)
     else
         return M.send_message_streaming(message, target_model)
     end
+end
+
+-- Test function to verify zigzag arrow display
+function M.test_zigzag_arrow()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
+    
+    -- Add zigzag arrow to indicate request is being sent
+    vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, {"↯"})
+    
+    -- Force buffer update to show zigzag immediately
+    vim.api.nvim_buf_call(current_buf, function()
+        vim.cmd("redraw!")
+    end)
+    
+    vim.notify("Zigzag arrow test: Added ↯ at line " .. (line_num + 1), vim.log.levels.INFO)
 end
 
 return M
