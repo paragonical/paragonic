@@ -1767,7 +1767,7 @@ function M.send_message_command_thinking()
     vim.notify("🧠 Sending (thinking mode): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""), vim.log.levels.INFO)
     
     -- Add user message to buffer
-    local user_lines = {"", "⚡   " .. message, ""}
+            local user_lines = {"", "↯   " .. message, ""}
     vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
     
     -- Calculate response line start
@@ -1787,17 +1787,14 @@ function M.send_message_command_thinking()
             fold_start_line = thinking_start_line
             
             -- Add thinking start with brain symbol
-            local lines = {}
-            for line in chunk:gmatch("[^\r\n]+") do
-                table.insert(lines, line)
-            end
+            local lines = {"󰧑   " .. chunk}
             vim.api.nvim_buf_set_lines(current_buf, thinking_start_line, thinking_start_line, false, lines)
             
         elseif chunk_type == "thinking_step" then
-            -- Add thinking step with proper symbol
+            -- Add thinking step with vertical ideographic iteration mark
             local lines = {}
             for line in chunk:gmatch("[^\r\n]+") do
-                table.insert(lines, line)
+                table.insert(lines, "〻   " .. line)
             end
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             
@@ -1805,7 +1802,7 @@ function M.send_message_command_thinking()
             -- Add thinking content with indentation
             local lines = {}
             for line in chunk:gmatch("[^\r\n]+") do
-                table.insert(lines, line)
+                table.insert(lines, "   " .. line)
             end
             vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             
@@ -1838,21 +1835,23 @@ function M.send_message_command_thinking()
             end
             
         elseif chunk_type == "regular_content" then
-            -- Add regular content with diamond symbol
+            -- Add regular content with lozenge symbol
             response_buffer = response_buffer .. chunk
             
-            -- Format and add to buffer
-            local utils = require("paragonic.utils")
-            local formatted_lines = utils.wrap_text_with_diamond(response_buffer)
+            -- Format and add to buffer with lozenge symbol
+            local lines = {}
+            for line in response_buffer:gmatch("[^\r\n]+") do
+                table.insert(lines, "◊   " .. line)
+            end
             
             -- Replace or append to buffer
             local current_lines = vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
-            if #current_lines > 0 and current_lines[#current_lines]:match("^🮮") then
-                -- Replace existing diamond content
-                vim.api.nvim_buf_set_lines(current_buf, response_line_start, -1, false, formatted_lines)
+            if #current_lines > 0 and current_lines[#current_lines]:match("^◊") then
+                -- Replace existing lozenge content
+                vim.api.nvim_buf_set_lines(current_buf, response_line_start, -1, false, lines)
             else
-                -- Add new diamond content
-                vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, formatted_lines)
+                -- Add new lozenge content
+                vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
             end
             
         else

@@ -105,7 +105,7 @@ end
 -- Word wrapping helper function for first line with diamond
 function M.wrap_text_with_diamond(text, max_width)
     if not text or text == "" then
-        return {"🮮"}
+        return {"◊"}
     end
     
     local lines = {}
@@ -128,8 +128,8 @@ function M.wrap_text_with_diamond(text, max_width)
                 table.insert(words, word)
             end
             
-            local current_line = "🮮  "
-            local current_length = 3  -- Length of diamond + two spaces
+            local current_line = "◊  "
+            local current_length = 3  -- Length of lozenge + two spaces
             
             for i, word in ipairs(words) do
                 local word_length = #word
@@ -137,7 +137,7 @@ function M.wrap_text_with_diamond(text, max_width)
                 -- If adding this word would exceed the line limit
                 if current_length + word_length > max_width then
                     -- Add current line to lines (if not empty)
-                    if current_line ~= "🮮  " then
+                    if current_line ~= "◊  " then
                         table.insert(lines, current_line)
                     end
                     -- Start new line with three spaces (no diamond)
@@ -145,7 +145,7 @@ function M.wrap_text_with_diamond(text, max_width)
                     current_length = 3 + word_length
                 else
                     -- Add word to current line (with space if not first word)
-                    if current_line ~= "🮮  " then
+                    if current_line ~= "◊  " then
                         current_line = current_line .. " " .. word
                         current_length = current_length + 1 + word_length
                     else
@@ -156,7 +156,7 @@ function M.wrap_text_with_diamond(text, max_width)
             end
             
             -- Add the last line if it has content
-            if current_line ~= "🮮  " then
+            if current_line ~= "◊  " then
                 table.insert(lines, current_line)
             end
             

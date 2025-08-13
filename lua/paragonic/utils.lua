@@ -108,7 +108,7 @@ function M.wrap_text_with_diamond(text, max_width)
     max_width = max_width or 80
     
     if not text or text == "" then
-        return {"🮮   "}
+        return {"◊   "}
     end
     
     local lines = {}
@@ -131,8 +131,8 @@ function M.wrap_text_with_diamond(text, max_width)
                 local number = number_match
                 local content = clean_line:sub(#number + 3) -- Skip "number. "
                 
-                -- Format numbered list item with diamond prefix and proper indentation
-                local list_item = "🮮   " .. number .. ". " .. content
+                -- Format numbered list item with lozenge prefix and proper indentation
+                local list_item = "◊   " .. number .. ". " .. content
                 table.insert(lines, list_item)
                 
                 -- Add blank line after numbered list item if next line is not a list item
@@ -152,8 +152,8 @@ function M.wrap_text_with_diamond(text, max_width)
                     table.insert(words, word)
                 end
                 
-                local current_line = "🮮   "
-                local current_length = 4  -- Length of diamond + three spaces
+                local current_line = "◊   "
+                local current_length = 4  -- Length of lozenge + three spaces
                 
                 for j, word in ipairs(words) do
                     local word_length = #word
@@ -161,7 +161,7 @@ function M.wrap_text_with_diamond(text, max_width)
                     -- If adding this word would exceed the line limit
                     if current_length + word_length > max_width then
                         -- Add current line to lines (if not empty)
-                        if current_line ~= "🮮   " then
+                        if current_line ~= "◊   " then
                             table.insert(lines, current_line)
                         end
                         -- Start new line with six spaces (3-space gutter + 3-space continuation)
@@ -169,7 +169,7 @@ function M.wrap_text_with_diamond(text, max_width)
                         current_length = 6 + word_length
                     else
                         -- Add word to current line (with space if not first word)
-                        if current_line ~= "🮮   " then
+                        if current_line ~= "◊   " then
                             current_line = current_line .. " " .. word
                             current_length = current_length + 1 + word_length
                         else
@@ -180,7 +180,7 @@ function M.wrap_text_with_diamond(text, max_width)
                 end
                 
                 -- Add the last line if it has content
-                if current_line ~= "🮮   " then
+                if current_line ~= "◊   " then
                     table.insert(lines, current_line)
                 end
             end
