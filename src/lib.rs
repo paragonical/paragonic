@@ -11,7 +11,6 @@ pub mod models;
 pub mod schema;
 pub mod embeddings;
 pub mod embeddings_local;
-pub mod rpc;
 pub mod http_server;
 pub mod session_manager;
 pub mod stream_manager;
@@ -75,27 +74,7 @@ pub async fn start_http_server(addr: &str) -> ParagonicResult<()> {
     Ok(())
 }
 
-/// Start the JSON-RPC server (DEPRECATED - use start_http_server instead)
-/// 
-/// This function starts the JSON-RPC server that exposes Ollama functions
-/// to the Lua Neovim plugin, following MCP standards.
-/// 
-/// @deprecated Use start_http_server instead for MCP HTTP transport
-pub fn start_rpc_server(addr: &str) -> ParagonicResult<()> {
-    tracing::warn!("start_rpc_server is deprecated, use start_http_server instead");
-    
-    tracing::info!("Starting JSON-RPC server on {}", addr);
-    
-    // Create Ollama client
-    let config_manager = crate::config::ConfigManager::new();
-    let ollama_client = crate::ollama::OllamaClient::from_config_manager(&config_manager)?;
-    
-    // Create and start RPC server
-    let rpc_server = crate::rpc::ParagonicServer::new(ollama_client);
-    rpc_server.start(addr)?;
-    
-    Ok(())
-}
+// NOTE: Legacy TCP JSON-RPC server has been removed in favor of MCP HTTP transport
 
 /// Shutdown the Paragonic backend
 /// 
@@ -343,8 +322,9 @@ mod iragl_processor_tests;
 mod content_association_tests;
 mod optimization_engine_tests;
 mod iragl_search_engine_tests;
-mod rpc_integration_tests;
-mod integration_tests;
+// Legacy RPC-based tests removed from compilation
+// mod rpc_integration_tests;
+// mod integration_tests;
 #[cfg(test)]
 mod pattern_database_tests;
 #[cfg(test)]

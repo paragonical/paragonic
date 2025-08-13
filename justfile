@@ -319,16 +319,6 @@ test-unit-chat:
         failed_tests+=("test_real_connection.lua")
     fi
     
-    echo "Testing RPC fallback..."
-    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_rpc_fallback.lua')" -c "quit"; then
-        failed_tests+=("test_rpc_fallback.lua")
-    fi
-    
-    echo "Testing simple RPC..."
-    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_simple_rpc.lua')" -c "quit"; then
-        failed_tests+=("test_simple_rpc.lua")
-    fi
-    
     echo "Testing text extraction..."
     if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/chat/test_text_extraction.lua')" -c "quit"; then
         failed_tests+=("test_text_extraction.lua")

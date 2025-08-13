@@ -310,17 +310,25 @@ function mcp_owasp_security.get_enhanced_security_headers()
 end
 
 function mcp_owasp_security.validate_cors_origin(origin)
-    if not origin then
-        return false
-    end
-    
-    for _, allowed_origin in ipairs(OWASP_CONFIG.SECURITY_CONFIG.CORS_CONFIG.ALLOWED_ORIGINS) do
-        if origin == allowed_origin then
-            return true
-        end
-    end
-    
-    return false
+	if not origin then
+		return false
+	end
+	
+	-- Development override: allow http(s)://localhost and http(s)://127.0.0.1 only when explicitly enabled
+	local allow_localhost = (os.getenv("MCP_ALLOW_LOCALHOST") == "1")
+	if allow_localhost then
+		if origin:match("^https?://localhost(:%d+)?$") or origin:match("^https?://127%.0%.0%.1(:%d+)?$") then
+			return true
+		end
+	end
+	
+	for _, allowed_origin in ipairs(OWASP_CONFIG.SECURITY_CONFIG.CORS_CONFIG.ALLOWED_ORIGINS) do
+		if origin == allowed_origin then
+			return true
+		end
+	end
+	
+	return false
 end
 
 -- OWASP A07:2021 – Identification and Authentication Failures
