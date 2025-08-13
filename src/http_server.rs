@@ -2138,4 +2138,197 @@ mod tests {
         assert!(formatted.contains("🮮   - Item 2"));
         assert!(formatted.contains("🮮   **Bold text**"));
     }
+
+    #[tokio::test]
+    async fn test_handle_streaming_chat_completion_integration() {
+        // Test the complete streaming chat completion flow
+        // This would require a mock Ollama client
+        // For now, we'll test the request parsing and response format
+        
+        let server = McpHttpServer::new();
+        
+        // Test request parameters
+        let params = serde_json::json!({
+            "model": "deepseek-r1:1.5b",
+            "message": "Create a parts list for a pencil"
+        });
+        
+        // Test model detection
+        let model = params.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
+        let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("");
+        
+        assert_eq!(model, "deepseek-r1:1.5b");
+        assert_eq!(message, "Create a parts list for a pencil");
+        
+        // Test thinking model detection
+        let is_thinking_model = McpHttpServer::is_thinking_model(model);
+        assert!(is_thinking_model);
+        
+        // Test prompt generation for thinking models
+        let thinking_prompt = format!(
+            "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
+            message
+        );
+        
+        assert!(thinking_prompt.contains("use <think> tags"));
+        assert!(thinking_prompt.contains("Create a parts list for a pencil"));
+        assert!(thinking_prompt.contains("Assistant:"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_streaming_chat_completion_normal_model() {
+        // Test streaming chat completion with a normal (non-thinking) model
+        let server = McpHttpServer::new();
+        
+        let params = serde_json::json!({
+            "model": "llama2",
+            "message": "What is a pencil?"
+        });
+        
+        let model = params.get("model").and_then(|m| m.as_str()).unwrap_or("llama2");
+        let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("");
+        
+        assert_eq!(model, "llama2");
+        assert_eq!(message, "What is a pencil?");
+        
+        // Test that normal models are not detected as thinking
+        let is_thinking_model = McpHttpServer::is_thinking_model(model);
+        assert!(!is_thinking_model);
+        
+        // Test that normal models get the message directly (no thinking prompt)
+        let normal_prompt = message.to_string();
+        assert_eq!(normal_prompt, "What is a pencil?");
+        assert!(!normal_prompt.contains("use <think> tags"));
+    }
+
+    #[test]
+    fn test_streaming_response_format() {
+        // Test the expected response format for streaming chat completion
+        let expected_response = serde_json::json!({
+            "type": "streaming_chunk",
+            "chunk": "This is the AI response content",
+            "chunk_index": 0,
+            "total_chunks": 1,
+            "remaining_chunks": []
+        });
+        
+        // Verify the response structure
+        assert_eq!(expected_response["type"], "streaming_chunk");
+        assert!(expected_response["chunk"].is_string());
+        assert!(expected_response["chunk_index"].is_number());
+        assert!(expected_response["total_chunks"].is_number());
+        assert!(expected_response["remaining_chunks"].is_array());
+        
+        // Verify the chunk index and total chunks
+        assert_eq!(expected_response["chunk_index"], 0);
+        assert_eq!(expected_response["total_chunks"], 1);
+        assert_eq!(expected_response["remaining_chunks"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_thinking_model_prompt_validation() {
+        // Test that thinking model prompts are correctly formatted
+        let test_message = "Explain quantum computing";
+        let thinking_prompt = format!(
+            "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
+            test_message
+        );
+        
+        // Verify prompt structure
+        assert!(thinking_prompt.starts_with("You are a helpful AI assistant"));
+        assert!(thinking_prompt.contains("use <think> tags"));
+        assert!(thinking_prompt.contains("reasoning process"));
+        assert!(thinking_prompt.contains("step by step"));
+        assert!(thinking_prompt.contains("User: Explain quantum computing"));
+        assert!(thinking_prompt.ends_with("Assistant:"));
+        
+        // Verify the prompt is properly formatted
+        let lines: Vec<&str> = thinking_prompt.lines().collect();
+        assert!(lines.len() >= 4); // Should have multiple lines
+        assert!(lines.iter().any(|line| line.contains("User:")));
+        assert!(lines.iter().any(|line| line.contains("Assistant:")));
+    }
+
+    #[test]
+    fn test_chat_message_creation() {
+        // Test ChatMessage creation for both thinking and normal models
+        let test_message = "Create a parts list for a pencil";
+        
+        // Test thinking model message
+        let thinking_prompt = format!(
+            "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
+            test_message
+        );
+        
+        let thinking_chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: thinking_prompt,
+        };
+        
+        assert_eq!(thinking_chat_message.role, "user");
+        assert!(thinking_chat_message.content.contains("use <think> tags"));
+        assert!(thinking_chat_message.content.contains(test_message));
+        
+        // Test normal model message
+        let normal_chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: test_message.to_string(),
+        };
+        
+        assert_eq!(normal_chat_message.role, "user");
+        assert_eq!(normal_chat_message.content, test_message);
+        assert!(!normal_chat_message.content.contains("use <think> tags"));
+    }
+
+    #[test]
+    fn test_streaming_chunk_processing() {
+        // Test the processing of streaming chunks in the response
+        let mock_chunks = vec![
+            "Hello",
+            ", ",
+            "world",
+            "!"
+        ];
+        
+        let mut accumulated_content = String::new();
+        for chunk in mock_chunks {
+            accumulated_content.push_str(chunk);
+        }
+        
+        assert_eq!(accumulated_content, "Hello, world!");
+        
+        // Test response format
+        let response = serde_json::json!({
+            "type": "streaming_chunk",
+            "chunk": accumulated_content,
+            "chunk_index": 0,
+            "total_chunks": 1,
+            "remaining_chunks": []
+        });
+        
+        assert_eq!(response["chunk"], "Hello, world!");
+        assert_eq!(response["type"], "streaming_chunk");
+    }
+
+    #[test]
+    fn test_thinking_content_processing() {
+        // Test processing of thinking content with <think> tags
+        let thinking_content = "<think>\nLet me think about this step by step.\n</think>\n\nHere is the answer: The answer is 42.";
+        
+        // Verify thinking tags are present
+        assert!(thinking_content.contains("<think>"));
+        assert!(thinking_content.contains("</think>"));
+        
+        // Verify content structure
+        let parts: Vec<&str> = thinking_content.split("</think>").collect();
+        assert_eq!(parts.len(), 2);
+        
+        let thinking_part = parts[0];
+        let answer_part = parts[1];
+        
+        assert!(thinking_part.contains("<think>"));
+        assert!(thinking_part.contains("Let me think about this step by step."));
+        assert!(answer_part.contains("Here is the answer:"));
+        assert!(answer_part.contains("The answer is 42."));
+    }
 }

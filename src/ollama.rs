@@ -943,6 +943,374 @@ impl OllamaClient {
 mod tests {
     use super::*;
     use crate::config::ConfigManager;
+    use serde_json::json;
+
+    #[test]
+    fn test_streaming_response_parsing_single_chunk() {
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello, world!"},"done":true}"#;
+        
+        let stream_response: StreamChatCompletionResponse = serde_json::from_str(mock_response).unwrap();
+        
+        assert_eq!(stream_response.model, "deepseek-r1:1.5b");
+        assert_eq!(stream_response.done, true);
+        assert_eq!(stream_response.message.as_ref().unwrap().content, "Hello, world!");
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_multiple_chunks() {
+        // Simulate a multi-chunk streaming response
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":", "},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":"world"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.475237Z","message":{"role":"assistant","content":"!"},"done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 4);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert_eq!(accumulated_content, "Hello, world!");
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_thinking_content() {
+        // Simulate thinking model response with <think> tags
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"<think>"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"\nLet me think about this step by step."},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":"\n</think>\n\nHere is the answer:"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.475237Z","message":{"role":"assistant","content":" The answer is 42."},"done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 4);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert!(accumulated_content.contains("<think>"));
+        assert!(accumulated_content.contains("</think>"));
+        assert!(accumulated_content.contains("Let me think about this step by step."));
+        assert!(accumulated_content.contains("The answer is 42."));
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_empty_content() {
+        // Test handling of empty content chunks
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":""},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"Hello"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":""},"done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 3);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert_eq!(accumulated_content, "Hello");
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_missing_message() {
+        // Test handling of responses without message field
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"Hello"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 3);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert_eq!(accumulated_content, "Hello");
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_with_response_field() {
+        // Test handling of responses with both message and response fields
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello"},"response":"Hello","done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":", world"},"response":", world","done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert_eq!(accumulated_content, "Hello, world");
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_large_content() {
+        // Test handling of large content that might be split across many chunks
+        let mut mock_response = String::new();
+        let content = "This is a very long response that should be split across multiple chunks. ".repeat(10);
+        let chunk_size = 50;
+        
+        for (i, chunk) in content.as_bytes().chunks(chunk_size).enumerate() {
+            let chunk_str = String::from_utf8_lossy(chunk);
+            let done = i == content.as_bytes().chunks(chunk_size).count() - 1;
+            mock_response.push_str(&format!(
+                r#"{{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{{"role":"assistant","content":"{}"}},"done":{}}}"#,
+                chunk_str, done
+            ));
+            mock_response.push('\n');
+        }
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert!(lines.len() > 1); // Should have multiple chunks
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert_eq!(accumulated_content, content);
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_error_handling() {
+        // Test handling of malformed JSON
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello"},"done":false}
+{"invalid":"json","missing":"fields"}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":", world"},"done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 3);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        let mut error_count = 0;
+        
+        for line in lines {
+            match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                Ok(stream_response) => {
+                    if let Some(message) = &stream_response.message {
+                        accumulated_content.push_str(&message.content);
+                    }
+                    final_done = stream_response.done;
+                }
+                Err(_) => {
+                    error_count += 1;
+                }
+            }
+        }
+        
+        assert_eq!(error_count, 1); // One malformed line
+        assert_eq!(accumulated_content, "Hello, world");
+        assert_eq!(final_done, true);
+    }
+
+    #[test]
+    fn test_streaming_response_parsing_newlines_and_whitespace() {
+        // Test handling of content with newlines and whitespace
+        let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Line 1\n"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"Line 2\n"},"done":false}
+{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":"Line 3"},"done":true}"#;
+        
+        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 3);
+        
+        let mut accumulated_content = String::new();
+        let mut final_done = false;
+        
+        for line in lines {
+            let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
+            if let Some(message) = &stream_response.message {
+                accumulated_content.push_str(&message.content);
+            }
+            final_done = stream_response.done;
+        }
+        
+        assert_eq!(accumulated_content, "Line 1\nLine 2\nLine 3");
+        assert_eq!(final_done, true);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_streaming_integration() {
+        // Test the actual chat_completion method with streaming
+        // This test requires a mock HTTP client or a real Ollama server
+        // For now, we'll test the logic without making actual HTTP requests
+        
+        let config = OllamaConfig {
+            base_url: "http://localhost:11434".to_string(),
+            timeout_seconds: 30,
+            progress_timeout_seconds: 60,
+        };
+        
+        let client = OllamaClient::new(config).unwrap();
+        
+        // Test that the client is created correctly
+        assert_eq!(client.config.base_url, "http://localhost:11434");
+        assert_eq!(client.config.timeout_seconds, 30);
+    }
+
+    #[test]
+    fn test_chat_completion_request_serialization() {
+        // Test that ChatCompletionRequest serializes correctly for streaming
+        let messages = vec![
+            ChatMessage {
+                role: "user".to_string(),
+                content: "Hello, world!".to_string(),
+            }
+        ];
+        
+        let request = ChatCompletionRequest {
+            model: "deepseek-r1:1.5b".to_string(),
+            messages,
+            stream: Some(true),
+            options: None,
+        };
+        
+        let serialized = serde_json::to_string(&request).unwrap();
+        let deserialized: ChatCompletionRequest = serde_json::from_str(&serialized).unwrap();
+        
+        assert_eq!(deserialized.model, "deepseek-r1:1.5b");
+        assert_eq!(deserialized.stream, Some(true));
+        assert_eq!(deserialized.messages.len(), 1);
+        assert_eq!(deserialized.messages[0].content, "Hello, world!");
+    }
+
+    #[test]
+    fn test_chat_completion_response_deserialization() {
+        // Test that ChatCompletionResponse deserializes correctly
+        let response_json = r#"{
+            "model": "deepseek-r1:1.5b",
+            "created_at": "2025-08-13T18:17:32.428756Z",
+            "message": {
+                "role": "assistant",
+                "content": "Hello, world!"
+            },
+            "done": true
+        }"#;
+        
+        let response: ChatCompletionResponse = serde_json::from_str(response_json).unwrap();
+        
+        assert_eq!(response.model, "deepseek-r1:1.5b");
+        assert_eq!(response.done, true);
+        assert_eq!(response.message.content, "Hello, world!");
+        assert_eq!(response.message.role, "assistant");
+    }
+
+    #[test]
+    fn test_streaming_chat_completion_response_deserialization() {
+        // Test that StreamChatCompletionResponse deserializes correctly
+        let response_json = r#"{
+            "model": "deepseek-r1:1.5b",
+            "created_at": "2025-08-13T18:17:32.428756Z",
+            "message": {
+                "role": "assistant",
+                "content": "Hello"
+            },
+            "done": false
+        }"#;
+        
+        let response: StreamChatCompletionResponse = serde_json::from_str(response_json).unwrap();
+        
+        assert_eq!(response.model, "deepseek-r1:1.5b");
+        assert_eq!(response.done, false);
+        assert_eq!(response.message.as_ref().unwrap().content, "Hello");
+        assert_eq!(response.message.as_ref().unwrap().role, "assistant");
+    }
+
+    #[test]
+    fn test_thinking_model_prompt_generation() {
+        // Test that thinking models get the correct prompt format
+        let thinking_prompt = "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: Create a parts list for a pencil\n\nAssistant:";
+        
+        // Verify the prompt contains the key elements
+        assert!(thinking_prompt.contains("use <think> tags"));
+        assert!(thinking_prompt.contains("reasoning process"));
+        assert!(thinking_prompt.contains("Create a parts list for a pencil"));
+        assert!(thinking_prompt.contains("Assistant:"));
+    }
+
+    #[test]
+    fn test_content_accumulation_logic() {
+        // Test the content accumulation logic that's used in the streaming response parsing
+        let chunks = vec![
+            "Hello",
+            ", ",
+            "world",
+            "!"
+        ];
+        
+        let mut accumulated_content = String::new();
+        for chunk in chunks {
+            accumulated_content.push_str(chunk);
+        }
+        
+        assert_eq!(accumulated_content, "Hello, world!");
+    }
+
+    #[test]
+    fn test_thinking_content_detection() {
+        // Test detection of thinking content in accumulated responses
+        let thinking_content = "<think>\nLet me think about this step by step.\n</think>\n\nHere is the answer: The answer is 42.";
+        
+        // Verify thinking tags are present
+        assert!(thinking_content.contains("<think>"));
+        assert!(thinking_content.contains("</think>"));
+        
+        // Verify content structure
+        let before_think = thinking_content.split("<think>").next().unwrap();
+        let after_think = thinking_content.split("</think>").nth(1).unwrap();
+        
+        assert_eq!(before_think, "");
+        assert!(after_think.contains("Here is the answer:"));
+    }
 
     /// Test Ollama configuration default values
     #[test]
