@@ -238,9 +238,10 @@ local function test_response_handling_error_messages()
 end
 
 local function test_http_methods()
-    http_client.init()
+    -- Use an invalid server URL to ensure connection failure
+    http_client.init({base_url = "http://invalid-test-server:9999"})
     
-    -- These should fail in test environment (no server), but the methods should exist
+    -- These should fail because the server doesn't exist
     local response, err = http_client.post("/test", {test = "data"})
     assert_nil(response, "POST should fail without server")
     assert_not_nil(err, "POST should return error without server")
@@ -263,7 +264,8 @@ local function test_error_handling_connection_failure()
 end
 
 local function test_error_handling_timeout()
-    http_client.init({timeout = 1})
+    -- Use an invalid server with a very short timeout to ensure failure
+    http_client.init({base_url = "http://invalid-test-server:9999", timeout = 1})
     local response, err = http_client.get("/test")
     
     assert_nil(response, "should fail with timeout")
