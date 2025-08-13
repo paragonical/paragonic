@@ -300,6 +300,11 @@ test-unit-chat:
         failed_tests+=("test_thinking_streaming.lua")
     fi
     
+    echo "Testing newline handling..."
+    if ! LUA_PATH="{{lua-path}}" {{neovim-lua}} {{unit-dir}}/chat/test_newline_handling.lua; then
+        failed_tests+=("test_newline_handling.lua")
+    fi
+    
     echo ""
     echo "Testing Neovim-dependent chat functionality..."
     
