@@ -198,17 +198,7 @@ mod tests {
             "Error should be related to address parsing, got: {:?}", error);
     }
 
-    /// Test that start_rpc_server() creates RPC server successfully
-    #[test]
-    fn test_start_rpc_server_creates_rpc_server() {
-        // Test that we can create the RPC server component
-        let config_manager = crate::config::ConfigManager::new();
-        let ollama_client = crate::ollama::OllamaClient::from_config_manager(&config_manager).unwrap();
-        let _rpc_server = crate::rpc::ParagonicServer::new(ollama_client);
-        
-        // The server should be created successfully
-        assert!(true, "RPC server creation should succeed");
-    }
+
 
     /// Test that shutdown() function completes successfully
     #[tokio::test]

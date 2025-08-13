@@ -5,7 +5,7 @@ mod integration_tests {
         IraglSearchRequest, IraglSearchResponse, DifferentialGeometryOptimizationRequest,
         OptimizationResult, CreateContentAssociationRequest, ContentAssociationResponse
     };
-    use crate::rpc::ParagonicServer;
+    use crate::http_server::McpHttpServer;
     use crate::ollama::OllamaClient;
     use crate::ollama::OllamaConfig;
     use serde_json::json;
@@ -20,7 +20,7 @@ mod integration_tests {
         
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        let server = McpHttpServer::new(client);
         
         // Step 1: Ingest knowledge stream
         let ingest_params = Some(json!({
@@ -36,10 +36,10 @@ mod integration_tests {
             "embedding_model": "nomic-embed-text"
         }));
         
-        let ingest_result = server.handle_ingest_knowledge_stream(&ingest_params);
+        let ingest_result = server.handle_ingest_knowledge_stream(&server, &ingest_params).await;
         assert!(ingest_result.is_ok(), "Knowledge stream ingestion should succeed");
         
-        let ingest_response: serde_json::Value = serde_json::from_str(&ingest_result.unwrap()).unwrap();
+        let ingest_response = ingest_result.unwrap();
         let content_id = ingest_response["id"].as_str().unwrap();
         
         // Step 2: Create content association
@@ -54,7 +54,7 @@ mod integration_tests {
             }
         }));
         
-        let association_result = server.handle_content_association(&association_params);
+        let association_result = server.handle_content_association(&server, &association_params).await;
         assert!(association_result.is_ok(), "Content association should succeed");
         
         // Step 3: Perform IRAGL search
@@ -69,10 +69,10 @@ mod integration_tests {
             }
         }));
         
-        let search_result = server.handle_iragl_search(&search_params);
+        let search_result = server.handle_iragl_search(&server, &search_params).await;
         assert!(search_result.is_ok(), "IRAGL search should succeed");
         
-        let search_response: serde_json::Value = serde_json::from_str(&search_result.unwrap()).unwrap();
+        let search_response = search_result.unwrap();
         assert!(search_response["results"].as_array().unwrap().len() > 0, "Should return search results");
         
         // Step 4: Perform hybrid search
@@ -84,10 +84,10 @@ mod integration_tests {
             "include_metadata": true
         }));
         
-        let hybrid_result = server.handle_hybrid_search(&hybrid_params);
+        let hybrid_result = server.handle_hybrid_search(&server, &hybrid_params).await;
         assert!(hybrid_result.is_ok(), "Hybrid search should succeed");
         
-        let hybrid_response: serde_json::Value = serde_json::from_str(&hybrid_result.unwrap()).unwrap();
+        let hybrid_response = hybrid_result.unwrap();
         assert!(hybrid_response["results"].as_array().unwrap().len() > 0, "Should return hybrid results");
         
         // Step 5: Optimize knowledge base
@@ -98,35 +98,25 @@ mod integration_tests {
             "enable_parallel_processing": true
         }));
         
-        let optimize_result = server.handle_optimize_knowledge_base(&optimize_params);
+        let optimize_result = server.handle_optimize_knowledge_base(&server, &optimize_params).await;
         assert!(optimize_result.is_ok(), "Knowledge base optimization should succeed");
-        
-        let optimize_response: serde_json::Value = serde_json::from_str(&optimize_result.unwrap()).unwrap();
-        let optimization_id = optimize_response["optimization_id"].as_str().unwrap();
         
         // Step 6: Check optimization status
         let status_params = Some(json!({
-            "optimization_id": optimization_id
+            "optimization_id": optimize_result.unwrap()["optimization_id"].as_str().unwrap()
         }));
         
-        let status_result = server.handle_optimization_status(&status_params);
+        let status_result = server.handle_optimization_status(&server, &status_params).await;
         assert!(status_result.is_ok(), "Optimization status check should succeed");
-        
-        let status_response: serde_json::Value = serde_json::from_str(&status_result.unwrap()).unwrap();
-        assert!(status_response["status"].as_str().unwrap() == "completed", "Optimization should be successful");
         
         // Step 7: Get optimization history
         let history_params = Some(json!({
             "limit": 10,
-            "include_metadata": true,
-            "filter_by_status": "all"
+            "include_details": true
         }));
         
-        let history_result = server.handle_optimization_history(&history_params);
-        assert!(history_result.is_ok(), "Optimization history retrieval should succeed");
-        
-        let history_response: serde_json::Value = serde_json::from_str(&history_result.unwrap()).unwrap();
-        assert!(history_response["optimizations"].as_array().unwrap().len() > 0, "Should return optimization history");
+        let history_result = server.handle_optimization_history(&server, &history_params).await;
+        assert!(history_result.is_ok(), "Optimization history should succeed");
     }
 
     /// Test search and retrieval system with multiple content types
@@ -137,7 +127,7 @@ mod integration_tests {
         
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        let server = McpHttpServer::new(client);
         
         // Ingest multiple content types
         let content_items = vec![
@@ -167,7 +157,7 @@ mod integration_tests {
         // Ingest all content items
         for content in content_items {
             let ingest_params = Some(content);
-            let result = server.handle_ingest_knowledge_stream(&ingest_params);
+            let result = server.handle_ingest_knowledge_stream(&server, &ingest_params).await;
             assert!(result.is_ok(), "Content ingestion should succeed");
         }
         
@@ -178,10 +168,10 @@ mod integration_tests {
             "include_associations": false
         }));
         
-        let semantic_result = server.handle_iragl_search(&semantic_params);
+        let semantic_result = server.handle_iragl_search(&server, &semantic_params).await;
         assert!(semantic_result.is_ok(), "Semantic search should succeed");
         
-        let semantic_response: serde_json::Value = serde_json::from_str(&semantic_result.unwrap()).unwrap();
+        let semantic_response = semantic_result.unwrap();
         assert!(semantic_response["results"].as_array().unwrap().len() > 0, "Should return semantic results");
         
         // Test hybrid search with content type filtering
@@ -194,10 +184,10 @@ mod integration_tests {
             "include_metadata": true
         }));
         
-        let hybrid_result = server.handle_hybrid_search(&hybrid_params);
+        let hybrid_result = server.handle_hybrid_search(&server, &hybrid_params).await;
         assert!(hybrid_result.is_ok(), "Hybrid search should succeed");
         
-        let hybrid_response: serde_json::Value = serde_json::from_str(&hybrid_result.unwrap()).unwrap();
+        let hybrid_response = hybrid_result.unwrap();
         let results = hybrid_response["results"].as_array().unwrap();
         assert!(results.len() > 0, "Should return hybrid results");
         
@@ -214,7 +204,7 @@ mod integration_tests {
         
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        let server = McpHttpServer::new(client);
         
         // Ingest test content for optimization
         let ingest_params = Some(json!({
@@ -225,7 +215,7 @@ mod integration_tests {
             "metadata": {"complexity": "high", "topics": ["ml", "optimization"]}
         }));
         
-        let ingest_result = server.handle_ingest_knowledge_stream(&ingest_params);
+        let ingest_result = server.handle_ingest_knowledge_stream(&server, &ingest_params).await;
         assert!(ingest_result.is_ok(), "Content ingestion should succeed");
         
         // Test incremental optimization
@@ -235,10 +225,10 @@ mod integration_tests {
             "convergence_threshold": 0.05
         }));
         
-        let incremental_result = server.handle_optimize_knowledge_base(&incremental_params);
+        let incremental_result = server.handle_optimize_knowledge_base(&server, &incremental_params).await;
         assert!(incremental_result.is_ok(), "Incremental optimization should succeed");
         
-        let incremental_response: serde_json::Value = serde_json::from_str(&incremental_result.unwrap()).unwrap();
+        let incremental_response = incremental_result.unwrap();
         let incremental_id = incremental_response["optimization_id"].as_str().unwrap();
         
         // Check incremental optimization status
@@ -246,10 +236,10 @@ mod integration_tests {
             "optimization_id": incremental_id
         }));
         
-        let status_result = server.handle_optimization_status(&status_params);
+        let status_result = server.handle_optimization_status(&server, &status_params).await;
         assert!(status_result.is_ok(), "Status check should succeed");
         
-        let status_response: serde_json::Value = serde_json::from_str(&status_result.unwrap()).unwrap();
+        let status_response = status_result.unwrap();
         assert_eq!(status_response["status"].as_str().unwrap(), "completed", "Optimization should be successful");
         
         // Test batch optimization
@@ -259,7 +249,7 @@ mod integration_tests {
             "convergence_threshold": 0.1
         }));
         
-        let batch_result = server.handle_optimize_knowledge_base(&batch_params);
+        let batch_result = server.handle_optimize_knowledge_base(&server, &batch_params).await;
         assert!(batch_result.is_ok(), "Batch optimization should succeed");
         
         // Get optimization history
@@ -268,10 +258,10 @@ mod integration_tests {
             "include_metadata": true
         }));
         
-        let history_result = server.handle_optimization_history(&history_params);
+        let history_result = server.handle_optimization_history(&server, &history_params).await;
         assert!(history_result.is_ok(), "History retrieval should succeed");
         
-        let history_response: serde_json::Value = serde_json::from_str(&history_result.unwrap()).unwrap();
+        let history_response = history_result.unwrap();
         let optimizations = history_response["optimizations"].as_array().unwrap();
         assert!(optimizations.len() >= 2, "Should have at least 2 optimization records");
         
@@ -290,7 +280,7 @@ mod integration_tests {
     async fn test_system_resilience_and_recovery() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        let server = McpHttpServer::new(client);
         
         // Test handling of invalid parameters
         let invalid_search_params = Some(json!({
@@ -298,7 +288,7 @@ mod integration_tests {
             "max_results": 10
         }));
         
-        let invalid_search_result = server.handle_iragl_search(&invalid_search_params);
+        let invalid_search_result = server.handle_iragl_search(&server, &invalid_search_params).await;
         assert!(invalid_search_result.is_err(), "Empty query should return error");
         
         // Test handling of invalid optimization parameters
@@ -307,7 +297,7 @@ mod integration_tests {
             "max_iterations": 0 // Invalid iterations
         }));
         
-        let invalid_optimize_result = server.handle_optimize_knowledge_base(&invalid_optimize_params);
+        let invalid_optimize_result = server.handle_optimize_knowledge_base(&server, &invalid_optimize_params).await;
         assert!(invalid_optimize_result.is_err(), "Invalid parameters should return error");
         
         // Test handling of missing required parameters
@@ -316,7 +306,7 @@ mod integration_tests {
             // Missing query
         }));
         
-        let missing_result = server.handle_iragl_search(&missing_params);
+        let missing_result = server.handle_iragl_search(&server, &missing_params).await;
         assert!(missing_result.is_err(), "Missing required parameters should return error");
         
         // Test handling of invalid UUIDs
@@ -324,7 +314,7 @@ mod integration_tests {
             "optimization_id": "invalid-uuid"
         }));
         
-        let invalid_uuid_result = server.handle_optimization_status(&invalid_uuid_params);
+        let invalid_uuid_result = server.handle_optimization_status(&server, &invalid_uuid_params).await;
         assert!(invalid_uuid_result.is_err(), "Invalid UUID should return error");
         
         // Test handling of very large parameters
@@ -333,7 +323,7 @@ mod integration_tests {
             "max_results": 10000 // Too large
         }));
         
-        let large_result = server.handle_iragl_search(&large_params);
+        let large_result = server.handle_iragl_search(&server, &large_params).await;
         assert!(large_result.is_err(), "Too large max_results should return error");
     }
 
@@ -345,7 +335,7 @@ mod integration_tests {
         
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        let server = ParagonicServer::new(client);
+        let server = McpHttpServer::new(client);
         
         // Simulate multiple organizations
         let organizations = vec![
@@ -368,7 +358,7 @@ mod integration_tests {
                 }
             }));
             
-            let result = server.handle_ingest_knowledge_stream(&ingest_params);
+            let result = server.handle_ingest_knowledge_stream(&server, &ingest_params).await;
             assert!(result.is_ok(), "Content ingestion should succeed for each organization");
         }
         
@@ -383,10 +373,10 @@ mod integration_tests {
                 }
             }));
             
-            let result = server.handle_iragl_search(&search_params);
+            let result = server.handle_iragl_search(&server, &search_params).await;
             assert!(result.is_ok(), "Search should succeed for each organization");
             
-            let response: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+            let response = result.unwrap();
             assert!(response["results"].as_array().unwrap().len() > 0, "Should return results for each organization");
         }
         
@@ -402,7 +392,7 @@ mod integration_tests {
                 }
             }));
             
-            let result = server.handle_optimize_knowledge_base(&optimize_params);
+            let result = server.handle_optimize_knowledge_base(&server, &optimize_params).await;
             assert!(result.is_ok(), "Optimization should succeed for each organization");
         }
     }

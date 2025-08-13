@@ -53,7 +53,7 @@ async fn main() {
                 std::env::set_var("PARAGONIC_DEMO_MODE", "1");
                 
                 let file_path = &args[2];
-                println!("Indexing file: {}", file_path);
+                println!("Indexing file: {file_path}");
                 
                 let request = IndexFileRequest {
                     file_path: file_path.to_string(),
@@ -152,9 +152,9 @@ async fn main() {
                     }
                 }
                 
-                println!("🔍 Searching IRAGL index for: '{}'", query_text);
-                println!("   Search type: {:?}", search_type);
-                println!("   Limit: {:?}", limit);
+                println!("🔍 Searching IRAGL index for: '{query_text}'");
+                println!("   Search type: {search_type:?}");
+                println!("   Limit: {limit:?}");
                 
                 let search_query = IraglSearchQuery {
                     query: query_text.to_string(),
@@ -242,7 +242,7 @@ async fn main() {
         println!("Paragonic backend initialized successfully");
     }
     
-    let server_addr = format!("127.0.0.1:{}", port);
+    let server_addr = format!("127.0.0.1:{port}");
     tracing::info!("Starting MCP HTTP server on {}...", server_addr);
 
     // Start the MCP HTTP server
@@ -252,9 +252,9 @@ async fn main() {
     }
 
     tracing::info!("MCP HTTP server started successfully");
-    println!("MCP HTTP server started successfully on {}", server_addr);
+    println!("MCP HTTP server started successfully on {server_addr}");
     println!("Press Ctrl+C to stop the server");
-    println!("Log level: {}", log_level);
+    println!("Log level: {log_level}");
 
     // Keep the server running
     loop {
