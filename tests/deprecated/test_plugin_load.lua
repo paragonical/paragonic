@@ -16,20 +16,20 @@ print("Attempting to load plugin...")
 local ok, result = pcall(require, "paragonic")
 print("Load result:", ok)
 if not ok then
-    print("Error:", result)
+	print("Error:", result)
 end
 
 -- Check if plugin functions are available
 if ok and result then
-    print("Plugin loaded successfully!")
-    print("Available functions:")
-    for name, func in pairs(result) do
-        if type(func) == "function" then
-            print("  - " .. name)
-        end
-    end
+	print("Plugin loaded successfully!")
+	print("Available functions:")
+	for name, func in pairs(result) do
+		if type(func) == "function" then
+			print("  - " .. name)
+		end
+	end
 else
-    print("Plugin failed to load")
+	print("Plugin failed to load")
 end
 
-print("=== Test Complete ===") 
+print("=== Test Complete ===")

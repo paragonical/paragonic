@@ -17,9 +17,9 @@ print("Send message result:", result)
 print("Send message error:", err)
 
 if result then
-    print("✓ Chat functionality is working!")
+	print("✓ Chat functionality is working!")
 else
-    print("✗ Chat functionality failed:", err)
+	print("✗ Chat functionality failed:", err)
 end
 
-print("=== Neovim Chat Test Complete ===") 
+print("=== Neovim Chat Test Complete ===")

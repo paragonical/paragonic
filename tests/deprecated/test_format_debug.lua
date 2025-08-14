@@ -33,4 +33,4 @@ port = port or "3000"
 print("Format string has", select(2, format_str:gsub("%%s", "%%s")) .. " %s placeholders")
 
 local result = string.format(format_str, cwd, cwd, request_file, response_file, server_address)
-print("String format successful, result length:", #result) 
+print("String format successful, result length:", #result)

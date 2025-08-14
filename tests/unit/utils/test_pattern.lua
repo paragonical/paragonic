@@ -10,4 +10,4 @@ local host2, port2 = addr:match("([^:]+):?([0-9]*)")
 print("Host2:", host2, "Port2:", port2)
 
 local host3, port3 = addr:match("([^:]+):?(%d*)")
-print("Host3:", host3, "Port3:", port3) 
+print("Host3:", host3, "Port3:", port3)

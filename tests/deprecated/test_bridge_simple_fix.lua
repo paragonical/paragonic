@@ -1,21 +1,22 @@
 -- Simple test to fix the string.format issue
 local file = io.open("/tmp/bridge_simple_fix.log", "w")
 if file then
-    file:write("Testing simple bridge fix...\n")
-    
-    -- Test the string.format with the exact same parameters
-    local cwd = io.popen("pwd"):read("*l")
-    local request_file = "/tmp/test_request.json"
-    local response_file = "/tmp/test_response.json"
-    local server_address = "127.0.0.1:3000"
-    
-    file:write("cwd: " .. cwd .. "\n")
-    file:write("request_file: " .. request_file .. "\n")
-    file:write("response_file: " .. response_file .. "\n")
-    file:write("server_address: " .. server_address .. "\n")
-    
-    -- Test the format string
-    local script_content = string.format([[
+	file:write("Testing simple bridge fix...\n")
+
+	-- Test the string.format with the exact same parameters
+	local cwd = io.popen("pwd"):read("*l")
+	local request_file = "/tmp/test_request.json"
+	local response_file = "/tmp/test_response.json"
+	local server_address = "127.0.0.1:3000"
+
+	file:write("cwd: " .. cwd .. "\n")
+	file:write("request_file: " .. request_file .. "\n")
+	file:write("response_file: " .. response_file .. "\n")
+	file:write("server_address: " .. server_address .. "\n")
+
+	-- Test the format string
+	local script_content = string.format(
+		[[
 -- External RPC script
 package.path = package.path .. ";%s/lua/?.lua;%s/lua/?/init.lua"
 
@@ -68,29 +69,35 @@ end
 
 -- Write response to file
 io.open(response_file, "w"):write(response):close()
-]], cwd, cwd, request_file, response_file, server_address)
-    
-    file:write("✓ String format successful\n")
-    file:write("Script content length: " .. #script_content .. "\n")
-    
-    -- Write the script to a file
-    local script_file = "/tmp/test_script.lua"
-    local f = io.open(script_file, "w")
-    if f then
-        f:write(script_content)
-        f:close()
-        file:write("✓ Script file written\n")
-        
-        -- Test the script execution
-        local result = os.execute("lua " .. script_file)
-        file:write("Script execution result: " .. tostring(result) .. "\n")
-        
-        -- Clean up
-        os.remove(script_file)
-    else
-        file:write("✗ Failed to write script file\n")
-    end
-    
-    file:write("=== Simple Bridge Fix Test Complete ===\n")
-    file:close()
-end 
+]],
+		cwd,
+		cwd,
+		request_file,
+		response_file,
+		server_address
+	)
+
+	file:write("✓ String format successful\n")
+	file:write("Script content length: " .. #script_content .. "\n")
+
+	-- Write the script to a file
+	local script_file = "/tmp/test_script.lua"
+	local f = io.open(script_file, "w")
+	if f then
+		f:write(script_content)
+		f:close()
+		file:write("✓ Script file written\n")
+
+		-- Test the script execution
+		local result = os.execute("lua " .. script_file)
+		file:write("Script execution result: " .. tostring(result) .. "\n")
+
+		-- Clean up
+		os.remove(script_file)
+	else
+		file:write("✗ Failed to write script file\n")
+	end
+
+	file:write("=== Simple Bridge Fix Test Complete ===\n")
+	file:close()
+end

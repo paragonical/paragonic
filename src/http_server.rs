@@ -861,56 +861,60 @@ impl McpHttpServer {
                 info!("   Content preview: {}", content.chars().take(100).collect::<String>());
                 
                 // Parse thinking content and send as structured chunks
-                if is_thinking_model {
-                    let chunks = Self::parse_thinking_content(&content);
-                    info!("   📤 Sending {} thinking chunks to client", chunks.len());
-                    
-                    // For now, send the first chunk (the client will handle the rest via SSE)
-                    if let Some(first_chunk) = chunks.first() {
-                        let response_json = serde_json::json!({
-                            "type": first_chunk.chunk_type,
-                            "chunk": first_chunk.content,
-                            "chunk_index": 0,
-                            "total_chunks": chunks.len(),
-                            "remaining_chunks": chunks[1..].iter().map(|c| {
-                                serde_json::json!({
-                                    "type": c.chunk_type,
-                                    "chunk": c.content
-                                })
-                            }).collect::<Vec<_>>()
-                        });
-                        
-                        info!("   📤 Sending first chunk to client:");
-                        info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
-                        
-                        Ok(response_json)
-                    } else {
-                        // Fallback to regular content if no thinking chunks found
-                        let response_json = serde_json::json!({
-                            "type": "regular_content",
-                            "chunk": content,
-                            "chunk_index": 0,
-                            "total_chunks": 1,
-                            "remaining_chunks": []
-                        });
-                        
-                        Ok(response_json)
-                    }
-                } else {
-                    // Regular content for non-thinking models
-                    let response_json = serde_json::json!({
-                        "type": "regular_content",
-                        "chunk": content,
-                        "chunk_index": 0,
-                        "total_chunks": 1,
-                        "remaining_chunks": []
-                    });
-                    
-                    info!("   📤 Sending regular content to client:");
-                    info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
-                    
-                    Ok(response_json)
-                }
+                        if is_thinking_model {
+            let chunks = Self::parse_thinking_content(&content);
+            info!("   📤 Sending {} thinking chunks to client", chunks.len());
+            
+            // For now, send the first chunk (the client will handle the rest via SSE)
+            if let Some(first_chunk) = chunks.first() {
+                let response_json = serde_json::json!({
+                    "type": "streaming_chunk",
+                    "chunk": first_chunk.content,
+                    "chunk_type": first_chunk.chunk_type,
+                    "chunk_index": 0,
+                    "total_chunks": chunks.len(),
+                    "remaining_chunks": chunks[1..].iter().map(|c| {
+                        serde_json::json!({
+                            "type": "streaming_chunk",
+                            "chunk": c.content,
+                            "chunk_type": c.chunk_type
+                        })
+                    }).collect::<Vec<_>>()
+                });
+                
+                info!("   📤 Sending first chunk to client:");
+                info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
+                
+                Ok(response_json)
+            } else {
+                // Fallback to regular content if no thinking chunks found
+                let response_json = serde_json::json!({
+                    "type": "streaming_chunk",
+                    "chunk": content,
+                    "chunk_type": "regular_content",
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                    "remaining_chunks": []
+                });
+                
+                Ok(response_json)
+            }
+        } else {
+            // Regular content for non-thinking models
+            let response_json = serde_json::json!({
+                "type": "streaming_chunk",
+                "chunk": content,
+                "chunk_type": "regular_content",
+                "chunk_index": 0,
+                "total_chunks": 1,
+                "remaining_chunks": []
+            });
+            
+            info!("   📤 Sending regular content to client:");
+            info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
+            
+            Ok(response_json)
+        }
             }
             Err(e) => {
                 error!("❌ Streaming chat completion failed: {}", e);

@@ -6,53 +6,57 @@ local M = {}
 
 -- Check if we're running in Neovim
 local function is_neovim()
-    return vim ~= nil
+	return vim ~= nil
 end
 
 -- Check if socket library is available
 local function has_socket_library()
-    local ok = pcall(require, "socket")
-    return ok
+	local ok = pcall(require, "socket")
+	return ok
 end
 
 -- Create a temporary file for communication
 local function create_temp_file()
-    local temp_dir = vim.fn.stdpath("cache") .. "/paragonic"
-    vim.fn.mkdir(temp_dir, "p")
-    return temp_dir .. "/rpc_" .. vim.fn.strftime("%Y%m%d_%H%M%S") .. "_" .. math.random(1000, 9999)
+	local temp_dir = vim.fn.stdpath("cache") .. "/paragonic"
+	vim.fn.mkdir(temp_dir, "p")
+	return temp_dir .. "/rpc_" .. vim.fn.strftime("%Y%m%d_%H%M%S") .. "_" .. math.random(1000, 9999)
 end
 
 -- Send request via external Lua process
 function M.send_request(server_address, method, params)
-    print("🔧 RPC Bridge: send_request() called with method=" .. tostring(method))
-    
-    if not is_neovim() then
-        print("❌ RPC Bridge: Not running in Neovim")
-        return nil, "Not running in Neovim"
-    end
-    
-    -- Create temporary files for request and response
-    local temp_file = create_temp_file()
-    local request_file = temp_file .. "_request.json"
-    local response_file = temp_file .. "_response.json"
-    
-    -- Create the request
-    local request = {
-        jsonrpc = "2.0",
-        method = method,
-        params = params or {},
-        id = 1
-    }
-    
-    -- Write request to file
-    local request_json = vim.json.encode(request)
-    vim.fn.writefile({request_json}, request_file)
-    
-    -- Create the external Lua script
-    -- Build script content in segments
-    local script_header = [[
+	print("🔧 RPC Bridge: send_request() called with method=" .. tostring(method))
+
+	if not is_neovim() then
+		print("❌ RPC Bridge: Not running in Neovim")
+		return nil, "Not running in Neovim"
+	end
+
+	-- Create temporary files for request and response
+	local temp_file = create_temp_file()
+	local request_file = temp_file .. "_request.json"
+	local response_file = temp_file .. "_response.json"
+
+	-- Create the request
+	local request = {
+		jsonrpc = "2.0",
+		method = method,
+		params = params or {},
+		id = 1,
+	}
+
+	-- Write request to file
+	local request_json = vim.json.encode(request)
+	vim.fn.writefile({ request_json }, request_file)
+
+	-- Create the external Lua script
+	-- Build script content in segments
+	local script_header = [[
 -- External RPC script
-package.path = package.path .. "]] .. string.format("%s/lua/?.lua;%s/lua/?/init.lua", vim.fn.getcwd(), vim.fn.getcwd()) .. [["
+package.path = package.path .. "]] .. string.format(
+		"%s/lua/?.lua;%s/lua/?/init.lua",
+		vim.fn.getcwd(),
+		vim.fn.getcwd()
+	) .. [["
 
 local socket = require("socket")
 local json = require("cjson")
@@ -121,54 +125,54 @@ print("DEBUG: Writing response to", response_file)
 io.open(response_file, "w"):write(response):close()
 print("DEBUG: Script completed successfully")
 ]]
-    
-    local script_content = script_header
-    
-    local script_file = temp_file .. "_script.lua"
-    vim.fn.writefile(vim.fn.split(script_content, "\n"), script_file)
-    
-    -- Execute the external script with increased timeout for AI operations (macOS compatible)
-    print("🔧 RPC Bridge: About to execute external script...")
-    local timeout_cmd
-    if vim.fn.executable("timeout") == 1 then
-        timeout_cmd = "timeout 180 lua " .. script_file
-        print("🔧 RPC Bridge: Using timeout command")
-    elseif vim.fn.executable("gtimeout") == 1 then
-        timeout_cmd = "gtimeout 180 lua " .. script_file
-        print("🔧 RPC Bridge: Using gtimeout command")
-    else
-        -- macOS fallback: use background process with sleep and kill
-        timeout_cmd = "lua " .. script_file .. " & sleep 180 && kill $! 2>/dev/null || true"
-        print("🔧 RPC Bridge: Using macOS workaround timeout")
-    end
-    
-    print("🔧 RPC Bridge: About to execute: " .. timeout_cmd)
-    local result = vim.fn.system(timeout_cmd)
-    print("🔧 RPC Bridge: system() call completed, result length=" .. tostring(result and #result or 0))
-    
-    -- Clean up script file
-    vim.fn.delete(script_file)
-    vim.fn.delete(request_file)
-    
-    -- Read response
-    if vim.fn.filereadable(response_file) == 1 then
-        local response_content = vim.fn.readfile(response_file)
-        vim.fn.delete(response_file)
-        
-        if #response_content > 0 then
-            local response_json = table.concat(response_content, "\n")
-            local success, response = pcall(vim.json.decode, response_json)
-            if success then
-                return response
-            else
-                return nil, "Failed to parse response: " .. response
-            end
-        else
-            return nil, "Empty response file"
-        end
-    else
-        return nil, "Response file not found: " .. result
-    end
+
+	local script_content = script_header
+
+	local script_file = temp_file .. "_script.lua"
+	vim.fn.writefile(vim.fn.split(script_content, "\n"), script_file)
+
+	-- Execute the external script with increased timeout for AI operations (macOS compatible)
+	print("🔧 RPC Bridge: About to execute external script...")
+	local timeout_cmd
+	if vim.fn.executable("timeout") == 1 then
+		timeout_cmd = "timeout 180 lua " .. script_file
+		print("🔧 RPC Bridge: Using timeout command")
+	elseif vim.fn.executable("gtimeout") == 1 then
+		timeout_cmd = "gtimeout 180 lua " .. script_file
+		print("🔧 RPC Bridge: Using gtimeout command")
+	else
+		-- macOS fallback: use background process with sleep and kill
+		timeout_cmd = "lua " .. script_file .. " & sleep 180 && kill $! 2>/dev/null || true"
+		print("🔧 RPC Bridge: Using macOS workaround timeout")
+	end
+
+	print("🔧 RPC Bridge: About to execute: " .. timeout_cmd)
+	local result = vim.fn.system(timeout_cmd)
+	print("🔧 RPC Bridge: system() call completed, result length=" .. tostring(result and #result or 0))
+
+	-- Clean up script file
+	vim.fn.delete(script_file)
+	vim.fn.delete(request_file)
+
+	-- Read response
+	if vim.fn.filereadable(response_file) == 1 then
+		local response_content = vim.fn.readfile(response_file)
+		vim.fn.delete(response_file)
+
+		if #response_content > 0 then
+			local response_json = table.concat(response_content, "\n")
+			local success, response = pcall(vim.json.decode, response_json)
+			if success then
+				return response
+			else
+				return nil, "Failed to parse response: " .. response
+			end
+		else
+			return nil, "Empty response file"
+		end
+	else
+		return nil, "Response file not found: " .. result
+	end
 end
 
-return M 
+return M

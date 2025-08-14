@@ -1,6 +1,6 @@
-package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua'
+package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
 
-local M = require('paragonic')
+local M = require("paragonic")
 
 print("=== External Script Test ===")
 
@@ -9,10 +9,10 @@ print("📝 Testing hello method...")
 
 -- Create a simple test request
 local request = {
-    jsonrpc = "2.0",
-    method = "hello",
-    params = {},
-    id = 1
+	jsonrpc = "2.0",
+	method = "hello",
+	params = {},
+	id = 1,
 }
 
 -- Write request to file
@@ -21,12 +21,12 @@ local response_file = "/tmp/test_response.json"
 
 local f = io.open(request_file, "w")
 if f then
-    f:write(vim.json.encode(request))
-    f:close()
-    print("✅ Request written to", request_file)
+	f:write(vim.json.encode(request))
+	f:close()
+	print("✅ Request written to", request_file)
 else
-    print("❌ Failed to write request file")
-    return
+	print("❌ Failed to write request file")
+	return
 end
 
 -- Create the external script manually
@@ -109,12 +109,12 @@ print("DEBUG: Script completed successfully")
 local script_file = "/tmp/debug_script.lua"
 local f = io.open(script_file, "w")
 if f then
-    f:write(script_content)
-    f:close()
-    print("✅ Debug script written to", script_file)
+	f:write(script_content)
+	f:close()
+	print("✅ Debug script written to", script_file)
 else
-    print("❌ Failed to write debug script")
-    return
+	print("❌ Failed to write debug script")
+	return
 end
 
 -- Execute with shorter timeout
@@ -124,10 +124,10 @@ print("Script execution result:", result)
 
 -- Check if response file exists
 if vim.fn.filereadable(response_file) == 1 then
-    local response_content = vim.fn.readfile(response_file)
-    print("✅ Response file found, content:", table.concat(response_content, "\n"))
+	local response_content = vim.fn.readfile(response_file)
+	print("✅ Response file found, content:", table.concat(response_content, "\n"))
 else
-    print("❌ Response file not found")
+	print("❌ Response file not found")
 end
 
 -- Clean up
@@ -135,4 +135,4 @@ vim.fn.delete(script_file)
 vim.fn.delete(request_file)
 vim.fn.delete(response_file)
 
-print("=== External script test completed ===") 
+print("=== External script test completed ===")

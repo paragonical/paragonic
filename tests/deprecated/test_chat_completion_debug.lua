@@ -18,8 +18,8 @@ print("Module loaded successfully")
 print("Initializing backend...")
 local init_success = M.initialize_backend()
 if not init_success then
-    print("❌ Backend initialization failed")
-    return
+	print("❌ Backend initialization failed")
+	return
 end
 
 print("✅ Backend initialized successfully")
@@ -27,8 +27,8 @@ print("✅ Backend initialized successfully")
 -- Get RPC client
 local rpc_client = M._get_rpc_client()
 if not rpc_client then
-    print("❌ RPC client not available")
-    return
+	print("❌ RPC client not available")
+	return
 end
 
 print("✅ RPC client available")
@@ -37,10 +37,10 @@ print("✅ RPC client available")
 print("Testing hello method...")
 local hello_response = rpc_client:hello()
 if hello_response then
-    print("✅ Hello method works: " .. tostring(hello_response))
+	print("✅ Hello method works: " .. tostring(hello_response))
 else
-    print("❌ Hello method failed")
-    return
+	print("❌ Hello method failed")
+	return
 end
 
 -- Test chat completion method directly
@@ -51,12 +51,12 @@ local chat_response = rpc_client:chat_completion("llama2", "Test message")
 print("  📝 Chat completion call completed")
 
 if chat_response then
-    print("✅ Chat completion successful!")
-    print("📝 Response type: " .. type(chat_response))
-    print("📝 Response length: " .. #tostring(chat_response) .. " characters")
-    print("📝 Response preview: " .. tostring(chat_response):sub(1, 100) .. "...")
+	print("✅ Chat completion successful!")
+	print("📝 Response type: " .. type(chat_response))
+	print("📝 Response length: " .. #tostring(chat_response) .. " characters")
+	print("📝 Response preview: " .. tostring(chat_response):sub(1, 100) .. "...")
 else
-    print("❌ Chat completion failed or returned nil")
+	print("❌ Chat completion failed or returned nil")
 end
 
-print("Test completed.") 
+print("Test completed.")

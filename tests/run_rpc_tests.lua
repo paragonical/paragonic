@@ -5,8 +5,8 @@
 
 local success, test_module = pcall(require, "tests.unit.rpc.test_rpc_integration")
 if not success then
-    print("❌ Failed to load test module:", test_module)
-    os.exit(1)
+	print("❌ Failed to load test module:", test_module)
+	os.exit(1)
 end
 
 local test_success = test_module.run_all_tests()

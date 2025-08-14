@@ -19,11 +19,11 @@ print("Sending chat completion request...")
 local response, err = M.send_message("Write a short poem about debugging", "llama2")
 
 if response then
-    print("✅ Chat completion successful!")
-    print("📝 Response length: " .. #response .. " characters")
-    print("📝 Response preview: " .. response:sub(1, 100) .. "...")
+	print("✅ Chat completion successful!")
+	print("📝 Response length: " .. #response .. " characters")
+	print("📝 Response preview: " .. response:sub(1, 100) .. "...")
 else
-    print("❌ Chat completion failed: " .. tostring(err))
+	print("❌ Chat completion failed: " .. tostring(err))
 end
 
-print("Test completed. Check server logs for RPC request/response logging.") 
+print("Test completed. Check server logs for RPC request/response logging.")

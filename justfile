@@ -835,3 +835,9 @@ test-mcp-client-validation:
         exit 1
     fi
     echo "✓ MCP client validation passed"
+
+
+format: luafmt
+
+luafmt:
+    find . -name "*.lua" -exec stylua {} \;

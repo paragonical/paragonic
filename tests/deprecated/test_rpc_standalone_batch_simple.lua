@@ -37,18 +37,18 @@ print("✓ Connected to server")
 -- Test simple batch operation
 print("Testing simple batch operation...")
 local operations = {
-    {method = "hello", params = {}}
+	{ method = "hello", params = {} },
 }
 
 local batch_result = client:batch_operations(operations)
 print("Batch result type: " .. type(batch_result))
 if batch_result then
-    print("Batch result length: " .. #batch_result)
-    print("First result: " .. tostring(batch_result[1]))
+	print("Batch result length: " .. #batch_result)
+	print("First result: " .. tostring(batch_result[1]))
 end
 
 -- Cleanup
 os.execute("pkill -f 'target/debug/paragonic' > /dev/null 2>&1")
 print("✓ Server cleanup completed")
 
-print("✓ Simple batch_operations test completed") 
+print("✓ Simple batch_operations test completed")

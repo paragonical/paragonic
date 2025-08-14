@@ -23,38 +23,40 @@
 
 ---@type LazySpec
 return {
-  {
-    "github/copilot.vim",
-    event = "VeryLazy",
-    version = "*",
-  },
+	{
+		"github/copilot.vim",
+		event = "VeryLazy",
+		version = "*",
+	},
 
-  -- == Examples of Adding Plugins ==
+	-- == Examples of Adding Plugins ==
 
-  "andweeb/presence.nvim",
-  {
-    "ray-x/lsp_signature.nvim",
-    event = "BufRead",
-    config = function() require("lsp_signature").setup() end,
-  },
+	"andweeb/presence.nvim",
+	{
+		"ray-x/lsp_signature.nvim",
+		event = "BufRead",
+		config = function()
+			require("lsp_signature").setup()
+		end,
+	},
 
-  -- == Paragonic AI Agent Plugin ==
-  {
-    dir = "/Users/sjanes/work2/paragonic",  -- Your project path
-    name = "paragonic",
-    config = function()
-      -- Add the project's lua directory to the Lua path
-      local project_path = "/Users/sjanes/work2/paragonic"
-      package.path = package.path .. ";" .. project_path .. "/lua/?.lua;" .. project_path .. "/lua/?/init.lua"
-      
-      -- Defer plugin setup to avoid blocking startup
-      vim.defer_fn(function()
-        local paragonic = require("paragonic")
-        paragonic.setup()
-      end, 1000)  -- Wait 1 second after startup
-    end,
-    lazy = true,  -- Load lazily to avoid startup blocking
-    event = "VeryLazy",  -- Load when Neovim is ready
-    enabled = true,
-  },
-} 
+	-- == Paragonic AI Agent Plugin ==
+	{
+		dir = "/Users/sjanes/work2/paragonic", -- Your project path
+		name = "paragonic",
+		config = function()
+			-- Add the project's lua directory to the Lua path
+			local project_path = "/Users/sjanes/work2/paragonic"
+			package.path = package.path .. ";" .. project_path .. "/lua/?.lua;" .. project_path .. "/lua/?/init.lua"
+
+			-- Defer plugin setup to avoid blocking startup
+			vim.defer_fn(function()
+				local paragonic = require("paragonic")
+				paragonic.setup()
+			end, 1000) -- Wait 1 second after startup
+		end,
+		lazy = true, -- Load lazily to avoid startup blocking
+		event = "VeryLazy", -- Load when Neovim is ready
+		enabled = true,
+	},
+}

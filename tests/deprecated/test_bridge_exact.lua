@@ -1,22 +1,23 @@
 -- Test with exact bridge format string
 local file = io.open("/tmp/bridge_exact.log", "w")
 if file then
-    file:write("Testing exact bridge format string...\n")
-    
-    -- Use the exact same format string as the bridge
-    local cwd = "/Users/sjanes/work2/paragonic"
-    local request_file = "/tmp/test_request.json"
-    local response_file = "/tmp/test_response.json"
-    local server_address = "127.0.0.1:3000"
-    
-    file:write("Parameters:\n")
-    file:write("cwd: " .. cwd .. "\n")
-    file:write("request_file: " .. request_file .. "\n")
-    file:write("response_file: " .. response_file .. "\n")
-    file:write("server_address: " .. server_address .. "\n")
-    
-    -- Create the external Lua script (exact copy from bridge)
-    local script_content = string.format([[
+	file:write("Testing exact bridge format string...\n")
+
+	-- Use the exact same format string as the bridge
+	local cwd = "/Users/sjanes/work2/paragonic"
+	local request_file = "/tmp/test_request.json"
+	local response_file = "/tmp/test_response.json"
+	local server_address = "127.0.0.1:3000"
+
+	file:write("Parameters:\n")
+	file:write("cwd: " .. cwd .. "\n")
+	file:write("request_file: " .. request_file .. "\n")
+	file:write("response_file: " .. response_file .. "\n")
+	file:write("server_address: " .. server_address .. "\n")
+
+	-- Create the external Lua script (exact copy from bridge)
+	local script_content = string.format(
+		[[
 -- External RPC script
 package.path = package.path .. ";%s/lua/?.lua;%s/lua/?/init.lua"
 
@@ -70,63 +71,69 @@ end
 
 -- Write response to file
 io.open(response_file, "w"):write(response):close()
-]], cwd, cwd, request_file, response_file, server_address)
-    
-    file:write("✓ String format successful\n")
-    file:write("Script content length: " .. #script_content .. "\n")
-    
-    -- Write the script to a file and test it
-    local script_file = "/tmp/test_exact_script.lua"
-    local f = io.open(script_file, "w")
-    if f then
-        f:write(script_content)
-        f:close()
-        file:write("✓ Script file written\n")
-        
-        -- Create a test request
-        local request = {
-            jsonrpc = "2.0",
-            method = "hello",
-            params = {},
-            id = 1
-        }
-        
-        local cjson = require("cjson")
-        local request_json = cjson.encode(request)
-        local req_f = io.open(request_file, "w")
-        if req_f then
-            req_f:write(request_json)
-            req_f:close()
-            file:write("✓ Request file written\n")
-            
-            -- Test the script execution
-            local result = os.execute("lua " .. script_file)
-            file:write("Script execution result: " .. tostring(result) .. "\n")
-            
-            -- Check if response file was created
-            local resp_f = io.open(response_file, "r")
-            if resp_f then
-                local response_content = resp_f:read("*a")
-                resp_f:close()
-                file:write("✓ Response file created\n")
-                file:write("Response content: " .. response_content .. "\n")
-            else
-                file:write("✗ Response file not created\n")
-            end
-            
-            -- Clean up
-            os.remove(request_file)
-            os.remove(response_file)
-        else
-            file:write("✗ Failed to write request file\n")
-        end
-        
-        -- Keep script file for debugging
-        -- os.remove(script_file)
-    else
-        file:write("✗ Failed to write script file\n")
-    end
-    
-    file:write("=== Exact Bridge Test Complete ===\n")
-    file:close()
-end 
+]],
+		cwd,
+		cwd,
+		request_file,
+		response_file,
+		server_address
+	)
+
+	file:write("✓ String format successful\n")
+	file:write("Script content length: " .. #script_content .. "\n")
+
+	-- Write the script to a file and test it
+	local script_file = "/tmp/test_exact_script.lua"
+	local f = io.open(script_file, "w")
+	if f then
+		f:write(script_content)
+		f:close()
+		file:write("✓ Script file written\n")
+
+		-- Create a test request
+		local request = {
+			jsonrpc = "2.0",
+			method = "hello",
+			params = {},
+			id = 1,
+		}
+
+		local cjson = require("cjson")
+		local request_json = cjson.encode(request)
+		local req_f = io.open(request_file, "w")
+		if req_f then
+			req_f:write(request_json)
+			req_f:close()
+			file:write("✓ Request file written\n")
+
+			-- Test the script execution
+			local result = os.execute("lua " .. script_file)
+			file:write("Script execution result: " .. tostring(result) .. "\n")
+
+			-- Check if response file was created
+			local resp_f = io.open(response_file, "r")
+			if resp_f then
+				local response_content = resp_f:read("*a")
+				resp_f:close()
+				file:write("✓ Response file created\n")
+				file:write("Response content: " .. response_content .. "\n")
+			else
+				file:write("✗ Response file not created\n")
+			end
+
+			-- Clean up
+			os.remove(request_file)
+			os.remove(response_file)
+		else
+			file:write("✗ Failed to write request file\n")
+		end
+
+		-- Keep script file for debugging
+		-- os.remove(script_file)
+	else
+		file:write("✗ Failed to write script file\n")
+	end
+
+	file:write("=== Exact Bridge Test Complete ===\n")
+	file:close()
+end

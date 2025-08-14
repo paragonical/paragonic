@@ -17,4 +17,4 @@ local result, err = paragonic.send_message("Hello, this is a test message")
 print("Result:", result)
 print("Error:", err)
 
-print("=== Neovim Plugin Test Complete ===") 
+print("=== Neovim Plugin Test Complete ===")
