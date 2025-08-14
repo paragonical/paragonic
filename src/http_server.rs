@@ -18,7 +18,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // Import modules for MCP tool implementations
-use crate::ollama::{OllamaClient, ChatMessage, OllamaConfig};
+use crate::ollama::{OllamaClient, ChatMessage, OllamaConfig, ChatCompletionRequest};
 use crate::patterns::{PatternRegistry, PatternBootstrap};
 use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
 use crate::embeddings::create_embedding;
@@ -305,6 +305,37 @@ impl McpHttpServer {
             "resources/list" => Self::handle_resources_list(&server, params).await,
             "resources/read" => Self::handle_resources_read(&server, params).await,
             "resources/subscribe" => Self::handle_resources_subscribe(&server, params).await,
+            "resources/unsubscribe" => Self::handle_resources_unsubscribe(&server, params).await,
+            "resources/templates/list" => Self::handle_resources_templates_list(&server, params).await,
+            
+            // Prompts
+            "prompts/list" => Self::handle_prompts_list(&server, params).await,
+            "prompts/get" => Self::handle_prompts_get(&server, params).await,
+            
+            // Roots
+            "roots/list" => Self::handle_roots_list(&server, params).await,
+            
+            // Logging
+            "logging/setLevel" => Self::handle_logging_set_level(&server, params).await,
+            
+            // Notifications (handled as requests for now)
+            "notifications/cancelled" => Self::handle_notifications_cancelled(&server, params).await,
+            "notifications/initialized" => Self::handle_notifications_initialized(&server, params).await,
+            "notifications/message" => Self::handle_notifications_message(&server, params).await,
+            "notifications/progress" => Self::handle_notifications_progress(&server, params).await,
+            "notifications/prompts/list_changed" => Self::handle_notifications_prompts_list_changed(&server, params).await,
+            "notifications/resources/list_changed" => Self::handle_notifications_resources_list_changed(&server, params).await,
+            "notifications/resources/updated" => Self::handle_notifications_resources_updated(&server, params).await,
+            "notifications/roots/list_changed" => Self::handle_notifications_roots_list_changed(&server, params).await,
+            "notifications/tools/list_changed" => Self::handle_notifications_tools_list_changed(&server, params).await,
+            
+            // AI and Thinking Model Support (Critical)
+            "completion/complete" => Self::handle_completion_complete(&server, params).await,
+            "elicitation/create" => Self::handle_elicitation_create(&server, params).await,
+            "sampling/createMessage" => Self::handle_sampling_create_message(&server, params).await,
+            
+            // Ping
+            "ping" => Self::handle_ping(&server, params).await,
             
             // Legacy support for direct tool calls (for backward compatibility)
             "chat_completion" => Self::handle_chat_completion(&server, params).await,
@@ -1828,6 +1859,462 @@ impl McpHttpServer {
         }
         
         chunks
+    }
+
+    // MCP Protocol Method Handlers
+    async fn handle_completion_complete(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Extract completion parameters
+        let prompt = params.get("prompt")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("deepseek-r1:1.5b");
+        
+        let options = params.get("options").and_then(|o| o.as_object());
+        
+        // Create session for completion
+        let session = server.session_manager.get_or_create_session(None).await;
+        
+        // Use existing chat completion logic but with thinking model support
+        let chat_message = ChatMessage {
+            role: "user".to_string(),
+            content: prompt.to_string(),
+        };
+        
+        match server.ollama_client.chat_completion(model, vec![chat_message], false).await {
+            Ok(response) => {
+                Ok(serde_json::json!({
+                    "completion": response.message.content,
+                    "model": model,
+                    "session_id": session.id,
+                    "usage": {
+                        "prompt_tokens": 0, // Ollama doesn't provide token usage
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    }
+                }))
+            }
+            Err(e) => {
+                tracing::error!("Completion failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_sampling_create_message(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Extract sampling parameters
+        let prompt = params.get("prompt")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let model = params.get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("deepseek-r1:1.5b");
+        
+        let sampling_options = params.get("sampling_options").and_then(|o| o.as_object());
+        
+        // Create session for sampling
+        let session = server.session_manager.get_or_create_session(None).await;
+        
+        // Create sampling message with thinking model support
+        let sampling_message = ChatMessage {
+            role: "user".to_string(),
+            content: format!(
+                "You are an AI assistant that can think step by step. Use <think> tags to show your reasoning process.\n\n{}",
+                prompt
+            ),
+        };
+        
+        match server.ollama_client.chat_completion(model, vec![sampling_message], false).await {
+            Ok(response) => {
+                Ok(serde_json::json!({
+                    "message": {
+                        "role": "assistant",
+                        "content": response.message.content,
+                    },
+                    "model": model,
+                    "session_id": session.id,
+                    "sampling_id": uuid::Uuid::new_v4().to_string(),
+                }))
+            }
+            Err(e) => {
+                tracing::error!("Sampling failed: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn handle_elicitation_create(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Extract elicitation parameters
+        let prompt = params.get("prompt")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let elicitation_type = params.get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("user_input");
+        
+        // Create session for elicitation
+        let session = server.session_manager.get_or_create_session(None).await;
+        
+        // Generate elicitation ID
+        let elicitation_id = uuid::Uuid::new_v4().to_string();
+        
+        Ok(serde_json::json!({
+            "elicitation_id": elicitation_id,
+            "type": elicitation_type,
+            "prompt": prompt,
+            "session_id": session.id,
+            "status": "pending",
+            "created_at": chrono::Utc::now().to_rfc3339(),
+        }))
+    }
+
+    async fn handle_logging_set_level(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let level = params.get("level")
+            .and_then(|l| l.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Validate log level
+        let valid_levels = ["debug", "info", "warn", "error"];
+        if !valid_levels.contains(&level) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        
+        // Set log level (this would integrate with your logging system)
+        tracing::info!("Log level set to: {}", level);
+        
+        Ok(serde_json::json!({
+            "level": level,
+            "status": "updated",
+        }))
+    }
+
+    async fn handle_prompts_list(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Return available prompts
+        let prompts = vec![
+            serde_json::json!({
+                "name": "thinking_assistant",
+                "description": "AI assistant with step-by-step thinking capabilities",
+                "content": "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.",
+                "tags": ["thinking", "reasoning", "step-by-step"]
+            }),
+            serde_json::json!({
+                "name": "code_assistant",
+                "description": "AI assistant specialized in code generation and review",
+                "content": "You are a code assistant. Provide clear, well-documented code with explanations. Always consider best practices and security implications.",
+                "tags": ["code", "programming", "development"]
+            }),
+            serde_json::json!({
+                "name": "debugging_assistant",
+                "description": "AI assistant for debugging and problem-solving",
+                "content": "You are a debugging assistant. Help identify and fix issues systematically. Ask clarifying questions when needed.",
+                "tags": ["debugging", "troubleshooting", "problem-solving"]
+            })
+        ];
+        
+        Ok(serde_json::json!({
+            "prompts": prompts
+        }))
+    }
+
+    async fn handle_prompts_get(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let name = params.get("name")
+            .and_then(|n| n.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Return specific prompt by name
+        let prompt = match name {
+            "thinking_assistant" => serde_json::json!({
+                "name": "thinking_assistant",
+                "description": "AI assistant with step-by-step thinking capabilities",
+                "content": "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.",
+                "tags": ["thinking", "reasoning", "step-by-step"]
+            }),
+            "code_assistant" => serde_json::json!({
+                "name": "code_assistant",
+                "description": "AI assistant specialized in code generation and review",
+                "content": "You are a code assistant. Provide clear, well-documented code with explanations. Always consider best practices and security implications.",
+                "tags": ["code", "programming", "development"]
+            }),
+            "debugging_assistant" => serde_json::json!({
+                "name": "debugging_assistant",
+                "description": "AI assistant for debugging and problem-solving",
+                "content": "You are a debugging assistant. Help identify and fix issues systematically. Ask clarifying questions when needed.",
+                "tags": ["debugging", "troubleshooting", "problem-solving"]
+            }),
+            _ => return Err(StatusCode::NOT_FOUND)
+        };
+        
+        Ok(prompt)
+    }
+
+    async fn handle_roots_list(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let uri = params.get("uri")
+            .and_then(|u| u.as_str())
+            .unwrap_or("neovim://buffers");
+        
+        let options = params.get("options").and_then(|o| o.as_object());
+        
+        // Return roots for the specified URI
+        let roots = match uri {
+            "neovim://buffers" => {
+                // Return buffer roots
+                vec![
+                    serde_json::json!({
+                        "uri": "neovim://buffers",
+                        "name": "Neovim Buffers",
+                        "description": "All open buffers in the current session"
+                    })
+                ]
+            },
+            "neovim://session" => {
+                // Return session roots
+                vec![
+                    serde_json::json!({
+                        "uri": "neovim://session",
+                        "name": "Neovim Session",
+                        "description": "Current Neovim session information"
+                    })
+                ]
+            },
+            _ => vec![]
+        };
+        
+        Ok(serde_json::json!({
+            "roots": roots,
+            "uri": uri,
+            "options": options
+        }))
+    }
+
+    async fn handle_resources_unsubscribe(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let uri = params.get("uri")
+            .and_then(|u| u.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Handle resource unsubscription
+        tracing::info!("Unsubscribing from resource: {}", uri);
+        
+        Ok(serde_json::json!({
+            "uri": uri,
+            "status": "unsubscribed"
+        }))
+    }
+
+    async fn handle_resources_templates_list(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        // Return available resource templates
+        let templates = vec![
+            serde_json::json!({
+                "name": "buffer_template",
+                "description": "Template for Neovim buffer resources",
+                "uri_pattern": "neovim://buffers/*",
+                "mime_type": "application/json"
+            }),
+            serde_json::json!({
+                "name": "session_template",
+                "description": "Template for Neovim session resources",
+                "uri_pattern": "neovim://session/*",
+                "mime_type": "application/json"
+            })
+        ];
+        
+        Ok(serde_json::json!({
+            "templates": templates
+        }))
+    }
+
+    async fn handle_ping(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "pong": true,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "server_info": {
+                "name": "paragonic-mcp-server",
+                "version": "1.0.0"
+            }
+        }))
+    }
+
+    // Notification handlers (these would typically be sent as notifications, not requests)
+    async fn handle_notifications_cancelled(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let request_id = params.get("requestId")
+            .and_then(|r| r.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        tracing::info!("Request cancelled: {}", request_id);
+        
+        Ok(serde_json::json!({
+            "request_id": request_id,
+            "status": "cancelled"
+        }))
+    }
+
+    async fn handle_notifications_initialized(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "status": "initialized",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_message(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let level = params.get("level")
+            .and_then(|l| l.as_str())
+            .unwrap_or("info");
+        
+        let data = params.get("data");
+        
+        tracing::info!("MCP message: level={}, data={:?}", level, data);
+        
+        Ok(serde_json::json!({
+            "level": level,
+            "data": data,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_progress(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let progress_token = params.get("progressToken")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let progress = params.get("progress")
+            .and_then(|p| p.as_u64())
+            .unwrap_or(0);
+        
+        let total = params.get("total").and_then(|t| t.as_u64());
+        let message = params.get("message").and_then(|m| m.as_str());
+        
+        tracing::info!("Progress update: token={}, progress={}, total={:?}, message={:?}", 
+            progress_token, progress, total, message);
+        
+        Ok(serde_json::json!({
+            "progress_token": progress_token,
+            "progress": progress,
+            "total": total,
+            "message": message,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_prompts_list_changed(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "event": "prompts_list_changed",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_resources_list_changed(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "event": "resources_list_changed",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_resources_updated(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let uri = params.get("uri")
+            .and_then(|u| u.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        Ok(serde_json::json!({
+            "event": "resources_updated",
+            "uri": uri,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_roots_list_changed(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "event": "roots_list_changed",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn handle_notifications_tools_list_changed(
+        server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        Ok(serde_json::json!({
+            "event": "tools_list_changed",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
     }
 }
 
