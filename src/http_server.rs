@@ -502,27 +502,67 @@ impl McpHttpServer {
         _server: &Self,
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
-        // Return list of all available tools
+        // Return list of all available tools for MCP-only compliance
         Ok(serde_json::json!({
             "tools": [
+                // AI & Chat Tools
                 {
                     "name": "chat_completion",
-                    "description": "Send a message to the AI and get response",
+                    "description": "Generate AI chat completions with thinking model support",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "model": {"type": "string"},
-                            "message": {"type": "string"}
+                            "model": {"type": "string", "description": "Model to use for completion"},
+                            "message": {"type": "string", "description": "User message"},
+                            "options": {"type": "object", "description": "Completion options"}
                         },
                         "required": ["message"]
                     }
                 },
                 {
+                    "name": "formatted_chat_completion", 
+                    "description": "Generate formatted AI chat completions",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "model": {"type": "string"},
+                            "message": {"type": "string"},
+                            "format_config": {"type": "object"}
+                        },
+                        "required": ["message"]
+                    }
+                },
+                {
+                    "name": "streaming_chat_completion",
+                    "description": "Generate streaming AI chat completions",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "model": {"type": "string"},
+                            "message": {"type": "string"},
+                            "chunk_size": {"type": "number"}
+                        },
+                        "required": ["message"]
+                    }
+                },
+                // Model Management Tools
+                {
                     "name": "list_models",
-                    "description": "List available Ollama models",
+                    "description": "List available AI models",
                     "inputSchema": {
                         "type": "object",
                         "properties": {}
+                    }
+                },
+                {
+                    "name": "model_info",
+                    "description": "Get information about a specific model",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "model": {"type": "string"}
+                        },
+                        "required": ["model"]
                     }
                 },
                 {
@@ -537,14 +577,44 @@ impl McpHttpServer {
                         "required": ["text"]
                     }
                 },
+                // Search & Knowledge Tools
                 {
                     "name": "search_embeddings",
-                    "description": "Search content using embeddings",
+                    "description": "Search content using vector embeddings",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query": {"type": "string"},
-                            "limit": {"type": "integer"}
+                            "limit": {"type": "number"}
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "find_similar_content",
+                    "description": "Find similar content with filtering",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "content_type": {"type": "string"},
+                            "limit": {"type": "number"},
+                            "threshold": {"type": "number"}
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "hybrid_search",
+                    "description": "Perform hybrid search combining vector and text matching",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "content_type": {"type": "string"},
+                            "limit": {"type": "number"},
+                            "threshold": {"type": "number"},
+                            "include_text_filtering": {"type": "boolean"}
                         },
                         "required": ["query"]
                     }
@@ -562,6 +632,73 @@ impl McpHttpServer {
                         "required": ["query"]
                     }
                 },
+                // Project Management Tools
+                {
+                    "name": "create_project",
+                    "description": "Create a new project",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"}
+                        },
+                        "required": ["name"]
+                    }
+                },
+                {
+                    "name": "list_projects",
+                    "description": "List all projects",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "get_project",
+                    "description": "Get project details",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": {"type": "string"}
+                        },
+                        "required": ["project_id"]
+                    }
+                },
+                // File Operations Tools
+                {
+                    "name": "write_file",
+                    "description": "Write content to a file",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "content": {"type": "string"}
+                        },
+                        "required": ["file_path", "content"]
+                    }
+                },
+                {
+                    "name": "read_file",
+                    "description": "Read content from a file",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string"}
+                        },
+                        "required": ["file_path"]
+                    }
+                },
+                {
+                    "name": "list_files",
+                    "description": "List files in a directory",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "directory": {"type": "string"}
+                        }
+                    }
+                },
+                // Pattern Management Tools
                 {
                     "name": "list_patterns",
                     "description": "List available patterns",
@@ -599,17 +736,84 @@ impl McpHttpServer {
         let arguments_clone = arguments.clone();
 
         // Route to appropriate handler based on tool name
-        match name {
-            "chat_completion" => Self::handle_chat_completion(server, Some(&arguments_clone)).await,
+        let result = match name {
+            // AI & Chat Tools
+            "chat_completion" => {
+                let model = arguments.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
+                let message = arguments.get("message").and_then(|m| m.as_str()).ok_or(StatusCode::BAD_REQUEST)?;
+                let options = arguments.get("options");
+                
+                // Use the existing MCP completion handler
+                Self::handle_completion_complete(server, Some(&serde_json::json!({
+                    "prompt": message,
+                    "model": model,
+                    "options": options
+                }))).await
+            },
+            "formatted_chat_completion" => {
+                let model = arguments.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
+                let message = arguments.get("message").and_then(|m| m.as_str()).ok_or(StatusCode::BAD_REQUEST)?;
+                let format_config = arguments.get("format_config");
+                
+                // Use the existing formatted chat completion handler
+                Self::handle_formatted_chat_completion(server, Some(&serde_json::json!({
+                    "model": model,
+                    "message": message,
+                    "format_config": format_config
+                }))).await
+            },
+            "streaming_chat_completion" => {
+                let model = arguments.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
+                let message = arguments.get("message").and_then(|m| m.as_str()).ok_or(StatusCode::BAD_REQUEST)?;
+                let chunk_size = arguments.get("chunk_size").and_then(|c| c.as_u64()).unwrap_or(30);
+                
+                // Use the existing streaming chat completion handler
+                Self::handle_streaming_chat_completion(server, Some(&serde_json::json!({
+                    "model": model,
+                    "message": message,
+                    "chunk_size": chunk_size
+                }))).await
+            },
+            // Model Management Tools
             "list_models" => Self::handle_list_models(server, Some(&arguments_clone)).await,
+            "model_info" => Self::handle_model_info(server, Some(&arguments_clone)).await,
             "generate_embedding" => Self::handle_generate_embedding(server, Some(&arguments_clone)).await,
+            // Search & Knowledge Tools
             "search_embeddings" => Self::handle_search_embeddings(server, Some(&arguments_clone)).await,
+            "find_similar_content" => Self::handle_find_similar_content(server, Some(&arguments_clone)).await,
+            "hybrid_search" => Self::handle_hybrid_search(server, Some(&arguments_clone)).await,
             "iragl_search" => Self::handle_iragl_search(server, Some(&arguments_clone)).await,
+            // Project Management Tools
+            "create_project" => Self::handle_create_project(server, Some(&arguments_clone)).await,
+            "list_projects" => Self::handle_list_projects(server, Some(&arguments_clone)).await,
+            "get_project" => Self::handle_get_project(server, Some(&arguments_clone)).await,
+            // File Operations Tools
+            "write_file" => Self::handle_write_file(server, Some(&arguments_clone)).await,
+            "read_file" => Self::handle_read_file(server, Some(&arguments_clone)).await,
+            "list_files" => Self::handle_list_files(server, Some(&arguments_clone)).await,
+            // Pattern Management Tools
             "list_patterns" => Self::handle_list_patterns(server, Some(&arguments_clone)).await,
             "execute_pattern" => Self::handle_execute_pattern(server, Some(&arguments_clone)).await,
+            // Unknown tool
             _ => {
                 error!("Unknown tool: {}", name);
-                Err(StatusCode::METHOD_NOT_ALLOWED)
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        };
+
+        // Wrap the result in MCP tool call response format
+        match result {
+            Ok(data) => Ok(serde_json::json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": serde_json::to_string(&data).unwrap_or_default()
+                    }
+                ]
+            })),
+            Err(e) => {
+                error!("Tool call failed for {}: {:?}", name, e);
+                Err(e)
             }
         }
     }

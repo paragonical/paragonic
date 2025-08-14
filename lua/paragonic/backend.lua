@@ -70,18 +70,29 @@ local function create_mcp_client()
 		return resp, err
 	end
 
-	-- Model Management
+	-- Model Management (using MCP tools)
 	function client:list_models()
-		local resp, err = mcp.send_request({ jsonrpc = "2.0", method = "list_models", params = {} })
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "list_models",
+				arguments = {}
+			}
+		})
 		return resp, err
 	end
 
-	-- Chat/AI
+	-- Chat/AI (using MCP completion and tools)
 	function client:chat_completion(model, message)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "chat_completion",
-			params = { model = model, message = message },
+			method = "completion/complete",
+			params = {
+				prompt = message,
+				model = model or "deepseek-r1:1.5b",
+				options = {}
+			}
 		})
 		return resp, err
 	end
@@ -89,8 +100,15 @@ local function create_mcp_client()
 	function client:formatted_chat_completion(model, message, format_config)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "formatted_chat_completion",
-			params = { model = model, message = message, format_config = format_config },
+			method = "tools/call",
+			params = {
+				name = "formatted_chat_completion",
+				arguments = {
+					model = model or "deepseek-r1:1.5b",
+					message = message,
+					format_config = format_config or {}
+				}
+			}
 		})
 		return resp, err
 	end
@@ -98,8 +116,11 @@ local function create_mcp_client()
 	function client:streaming_chat_completion(params)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "streaming_chat_completion",
-			params = params or {},
+			method = "tools/call",
+			params = {
+				name = "streaming_chat_completion",
+				arguments = params or {}
+			}
 		})
 		return resp, err
 	end
@@ -122,17 +143,30 @@ local function create_mcp_client()
 		return resp, err
 	end
 
-	-- Config/Projects (basic mappings)
+	-- Config/Projects (using MCP tools)
 	function client:get_projects()
-		local resp, err = mcp.send_request({ jsonrpc = "2.0", method = "list_projects", params = {} })
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "list_projects",
+				arguments = {}
+			}
+		})
 		return resp, err
 	end
 
 	function client:create_project(name, description)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "create_project",
-			params = { name = name, description = description },
+			method = "tools/call",
+			params = {
+				name = "create_project",
+				arguments = {
+					name = name,
+					description = description or ""
+				}
+			}
 		})
 		return resp, err
 	end
@@ -147,21 +181,34 @@ local function create_mcp_client()
 		return resp, err
 	end
 
+	-- File Operations (using MCP tools)
 	function client:save_config(config_data)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "write_file",
-			params = { file_path = "config.json", content = vim.json.encode(config_data) },
+			method = "tools/call",
+			params = {
+				name = "write_file",
+				arguments = {
+					file_path = "config.json",
+					content = vim.json.encode(config_data)
+				}
+			}
 		})
 		return resp, err
 	end
 
-	-- Search/Knowledge
+	-- Search/Knowledge (using MCP tools)
 	function client:search_embeddings(query, limit)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "search_embeddings",
-			params = { query = query, limit = limit },
+			method = "tools/call",
+			params = {
+				name = "search_embeddings",
+				arguments = {
+					query = query,
+					limit = limit or 10
+				}
+			}
 		})
 		return resp, err
 	end
@@ -169,8 +216,16 @@ local function create_mcp_client()
 	function client:find_similar_content(query, content_type, limit, threshold)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "find_similar_content",
-			params = { content = query, content_type = content_type, limit = limit, threshold = threshold },
+			method = "tools/call",
+			params = {
+				name = "find_similar_content",
+				arguments = {
+					query = query,
+					content_type = content_type,
+					limit = limit or 10,
+					threshold = threshold or 0.0
+				}
+			}
 		})
 		return resp, err
 	end
@@ -178,14 +233,17 @@ local function create_mcp_client()
 	function client:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "hybrid_search",
+			method = "tools/call",
 			params = {
-				query = query,
-				content_type = content_type,
-				limit = limit,
-				threshold = threshold,
-				include_text_filtering = include_text_filtering,
-			},
+				name = "hybrid_search",
+				arguments = {
+					query = query,
+					content_type = content_type,
+					limit = limit or 10,
+					threshold = threshold or 0.0,
+					include_text_filtering = include_text_filtering ~= false
+				}
+			}
 		})
 		return resp, err
 	end

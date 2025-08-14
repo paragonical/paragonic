@@ -711,62 +711,86 @@ function M.show_result_details(result)
 	vim.api.nvim_win_set_cursor(detail_win, { 1, 0 })
 end
 
--- Core search functions (these would need to be implemented based on your backend)
+-- Core search functions (using MCP tools)
 function M.search_embeddings(query, limit)
-	-- This should call your backend's search function
-	-- For now, return a mock result
-	return {
-		results = {
-			{
-				similarity_score = 0.95,
-				embedding = {
-					content_type = "document",
-					content_id = "doc1",
-					content_text = "Sample content for " .. query,
-					created_at = "2024-01-01",
-					updated_at = "2024-01-01",
-				},
-			},
-		},
-	}
+	local backend = require("paragonic.backend")
+	local rpc_client = backend._get_rpc_client()
+	
+	if not rpc_client then
+		if not backend._initialize_backend() then
+			return nil, "Backend not available"
+		end
+		rpc_client = backend._get_rpc_client()
+	end
+	
+	local result, err = rpc_client:search_embeddings(query, limit)
+	if not result then
+		return nil, err
+	end
+	
+	-- Parse MCP tool call response
+	if result.content and result.content[1] and result.content[1].text then
+		local success, parsed = pcall(vim.json.decode, result.content[1].text)
+		if success then
+			return parsed
+		end
+	end
+	
+	return result
 end
 
 function M.find_similar_content(query, content_type, limit, threshold)
-	-- This should call your backend's filtered search function
-	-- For now, return a mock result
-	return {
-		results = {
-			{
-				similarity_score = 0.90,
-				embedding = {
-					content_type = content_type or "document",
-					content_id = "doc2",
-					content_text = "Filtered content for " .. query,
-					created_at = "2024-01-01",
-					updated_at = "2024-01-01",
-				},
-			},
-		},
-	}
+	local backend = require("paragonic.backend")
+	local rpc_client = backend._get_rpc_client()
+	
+	if not rpc_client then
+		if not backend._initialize_backend() then
+			return nil, "Backend not available"
+		end
+		rpc_client = backend._get_rpc_client()
+	end
+	
+	local result, err = rpc_client:find_similar_content(query, content_type, limit, threshold)
+	if not result then
+		return nil, err
+	end
+	
+	-- Parse MCP tool call response
+	if result.content and result.content[1] and result.content[1].text then
+		local success, parsed = pcall(vim.json.decode, result.content[1].text)
+		if success then
+			return parsed
+		end
+	end
+	
+	return result
 end
 
 function M.hybrid_search(query, content_type, limit, threshold, include_text_filtering)
-	-- This should call your backend's hybrid search function
-	-- For now, return a mock result
-	return {
-		results = {
-			{
-				similarity_score = 0.85,
-				embedding = {
-					content_type = content_type or "document",
-					content_id = "doc3",
-					content_text = "Hybrid content for " .. query,
-					created_at = "2024-01-01",
-					updated_at = "2024-01-01",
-				},
-			},
-		},
-	}
+	local backend = require("paragonic.backend")
+	local rpc_client = backend._get_rpc_client()
+	
+	if not rpc_client then
+		if not backend._initialize_backend() then
+			return nil, "Backend not available"
+		end
+		rpc_client = backend._get_rpc_client()
+	end
+	
+	local result, err = rpc_client:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
+	if not result then
+		return nil, err
+	end
+	
+	-- Parse MCP tool call response
+	if result.content and result.content[1] and result.content[1].text then
+		local success, parsed = pcall(vim.json.decode, result.content[1].text)
+		if success then
+			return parsed
+		end
+	end
+	
+	return result
 end
 
 return M
