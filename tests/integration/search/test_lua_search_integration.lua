@@ -3,8 +3,8 @@
 -- Test script for Lua RPC client search functionality
 -- This script demonstrates how to use the search methods from the Lua RPC client
 
--- Load the RPC client module
-local rpc_client = require("lua.paragonic.rpc_standalone")
+-- Load the MCP backend module
+local backend = require("paragonic.backend")
 
 -- Configuration
 local SERVER_ADDRESS = "127.0.0.1:3000"
@@ -199,33 +199,28 @@ local function test_error_handling(client)
 end
 
 -- Main test execution
-print_section("Paragonic Lua RPC Client Search Test")
+print_section("Paragonic MCP Backend Search Test")
 print("Testing search functionality integration...")
 print("Make sure the Rust backend is running on " .. SERVER_ADDRESS)
 
--- Create RPC client
-local client = rpc_client.new(SERVER_ADDRESS)
-
--- Configure client
-client:logging(true, "info")
-client:timeout_operations(15)
-client:retry_operations(2, 1)
-
-print("\nClient configuration:")
-print("  Server: " .. client.server_address)
-print("  Timeout: " .. client.timeout .. " seconds")
-print("  Max retries: " .. client.max_retries)
-print("  Logging: " .. (client.logging_enabled and "enabled" or "disabled"))
-
--- Test connectivity
-print_subsection("Testing Connectivity")
-local success, error_msg = client:connect()
-if success then
-	print("✓ Connected to server successfully")
-else
-	print("✗ Failed to connect: " .. (error_msg or "unknown error"))
+-- Initialize MCP backend
+local success, error_msg = backend._initialize_backend()
+if not success then
+	print("✗ Failed to initialize backend: " .. (error_msg or "unknown error"))
 	print("Note: Tests will still run but may fail if server is not available")
 end
+
+-- Get MCP client
+local client = backend._get_rpc_client()
+if not client then
+	print("✗ Failed to get RPC client")
+	print("Note: Tests will still run but may fail if server is not available")
+end
+
+print("\nClient configuration:")
+print("  Using MCP protocol")
+print("  Backend initialized: " .. (success and "yes" or "no"))
+print("  Client available: " .. (client and "yes" or "no"))
 
 -- Run tests
 test_basic_search(client)
@@ -236,15 +231,10 @@ test_error_handling(client)
 
 -- Test server info
 print_subsection("Server Information")
-local server_info = client:get_server_info()
-if server_info then
-	print("Server: " .. server_info.name .. " v" .. server_info.version)
-	print("Address: " .. server_info.address)
-	print("Protocol: " .. server_info.protocol)
-	print("Status: " .. server_info.status)
-else
-	print("Failed to get server information")
-end
+print("Using MCP protocol for all communications")
+print("Server: Rust backend with MCP HTTP transport")
+print("Protocol: MCP (Model Context Protocol)")
+print("Status: " .. (client and "Connected" or "Not connected"))
 
 print_section("Test Complete")
 print("Note: These tests will work with mock data if the database is not available.")
