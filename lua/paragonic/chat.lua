@@ -1044,26 +1044,23 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 	model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
 
 	-- Start streaming chat completion
-	local response = rpc_client:streaming_chat_completion({
+	local response, err = rpc_client:streaming_chat_completion({
 		model = model,
 		message = message,
 		chunk_size = 30, -- Small chunks for smooth streaming
 	})
 
+	if err then
+		return nil, "Failed to start streaming: " .. tostring(err)
+	end
+
 	if not response then
-		return nil, "Failed to start streaming"
+		return nil, "Failed to start streaming: no response"
 	end
 
-	-- Parse the initial response to check for errors
-	local utils = require("paragonic.utils")
-	local parsed_response = utils.parse_json_response_enhanced(response)
-	if not parsed_response then
-		return nil, "Failed to parse streaming response"
-	end
-
-	-- Check for error in response
-	if parsed_response.error then
-		return nil, "Streaming error: " .. (parsed_response.error.message or "Unknown error")
+	-- Check for error in response (response is already a parsed Lua table)
+	if response.error then
+		return nil, "Streaming error: " .. (response.error.message or "Unknown error")
 	end
 
 	-- The initial response should just confirm streaming started
@@ -1137,26 +1134,23 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
 
 	-- Start streaming chat completion
-	local response = rpc_client:streaming_chat_completion({
+	local response, err = rpc_client:streaming_chat_completion({
 		model = model,
 		message = message,
 		chunk_size = 50, -- Larger chunks for thinking model
 	})
 
+	if err then
+		return nil, "Failed to start streaming: " .. tostring(err)
+	end
+
 	if not response then
-		return nil, "Failed to start streaming"
+		return nil, "Failed to start streaming: no response"
 	end
 
-	-- Parse the initial response
-	local utils = require("paragonic.utils")
-	local parsed_response = utils.parse_json_response_enhanced(response)
-	if not parsed_response then
-		return nil, "Failed to parse streaming response"
-	end
-
-	-- Check for error in response
-	if parsed_response.error then
-		return nil, "Streaming error: " .. (parsed_response.error.message or "Unknown error")
+	-- Check for error in response (response is already a parsed Lua table)
+	if response.error then
+		return nil, "Streaming error: " .. (response.error.message or "Unknown error")
 	end
 
 	-- Wait for streaming chunks to arrive via SSE
