@@ -34,8 +34,10 @@ function M.debug_print_safe(message, level)
 		notify_level = vim.log.levels.INFO
 	end
 	
-	-- Show immediate notification
-	vim.notify(message, notify_level, { title = "Paragonic Debug" })
+	-- Defer notification to safe context to avoid fast event context errors
+	vim.defer_fn(function()
+		vim.notify(message, notify_level, { title = "Paragonic Debug" })
+	end, 0)
 	
 	-- Defer buffer logging to safe context
 	vim.defer_fn(function()
@@ -92,8 +94,10 @@ function M.append_debug_message(buffer, message, level)
 	-- print("🔧 append_debug_message() called with buffer=" .. tostring(buffer) .. ", message=" .. tostring(message))
 
 	if not message then
-		-- Use vim.notify for critical errors to avoid infinite loops
-		vim.notify("❌ append_debug_message: Message is required", vim.log.levels.ERROR)
+		-- Use vim.defer_fn for critical errors to avoid infinite loops
+		vim.defer_fn(function()
+			vim.notify("❌ append_debug_message: Message is required", vim.log.levels.ERROR)
+		end, 0)
 		return false, "Message is required"
 	end
 
@@ -102,7 +106,9 @@ function M.append_debug_message(buffer, message, level)
 
 	-- Validate debug buffer exists
 	if not vim.api.nvim_buf_is_valid(debug_buf) then
-		vim.notify("❌ append_debug_message: Invalid debug buffer", vim.log.levels.ERROR)
+		vim.defer_fn(function()
+			vim.notify("❌ append_debug_message: Invalid debug buffer", vim.log.levels.ERROR)
+		end, 0)
 		return false, "Invalid debug buffer"
 	end
 
