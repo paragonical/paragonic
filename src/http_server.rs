@@ -373,7 +373,7 @@ impl McpHttpServer {
             }
             "agent_chat_completion" => Self::handle_agent_chat_completion(&server, params).await,
             "streaming_chat_completion" => {
-                Self::handle_streaming_chat_completion(&server, params).await
+                Self::handle_streaming_chat_completion(&server, params, id).await
             }
 
             // File Operations
@@ -570,7 +570,9 @@ impl McpHttpServer {
             }
             "agent_chat_completion" => Self::handle_agent_chat_completion(&server, params).await,
             "streaming_chat_completion" => {
-                Self::handle_streaming_chat_completion_with_session(&server, params, session).await
+                // For direct method calls, we need to create a default request ID
+                let default_id = serde_json::json!(1);
+                Self::handle_streaming_chat_completion_with_session(&server, params, session, &default_id).await
             }
 
             // File Operations
@@ -1037,6 +1039,8 @@ impl McpHttpServer {
                     .unwrap_or(30);
 
                 // Use the session-aware streaming chat completion handler
+                // For tool calls, we need to create a default request ID
+                let default_id = serde_json::json!(1);
                 Self::handle_streaming_chat_completion_with_session(
                     server,
                     Some(&serde_json::json!({
@@ -1045,6 +1049,7 @@ impl McpHttpServer {
                         "chunk_size": chunk_size
                     })),
                     session,
+                    &default_id,
                 )
                 .await
             }
@@ -1335,6 +1340,7 @@ impl McpHttpServer {
     async fn handle_streaming_chat_completion(
         server: &Self,
         params: Option<&Value>,
+        request_id: &Value,
     ) -> Result<Value, StatusCode> {
         // Create a default session for backward compatibility
         let session = server
@@ -1342,13 +1348,14 @@ impl McpHttpServer {
             .get_or_create_session(None)
             .await;
         
-        Self::handle_streaming_chat_completion_with_session(server, params, session).await
+        Self::handle_streaming_chat_completion_with_session(server, params, session, request_id).await
     }
 
     async fn handle_streaming_chat_completion_with_session(
         server: &Self,
         params: Option<&Value>,
         session: Session,
+        request_id: &Value,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
         let model = params
@@ -1421,28 +1428,33 @@ impl McpHttpServer {
                     // Send MCP progress notifications for thinking chunks
                     Self::send_mcp_progress_notifications(server, &chunks, &progress_token, &session.id).await;
 
-                    // Send first chunk immediately
+                    // Send first chunk immediately as MCP response
                     if let Some(first_chunk) = chunks.first() {
                         let response_json = serde_json::json!({
-                            "type": "streaming_chunk",
-                            "chunk": first_chunk.content,
-                            "chunk_type": first_chunk.chunk_type,
-                            "chunk_index": 0,
-                            "total_chunks": chunks.len()
+                            "jsonrpc": "2.0",
+                            "id": request_id,
+                            "result": {
+                                "type": "streaming_chunk",
+                                "chunk": first_chunk.content,
+                                "chunk_type": first_chunk.chunk_type,
+                                "chunk_index": 0,
+                                "total_chunks": chunks.len(),
+                                "progressToken": progress_token
+                            }
                         });
 
-                        info!("   📤 Sending first chunk to client:");
+                        info!("   📤 Sending first chunk to client (MCP format):");
                         info!(
                             "   Response JSON: {}",
                             serde_json::to_string_pretty(&response_json).unwrap()
                         );
 
-                                        // Send remaining chunks via SSE notifications
-                // Add a delay to ensure client has established SSE connection
-                info!("   ⏳ Waiting for client SSE connection to establish...");
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                info!("   📤 Starting to send remaining chunks via SSE");
-                Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token, &session.id).await;
+                        // Send remaining chunks via SSE notifications
+                        // Add a delay to ensure client has established SSE connection
+                        info!("   ⏳ Waiting for client SSE connection to establish...");
+                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                        info!("   📤 Starting to send remaining chunks via SSE");
+                        Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token, &session.id).await;
 
                         Ok(response_json)
                     } else {
