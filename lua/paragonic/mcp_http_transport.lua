@@ -402,7 +402,8 @@ function mcp_http_transport.initialize_session(client_info)
 		end,
 	}
 
-	local connect_success, connect_err = sse_client.connect(transport_state.stream_id, sse_callbacks)
+	-- Connect to SSE stream - the server creates the stream internally based on session ID
+	local connect_success, connect_err = sse_client.connect(nil, sse_callbacks)
 	if not connect_success then
 		return false, connect_err or "Failed to connect to SSE stream"
 	end

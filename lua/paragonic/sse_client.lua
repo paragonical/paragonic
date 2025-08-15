@@ -209,7 +209,9 @@ function sse_client.connect(stream_id, callbacks)
 		return false, SSEClientError.ALREADY_CONNECTED
 	end
 
-	if not stream_id or type(stream_id) ~= "string" then
+	-- Stream ID is optional - the server creates streams internally
+	-- If provided, validate it's a string
+	if stream_id and type(stream_id) ~= "string" then
 		return false, "Invalid stream ID"
 	end
 
@@ -433,9 +435,8 @@ end
 -- Establish SSE connection using vim.uv for proper async streaming
 function sse_client._establish_connection()
 	local endpoint = "/mcp"
-	if client_state.stream_id then
-		endpoint = endpoint .. "?stream=" .. client_state.stream_id
-	end
+	-- Note: The server creates the stream internally based on the session ID
+	-- We don't need to pass the stream ID as a query parameter
 
 	local url = client_state.base_url .. endpoint
 	
