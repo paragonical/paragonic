@@ -297,10 +297,11 @@ function sse_client._setup_async_reading(client)
 		-- Log data reception (always)
 		debug.debug_print("📥 SSE Received data: " .. #data .. " bytes", "debug")
 		
-		-- Log detailed data in debug mode
+		-- Log detailed data in debug mode (sanitized for display)
 		if vim.g.paragonic_debug_buffer then
 			if #data < 100 then
-				debug.debug_print("Data: " .. data:gsub("\r", "\\r"):gsub("\n", "\\n"), "debug")
+				local sanitized_data = data:gsub("\r\n", "\\r\\n"):gsub("\r", "\\r"):gsub("\n", "\\n")
+				debug.debug_print("Data: " .. sanitized_data, "debug")
 			end
 		end
 		
@@ -502,9 +503,10 @@ function sse_client._establish_connection()
 	local debug = require("paragonic.debug")
 	debug.debug_print("🔍 SSE Request:", "debug")
 	
-	-- Log detailed request in debug mode
+	-- Log detailed request in debug mode (sanitized for display)
 	if vim.g.paragonic_debug_buffer then
-		debug.debug_print(request, "debug")
+		local sanitized_request = request:gsub("\r\n", "\\r\\n"):gsub("\r", "\\r"):gsub("\n", "\\n")
+		debug.debug_print(sanitized_request, "debug")
 	end
 
 	-- Send request
