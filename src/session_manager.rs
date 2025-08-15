@@ -178,6 +178,16 @@ impl SessionManager {
         self.sessions.read().await.len()
     }
 
+    /// Get all active session IDs
+    pub async fn get_active_sessions(&self) -> Vec<String> {
+        let sessions = self.sessions.read().await;
+        sessions
+            .iter()
+            .filter(|(_, session)| session.state == SessionState::Active)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     /// Generate a unique session ID
     fn generate_session_id(&self) -> String {
         Uuid::new_v4().to_string()

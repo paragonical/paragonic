@@ -1190,6 +1190,9 @@ impl McpHttpServer {
                     let chunks = Self::parse_thinking_content(&content);
                     info!("   📤 Sending {} thinking chunks to client", chunks.len());
 
+                    // Send MCP progress notifications for thinking chunks
+                    Self::send_mcp_progress_notifications(server, &chunks).await;
+
                     // For now, send the first chunk (the client will handle the rest via SSE)
                     if let Some(first_chunk) = chunks.first() {
                         let response_json = serde_json::json!({
@@ -2622,6 +2625,99 @@ impl McpHttpServer {
             "timestamp": chrono::Utc::now().to_rfc3339()
         }))
     }
+
+    /// Send MCP progress notifications for streaming chunks
+    async fn send_mcp_progress_notifications(
+        server: &Self,
+        chunks: &[ThinkingChunk],
+    ) {
+        let total_chunks = chunks.len();
+        let progress_token = format!("streaming_{}", chrono::Utc::now().timestamp_millis());
+
+        info!("   📊 Sending MCP progress notifications for {} chunks", total_chunks);
+
+        // Send initial progress notification
+        let initial_progress = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/progress",
+            "params": {
+                "progressToken": progress_token,
+                "progress": 0,
+                "total": total_chunks,
+                "message": "Starting streaming response..."
+            }
+        });
+
+        // Send via SSE to all active streams
+        for session_id in server.session_manager.get_active_sessions().await {
+            let streams = server.stream_manager.get_session_streams(&session_id).await;
+            for stream_id in streams {
+                if let Err(e) = server.stream_manager.send_event(&stream_id, &initial_progress.to_string(), Some("notification")).await {
+                    warn!("Failed to send initial progress notification: {}", e);
+                }
+            }
+        }
+
+        // Send progress updates for each chunk
+        for (index, chunk) in chunks.iter().enumerate() {
+            let progress = index + 1;
+            let message = match chunk.chunk_type.as_str() {
+                "thinking_start" => "Starting thinking process...",
+                "thinking_content" => "Processing thinking content...",
+                "thinking_end" => "Completing thinking process...",
+                "regular_content" => "Generating response...",
+                _ => "Processing content..."
+            };
+
+            let progress_notification = serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/progress",
+                "params": {
+                    "progressToken": progress_token,
+                    "progress": progress,
+                    "total": total_chunks,
+                    "message": message
+                }
+            });
+
+            // Send via SSE to all active streams
+            for session_id in server.session_manager.get_active_sessions().await {
+                let streams = server.stream_manager.get_session_streams(&session_id).await;
+                for stream_id in streams {
+                    if let Err(e) = server.stream_manager.send_event(&stream_id, &progress_notification.to_string(), Some("notification")).await {
+                        warn!("Failed to send progress notification: {}", e);
+                    }
+                }
+            }
+
+            // Small delay to simulate processing time
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        }
+
+        // Send completion notification
+        let completion_notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/progress",
+            "params": {
+                "progressToken": progress_token,
+                "progress": total_chunks,
+                "total": total_chunks,
+                "message": "Streaming response complete"
+            }
+        });
+
+        // Send via SSE to all active streams
+        for session_id in server.session_manager.get_active_sessions().await {
+            let streams = server.stream_manager.get_session_streams(&session_id).await;
+            for stream_id in streams {
+                if let Err(e) = server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
+                    warn!("Failed to send completion notification: {}", e);
+                }
+            }
+        }
+
+        info!("   ✅ MCP progress notifications sent for {} chunks", total_chunks);
+    }
 }
 
 /// JSON-RPC message types
@@ -2678,6 +2774,12 @@ impl SessionManager {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).cloned()
     }
+
+    /// Get all active session IDs
+    pub async fn get_active_sessions(&self) -> Vec<String> {
+        let sessions = self.sessions.read().await;
+        sessions.keys().cloned().collect()
+    }
 }
 
 impl StreamManager {
@@ -2719,6 +2821,39 @@ impl StreamManager {
             tx.send(message).is_ok()
         } else {
             false
+        }
+    }
+
+    /// Get all streams for a session
+    pub async fn get_session_streams(&self, session_id: &str) -> Vec<String> {
+        let streams = self.streams.read().await;
+        if streams.contains_key(session_id) {
+            vec![session_id.to_string()]
+        } else {
+            vec![]
+        }
+    }
+
+    /// Send an event to a stream
+    pub async fn send_event(
+        &self,
+        stream_id: &str,
+        event_data: &str,
+        event_type: Option<&str>,
+    ) -> Result<(), String> {
+        let streams = self.streams.read().await;
+        if let Some(tx) = streams.get(stream_id) {
+            let message = serde_json::json!({
+                "data": event_data,
+                "event_type": event_type
+            });
+            if tx.send(message).is_ok() {
+                Ok(())
+            } else {
+                Err("Failed to send event".to_string())
+            }
+        } else {
+            Err("Stream not found".to_string())
         }
     }
 }
