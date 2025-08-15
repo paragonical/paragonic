@@ -202,7 +202,7 @@ impl StreamManager {
     /// Heartbeat loop with exponential backoff
     async fn heartbeat_loop(sender: Arc<broadcast::Sender<SseEvent>>, stream_id: String) {
         let mut delay = Duration::from_secs(1); // Start with 1 second
-        let max_delay = Duration::from_secs(8); // Max 8 seconds
+        let max_delay = Duration::from_secs(128); // Max 128 seconds
         
         loop {
             // Wait for the current delay
