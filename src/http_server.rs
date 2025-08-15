@@ -1086,16 +1086,24 @@ impl McpHttpServer {
             }
         };
 
-        // Wrap the result in MCP tool call response format
+        // Handle the result based on tool type
         match result {
-            Ok(data) => Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": serde_json::to_string(&data).unwrap_or_default()
-                    }
-                ]
-            })),
+            Ok(data) => {
+                // For streaming chat completion, return the data directly (it's already in MCP format)
+                if name == "streaming_chat_completion" {
+                    Ok(data)
+                } else {
+                    // For other tools, wrap in MCP tool call response format
+                    Ok(serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": serde_json::to_string(&data).unwrap_or_default()
+                            }
+                        ]
+                    }))
+                }
+            }
             Err(e) => {
                 error!("Tool call failed for {}: {:?}", name, e);
                 Err(e)
