@@ -1054,7 +1054,7 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 		return nil, "Failed to start streaming"
 	end
 
-	-- Parse the initial response
+	-- Parse the initial response to check for errors
 	local utils = require("paragonic.utils")
 	local parsed_response = utils.parse_json_response_enhanced(response)
 	if not parsed_response then
@@ -1066,84 +1066,53 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 		return nil, "Streaming error: " .. (parsed_response.error.message or "Unknown error")
 	end
 
-	-- Extract streaming data
-	local result = parsed_response.result
-	if type(result) == "string" then
-		-- Try to parse JSON string
-		local success, parsed = pcall(vim.json.decode, result)
-		if success then
-			result = parsed
-		else
-			return nil, "Failed to parse streaming result"
-		end
-	end
-
-	if not result or result.type ~= "streaming_chunk" then
-		return nil, "Unexpected streaming response format"
-	end
-
-	-- Call on_chunk for the first chunk
-	if on_chunk then
-		local chunk_type = result.chunk_type or "regular_content"
-		on_chunk(result.chunk, result.chunk_index, result.total_chunks, chunk_type)
-	end
-
+	-- The initial response should just confirm streaming started
+	-- All actual chunks will come via SSE notifications
 	-- Set up SSE notification handler for streaming chunks
 	local streaming_complete = false
-	local total_chunks = result.total_chunks or 1
-	local chunks_received = 1 -- We already have the first chunk
+	local chunks_received = 0
+	local total_chunks = 0
 
-	-- Create a notification handler for streaming chunks
-	local original_on_notification = mcp_http_transport.get_callbacks().on_notification
-	local streaming_handler = function(notification)
-		if notification.method == "notifications/message" and notification.params then
-			local params = notification.params
-			
-			if params.type == "streaming_chunk" then
+	-- Wait for streaming chunks to arrive via SSE
+	local max_wait_time = 30 -- seconds
+	local wait_interval = 0.1 -- seconds
+	local total_wait_time = 0
+	
+	while total_wait_time < max_wait_time do
+		local chunks = rpc_client:get_streaming_chunks()
+		if chunks and #chunks > 0 then
+			-- Process all available chunks
+			for _, chunk in ipairs(chunks) do
 				chunks_received = chunks_received + 1
+				
+				-- Update total_chunks if provided
+				if chunk.total_chunks then
+					total_chunks = chunk.total_chunks
+				end
 				
 				-- Process the chunk
 				if on_chunk then
-					local chunk_type = params.chunk_type or "regular_content"
-					on_chunk(params.chunk, params.chunk_index, total_chunks, chunk_type)
+					local chunk_type = chunk.chunk_type or "regular_content"
+					on_chunk(chunk.chunk, chunk.chunk_index, total_chunks, chunk_type)
 				end
-				
-			elseif params.type == "streaming_complete" then
+			end
+			
+			-- Check if we've received all chunks
+			if total_chunks > 0 and chunks_received >= total_chunks then
 				streaming_complete = true
-				if on_complete then
-					on_complete()
-				end
-				
-				-- Restore original notification handler
-				mcp_http_transport.set_callbacks({
-					on_notification = original_on_notification
-				})
+				break
 			end
 		end
 		
-		-- Call original handler for other notifications
-		if original_on_notification then
-			original_on_notification(notification)
-		end
+		-- Wait a bit before checking again
+		vim.wait(wait_interval * 1000)
+		total_wait_time = total_wait_time + wait_interval
 	end
-
-	-- Set up streaming notification handler
-	mcp_http_transport.set_callbacks({
-		on_notification = streaming_handler
-	})
-
-	-- Set a timeout for streaming completion
-	vim.defer_fn(function()
-		if not streaming_complete then
-			-- Timeout reached, restore original handler and call completion
-			mcp_http_transport.set_callbacks({
-				on_notification = original_on_notification
-			})
-			if on_complete then
-				on_complete()
-			end
-		end
-	end, 30000) -- 30 second timeout
+	
+	-- Call completion callback
+	if on_complete then
+		on_complete()
+	end
 
 	return true
 end
@@ -1197,12 +1166,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	
 	while total_wait_time < max_wait_time do
 		local chunks = rpc_client:get_streaming_chunks()
-		if #chunks > 0 then
-			-- Process the first chunk to get started
-			local first_chunk = chunks[1]
-			if first_chunk.type == "streaming_chunk" then
-				break -- We have chunks, proceed with processing
-			end
+		if chunks and #chunks > 0 then
+			break -- We have chunks, proceed with processing
 		end
 		
 		vim.wait(wait_interval * 1000) -- Convert to milliseconds
@@ -1304,27 +1269,13 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	
 	-- Function to process chunks
 	local function process_chunks()
-		while processed_chunks < total_chunks do
-			processed_chunks = processed_chunks + 1
-			local chunk = chunks[processed_chunks]
-			
-			if chunk.type == "streaming_complete" then
-				-- Process any remaining content
-				if thinking_state.current_content ~= "" then
-					process_thinking_content(thinking_state.current_content, true)
-				end
-				
-				-- Streaming finished
-				if on_complete then
-					on_complete()
-				end
-				return
-			elseif chunk.type == "streaming_chunk" then
-				-- Process this chunk with thinking logic
+		for i, chunk in ipairs(chunks) do
+			-- Process this chunk with thinking logic
+			if chunk.chunk then
 				process_thinking_content(chunk.chunk, false)
 				
 				-- Small delay for smooth animation
-				if processed_chunks < total_chunks then
+				if i < #chunks then
 					vim.wait(50) -- 50ms delay between chunks
 				end
 			end
