@@ -242,7 +242,8 @@ function mcp_http_transport.init(config)
 
 		local perf_success = mcp_performance.init(perf_config)
 		if not perf_success then
-			print("[MCP] Warning: Performance monitoring initialization failed")
+			local debug = require("paragonic.debug")
+debug.debug_print("[MCP] Warning: Performance monitoring initialization failed", "warning")
 		end
 	end
 

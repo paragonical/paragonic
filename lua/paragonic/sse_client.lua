@@ -249,7 +249,9 @@ function sse_client.connect(stream_id, callbacks)
 		else
 			-- For now, let's skip SSE connection if it fails and just return success
 			-- This allows the MCP transport to work without SSE for basic functionality
-			print("⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"))
+			-- Use debug buffer instead of print to avoid blocking
+			local debug = require("paragonic.debug")
+			debug.debug_print("⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"), "warning")
 			client_state.is_connected = true
 			
 			if client_state.callbacks.on_connect then
@@ -284,10 +286,13 @@ function sse_client._setup_async_reading(client)
 			return
 		end
 		
-		-- Debug: print received data
-		print("📥 SSE Received data: " .. #data .. " bytes")
-		if #data < 100 then
-			print("Data: " .. data:gsub("\r", "\\r"):gsub("\n", "\\n"))
+		-- Debug: log received data (only in debug mode)
+		if vim.g.paragonic_debug then
+			local debug = require("paragonic.debug")
+			debug.debug_print("📥 SSE Received data: " .. #data .. " bytes", "debug")
+			if #data < 100 then
+				debug.debug_print("Data: " .. data:gsub("\r", "\\r"):gsub("\n", "\\n"), "debug")
+			end
 		end
 		
 		-- Add data to buffer
@@ -484,9 +489,12 @@ function sse_client._establish_connection()
 		table.concat(headers, "\r\n")
 	)
 
-	-- Debug: print the request
-	print("🔍 SSE Request:")
-	print(request)
+	-- Debug: log the request (only in debug mode)
+	if vim.g.paragonic_debug then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔍 SSE Request:", "debug")
+		debug.debug_print(request, "debug")
+	end
 
 	-- Send request
 	client:write(request)
