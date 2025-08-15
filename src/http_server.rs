@@ -157,7 +157,34 @@ impl McpHttpServer {
 
         // Handle the message based on type
         match jsonrpc_message {
-            JsonRpcMessage::Request(request) => Self::handle_jsonrpc_request_with_session(server, request, session).await,
+            JsonRpcMessage::Request(request) => {
+                // Special handling for initialize method
+                let method = request
+                    .get("method")
+                    .and_then(|m| m.as_str())
+                    .ok_or(StatusCode::BAD_REQUEST)?;
+                
+                if method == "initialize" {
+                    // For initialization, create a new session and return it in header
+                    let new_session = server.session_manager.create_session().await;
+                    let result = Self::handle_initialize(&server, request.get("params")).await?;
+                    
+                    // Return response with session ID in header
+                    let response = axum::response::Json(result);
+                    let mut headers = HeaderMap::new();
+                    headers.insert("Mcp-Session-Id", new_session.id.parse().unwrap());
+                    headers.insert("Content-Type", "application/json".parse().unwrap());
+                    
+                    Ok(axum::response::Response::builder()
+                        .status(200)
+                        .headers(headers)
+                        .body(axum::body::Body::from(serde_json::to_string(&result).unwrap()))
+                        .unwrap())
+                } else {
+                    // For other requests, use existing session
+                    Self::handle_jsonrpc_request_with_session(server, request, session).await
+                }
+            },
             JsonRpcMessage::Notification(notification) => {
                 Self::handle_jsonrpc_notification(server, notification).await
             }
@@ -712,8 +739,8 @@ impl McpHttpServer {
         server: &Self,
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
-        // Create or get a session and prepare an SSE stream
-        let session = server.session_manager.get_or_create_session(None).await;
+        // Create a new session for initialization
+        let session = server.session_manager.create_session().await;
         let _stream = server.stream_manager.create_stream(&session.id).await;
 
         Ok(serde_json::json!({
@@ -726,9 +753,7 @@ impl McpHttpServer {
             "serverInfo": {
                 "name": server.server_info.name,
                 "version": server.server_info.version
-            },
-            "sessionId": session.id,
-            "streamId": session.id
+            }
         }))
     }
 

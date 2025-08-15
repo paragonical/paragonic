@@ -448,6 +448,10 @@ function http_client._send_single_request(request)
 	table.insert(args, "--max-time")
 	table.insert(args, tostring(request.timeout))
 
+	-- Add response header capture for MCP session ID
+	table.insert(args, "-D")
+	table.insert(args, "/tmp/paragonic_headers")
+
 	-- Add URL
 	table.insert(args, request.url)
 
@@ -493,11 +497,24 @@ function http_client._send_single_request(request)
 		end
 	end
 
+	-- Parse response headers
+	local headers = {}
+	local headers_file = "/tmp/paragonic_headers"
+	if vim.fn.filereadable(headers_file) == 1 then
+		local header_lines = vim.fn.readfile(headers_file)
+		for _, line in ipairs(header_lines) do
+			local key, value = line:match("^([^:]+):%s*(.+)$")
+			if key and value then
+				headers[key:lower()] = value
+			end
+		end
+	end
+
 	return {
 		status_code = status_code,
 		body = parsed_body,
 		raw_body = body_text,
-		headers = {}, -- TODO: Parse response headers if needed
+		headers = headers,
 	}
 end
 

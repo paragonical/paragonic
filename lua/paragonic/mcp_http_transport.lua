@@ -348,15 +348,26 @@ function mcp_http_transport.initialize_session(client_info)
 		return false, response.error.message or "Initialization failed"
 	end
 
-	-- Extract session and stream information
-	if response.result then
-		transport_state.session_id = response.result.sessionId
-		transport_state.stream_id = response.result.streamId
+	-- Extract session ID from response headers (MCP spec compliance)
+	if response.headers and response.headers["mcp-session-id"] then
+		transport_state.session_id = response.headers["mcp-session-id"]
+		transport_state.stream_id = transport_state.session_id
 
 		-- Set session ID in clients
 		http_client.set_session_id(transport_state.session_id)
 		sse_client.set_session_id(transport_state.session_id)
 		sse_client.set_stream_id(transport_state.stream_id)
+	else
+		-- Fallback to JSON body for backward compatibility
+		if response.result then
+			transport_state.session_id = response.result.sessionId
+			transport_state.stream_id = response.result.streamId
+
+			-- Set session ID in clients
+			http_client.set_session_id(transport_state.session_id)
+			sse_client.set_session_id(transport_state.session_id)
+			sse_client.set_stream_id(transport_state.stream_id)
+		end
 	end
 
 	-- Connect to SSE stream for events
