@@ -166,18 +166,14 @@ impl McpHttpServer {
                 
                 if method == "initialize" {
                     // For initialization, create a new session and return it in header
-                    let new_session = server.session_manager.create_session().await;
+                    let new_session = server.session_manager.get_or_create_session(None).await;
                     let result = Self::handle_initialize(&server, request.get("params")).await?;
                     
                     // Return response with session ID in header
-                    let response = axum::response::Json(result);
-                    let mut headers = HeaderMap::new();
-                    headers.insert("Mcp-Session-Id", new_session.id.parse().unwrap());
-                    headers.insert("Content-Type", "application/json".parse().unwrap());
-                    
                     Ok(axum::response::Response::builder()
                         .status(200)
-                        .headers(headers)
+                        .header("Mcp-Session-Id", &new_session.id)
+                        .header("Content-Type", "application/json")
                         .body(axum::body::Body::from(serde_json::to_string(&result).unwrap()))
                         .unwrap())
                 } else {
@@ -740,7 +736,7 @@ impl McpHttpServer {
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         // Create a new session for initialization
-        let session = server.session_manager.create_session().await;
+        let session = server.session_manager.get_or_create_session(None).await;
         let _stream = server.stream_manager.create_stream(&session.id).await;
 
         Ok(serde_json::json!({
