@@ -119,13 +119,11 @@ local function create_mcp_client()
 	function client:streaming_chat_completion(params)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
-			method = "tools/call",
-			params = {
-				name = "streaming_chat_completion",
-				arguments = params or {},
-				_meta = {
-					progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999)
-				}
+			method = "streaming_chat_completion",
+			id = math.random(1000, 9999),
+			params = params or {},
+			_meta = {
+				progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999)
 			}
 		})
 		return resp, err
