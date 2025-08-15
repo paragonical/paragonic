@@ -1065,20 +1065,29 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		return nil, "Streaming error: " .. (parsed_response.error.message or "Unknown error")
 	end
 
-	-- Extract streaming data
-	local result = parsed_response.result
-	if type(result) == "string" then
-		-- Try to parse JSON string
-		local success, parsed = pcall(vim.json.decode, result)
-		if success then
-			result = parsed
-		else
-			return nil, "Failed to parse streaming result"
+	-- Wait for streaming chunks to arrive via SSE
+	local max_wait_time = 30 -- seconds
+	local wait_interval = 0.1 -- seconds
+	local total_wait_time = 0
+	
+	while total_wait_time < max_wait_time do
+		local chunks = rpc_client:get_streaming_chunks()
+		if #chunks > 0 then
+			-- Process the first chunk to get started
+			local first_chunk = chunks[1]
+			if first_chunk.type == "streaming_chunk" then
+				break -- We have chunks, proceed with processing
+			end
 		end
+		
+		vim.wait(wait_interval * 1000) -- Convert to milliseconds
+		total_wait_time = total_wait_time + wait_interval
 	end
-
-	if not result or result.type ~= "streaming_chunk" then
-		return nil, "Unexpected streaming response format"
+	
+	-- Get all available chunks
+	local chunks = rpc_client:get_streaming_chunks()
+	if #chunks == 0 then
+		return nil, "No streaming chunks received"
 	end
 
 	-- Initialize thinking state
@@ -1164,113 +1173,51 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		end
 	end
 
-	-- Call on_chunk for the first chunk with thinking processing
-	if on_chunk then
-		process_thinking_content(result.chunk, false)
-	end
-
-	-- Process remaining chunks
-	local remaining_chunks = result.remaining_chunks or {}
-	local current_chunk_index = result.chunk_index or 0
-	local total_chunks = result.total_chunks or 1
-
-	-- Function to process next chunk
-	local function process_next_chunk()
-		if #remaining_chunks == 0 then
-			-- Process any remaining content
-			if thinking_state.current_content ~= "" then
-				process_thinking_content(thinking_state.current_content, true)
-			end
-
-			-- All chunks processed, call completion
-			if on_complete then
-				on_complete()
-			end
-			return
-		end
-
-		-- Get next chunk
-		local next_response = rpc_client:get_next_chunk({
-			chunk_index = current_chunk_index,
-			remaining_chunks = remaining_chunks,
-			total_chunks = total_chunks,
-		})
-
-		if not next_response then
-			-- Process any remaining content
-			if thinking_state.current_content ~= "" then
-				process_thinking_content(thinking_state.current_content, true)
-			end
-
-			if on_complete then
-				on_complete()
-			end
-			return
-		end
-
-		-- Parse next chunk response
-		local next_parsed = utils.parse_json_response_enhanced(next_response)
-		if not next_parsed or not next_parsed.result then
-			if on_complete then
-				on_complete()
-			end
-			return
-		end
-
-		local next_result = next_parsed.result
-		if type(next_result) == "string" then
-			local success, parsed = pcall(vim.json.decode, next_result)
-			if success then
-				next_result = parsed
-			else
+	-- Process all chunks from SSE
+	local processed_chunks = 0
+	local total_chunks = #chunks
+	
+	-- Function to process chunks
+	local function process_chunks()
+		while processed_chunks < total_chunks do
+			processed_chunks = processed_chunks + 1
+			local chunk = chunks[processed_chunks]
+			
+			if chunk.type == "streaming_complete" then
+				-- Process any remaining content
+				if thinking_state.current_content ~= "" then
+					process_thinking_content(thinking_state.current_content, true)
+				end
+				
+				-- Streaming finished
 				if on_complete then
 					on_complete()
 				end
 				return
+			elseif chunk.type == "streaming_chunk" then
+				-- Process this chunk with thinking logic
+				process_thinking_content(chunk.chunk, false)
+				
+				-- Small delay for smooth animation
+				if processed_chunks < total_chunks then
+					vim.wait(50) -- 50ms delay between chunks
+				end
 			end
 		end
-
-		if next_result.type == "streaming_complete" then
-			-- Process any remaining content
-			if thinking_state.current_content ~= "" then
-				process_thinking_content(thinking_state.current_content, true)
-			end
-
-			-- Streaming finished
-			if on_complete then
-				on_complete()
-			end
-			return
-		elseif next_result.type == "streaming_chunk" then
-			-- Process this chunk with thinking logic
-			process_thinking_content(next_result.chunk, false)
-
-			-- Update for next iteration
-			remaining_chunks = next_result.remaining_chunks or {}
-			current_chunk_index = next_result.chunk_index or 0
-
-			-- Schedule next chunk with a small delay for smooth animation
-			vim.defer_fn(process_next_chunk, 50) -- 50ms delay between chunks
-		else
-			if on_complete then
-				on_complete()
-			end
-		end
-	end
-
-	-- Start processing remaining chunks
-	if #remaining_chunks > 0 then
-		vim.defer_fn(process_next_chunk, 100) -- Start after 100ms
-	else
+		
 		-- Process any remaining content
 		if thinking_state.current_content ~= "" then
 			process_thinking_content(thinking_state.current_content, true)
 		end
-
+		
+		-- All chunks processed
 		if on_complete then
 			on_complete()
 		end
 	end
+	
+	-- Start processing chunks
+	vim.defer_fn(process_chunks, 100) -- Start after 100ms
 
 	return true
 end

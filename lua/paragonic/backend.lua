@@ -51,6 +51,22 @@ local function create_mcp_client()
 			on_reconnect_failed = function(error)
 				debug.debug_print("❌ Reconnection failed: " .. (error or "unknown error"), "error")
 			end,
+			on_notification = function(notification)
+				-- Handle streaming notifications
+				if notification.method == "notifications/message" and notification.params then
+					local params = notification.params
+					if params.type == "streaming_chunk" then
+						-- Forward streaming chunk to chat system
+						debug.debug_print("📥 Received streaming chunk: " .. (params.chunk or "no content"), "debug")
+						
+						-- Store the chunk for the chat system to retrieve
+						if not client.streaming_chunks then
+							client.streaming_chunks = {}
+						end
+						table.insert(client.streaming_chunks, params)
+					end
+				end
+			end,
 		})
 
 		local ok2, err2 = mcp.initialize_session({
@@ -137,6 +153,9 @@ local function create_mcp_client()
 	end
 
 	function client:streaming_chat_completion(params)
+		-- Clear any previous streaming chunks
+		client.streaming_chunks = {}
+		
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
 			method = "streaming_chat_completion",
@@ -147,6 +166,12 @@ local function create_mcp_client()
 			}
 		})
 		return resp, err
+	end
+
+	function client:get_streaming_chunks()
+		local chunks = client.streaming_chunks or {}
+		client.streaming_chunks = {} -- Clear after retrieving
+		return chunks
 	end
 
 	function client:get_next_chunk(params)
