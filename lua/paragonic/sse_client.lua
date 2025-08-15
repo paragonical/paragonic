@@ -390,7 +390,15 @@ function sse_client._establish_connection()
 	end
 	
 	if not host then
-		return nil, "Invalid URL"
+		return nil, "Invalid URL: " .. url
+	end
+	
+	-- Convert port to number
+	port = tonumber(port) or 80
+
+	-- For localhost, use 127.0.0.1
+	if host == "localhost" then
+		host = "127.0.0.1"
 	end
 
 	-- Connect to server
