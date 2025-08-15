@@ -380,6 +380,11 @@ test-unit-mcp:
         failed_tests+=("test_mcp_stream_id_fix.lua")
     fi
     
+    echo "Testing stream cleanup functionality..."
+    if ! {{neovim-cmd}} --headless --noplugin -c "lua package.path = package.path .. ';./lua/?.lua;./lua/?/init.lua' dofile('{{unit-dir}}/mcp/test_stream_cleanup.lua')" -c "quit"; then
+        failed_tests+=("test_stream_cleanup.lua")
+    fi
+    
     if [ ${#failed_tests[@]} -gt 0 ]; then
         echo ""
         echo "✗ MCP unit tests failed:"

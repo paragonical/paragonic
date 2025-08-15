@@ -33,6 +33,8 @@ local client_state = {
 	stream_id = nil,
 	last_event_id = nil,
 	is_connected = false,
+	stream_expired = false,
+	auto_reconnect = true,
 	reconnect_delay = DEFAULT_RECONNECT_DELAY,
 	max_reconnect_attempts = DEFAULT_MAX_RECONNECT_ATTEMPTS,
 	event_buffer_size = DEFAULT_EVENT_BUFFER_SIZE,
@@ -567,6 +569,33 @@ function sse_client._handle_event(event)
 		table.remove(client_state.event_buffer, 1)
 	end
 
+	-- Check for stream expiration notification
+	if event.event_type == "notification" and event.data then
+		local success, parsed_data = pcall(vim.json.decode, event.data)
+		if success and parsed_data and parsed_data.params and parsed_data.params.type == "stream_expired" then
+			debug.debug_print_safe("⚠️ Stream expired notification received: " .. (parsed_data.params.message or "Unknown"), "warning")
+			
+			-- Mark connection as expired
+			client_state.is_connected = false
+			client_state.stream_expired = true
+			
+			-- Trigger stream expiration callback
+			if client_state.callbacks.on_stream_expired then
+				client_state.callbacks.on_stream_expired(parsed_data.params)
+			end
+			
+			-- Auto-reconnect if enabled
+			if client_state.auto_reconnect then
+				debug.debug_print_safe("🔄 Auto-reconnecting to new stream...", "info")
+				vim.defer_fn(function()
+					sse_client._auto_reconnect()
+				end, 1000) -- Wait 1 second before reconnecting
+			end
+			
+			return
+		end
+	end
+
 	-- Trigger appropriate callback
 	if event.event_type == "message" or not event.event_type then
 		if client_state.callbacks.on_message then
@@ -596,6 +625,50 @@ end
 -- Clear event buffer
 function sse_client.clear_event_buffer()
 	client_state.event_buffer = {}
+end
+
+-- Auto-reconnect to new stream
+function sse_client._auto_reconnect()
+	local debug = require("paragonic.debug")
+	
+	-- Reset expired flag
+	client_state.stream_expired = false
+	
+	-- Disconnect current connection
+	sse_client.disconnect()
+	
+	-- Try to reconnect with new stream
+	local success, err = sse_client.connect(nil, client_state.callbacks)
+	if success then
+		debug.debug_print_safe("✅ Auto-reconnected to new stream successfully", "success")
+		
+		-- Trigger reconnection callback
+		if client_state.callbacks.on_reconnected then
+			client_state.callbacks.on_reconnected()
+		end
+	else
+		debug.debug_print_safe("❌ Auto-reconnection failed: " .. (err or "unknown error"), "error")
+		
+		-- Trigger reconnection failure callback
+		if client_state.callbacks.on_reconnect_failed then
+			client_state.callbacks.on_reconnect_failed(err)
+		end
+	end
+end
+
+-- Enable/disable auto-reconnect
+function sse_client.set_auto_reconnect(enabled)
+	client_state.auto_reconnect = enabled
+end
+
+-- Get auto-reconnect status
+function sse_client.get_auto_reconnect()
+	return client_state.auto_reconnect
+end
+
+-- Check if stream is expired
+function sse_client.is_stream_expired()
+	return client_state.stream_expired
 end
 
 -- Check if connected

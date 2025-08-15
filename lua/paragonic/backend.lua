@@ -33,6 +33,26 @@ local function create_mcp_client()
 			return false, err
 		end
 
+		-- Set up MCP callbacks for stream management
+		mcp.set_callbacks({
+			on_stream_expired = function(expiration_data)
+				debug.debug_print("⚠️ Stream expired: " .. (expiration_data.message or "Unknown"), "warning")
+				-- Auto-request new stream
+				local success, err = mcp.request_new_stream()
+				if success then
+					debug.debug_print("✅ Successfully requested new stream", "success")
+				else
+					debug.debug_print("❌ Failed to request new stream: " .. (err or "unknown error"), "error")
+				end
+			end,
+			on_reconnected = function()
+				debug.debug_print("✅ Successfully reconnected to new stream", "success")
+			end,
+			on_reconnect_failed = function(error)
+				debug.debug_print("❌ Reconnection failed: " .. (error or "unknown error"), "error")
+			end,
+		})
+
 		local ok2, err2 = mcp.initialize_session({
 			name = "paragonic.nvim",
 			version = "1.0.0",

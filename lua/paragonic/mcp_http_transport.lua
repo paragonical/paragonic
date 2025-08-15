@@ -400,6 +400,23 @@ function mcp_http_transport.initialize_session(client_info)
 				transport_state.callbacks.on_parse_error(error_msg, raw_event)
 			end
 		end,
+		on_stream_expired = function(expiration_data)
+			transport_state.is_connected = false
+			if transport_state.callbacks.on_stream_expired then
+				transport_state.callbacks.on_stream_expired(expiration_data)
+			end
+		end,
+		on_reconnected = function()
+			transport_state.is_connected = true
+			if transport_state.callbacks.on_reconnected then
+				transport_state.callbacks.on_reconnected()
+			end
+		end,
+		on_reconnect_failed = function(error)
+			if transport_state.callbacks.on_reconnect_failed then
+				transport_state.callbacks.on_reconnect_failed(error)
+			end
+		end,
 	}
 
 	-- Connect to SSE stream - the server creates the stream internally based on session ID
@@ -754,6 +771,77 @@ end
 -- Check if transport is ready
 function mcp_http_transport.is_ready()
 	return transport_state.is_initialized and transport_state.is_connected
+end
+
+-- Set callbacks for stream management
+function mcp_http_transport.set_callbacks(callbacks)
+	transport_state.callbacks = callbacks or {}
+end
+
+-- Request a new stream (for when current stream expires)
+function mcp_http_transport.request_new_stream()
+	if not transport_state.is_initialized then
+		return false, MCPHTTPTransportError.NOT_INITIALIZED
+	end
+
+	-- Disconnect current SSE connection
+	sse_client.disconnect()
+	
+	-- Reconnect to get a new stream
+	local sse_callbacks = {
+		on_connect = function(stream_id)
+			transport_state.is_connected = true
+			if transport_state.callbacks.on_connect then
+				transport_state.callbacks.on_connect(stream_id)
+			end
+		end,
+		on_disconnect = function()
+			transport_state.is_connected = false
+			if transport_state.callbacks.on_disconnect then
+				transport_state.callbacks.on_disconnect()
+			end
+		end,
+		on_message = function(event)
+			mcp_http_transport._handle_sse_message(event)
+		end,
+		on_notification = function(event)
+			mcp_http_transport._handle_sse_notification(event)
+		end,
+		on_error = function(error_msg, attempt)
+			if transport_state.callbacks.on_error then
+				transport_state.callbacks.on_error(error_msg, attempt)
+			end
+		end,
+		on_parse_error = function(error_msg, raw_event)
+			if transport_state.callbacks.on_parse_error then
+				transport_state.callbacks.on_parse_error(error_msg, raw_event)
+			end
+		end,
+		on_stream_expired = function(expiration_data)
+			transport_state.is_connected = false
+			if transport_state.callbacks.on_stream_expired then
+				transport_state.callbacks.on_stream_expired(expiration_data)
+			end
+		end,
+		on_reconnected = function()
+			transport_state.is_connected = true
+			if transport_state.callbacks.on_reconnected then
+				transport_state.callbacks.on_reconnected()
+			end
+		end,
+		on_reconnect_failed = function(error)
+			if transport_state.callbacks.on_reconnect_failed then
+				transport_state.callbacks.on_reconnect_failed(error)
+			end
+		end,
+	}
+
+	local success, err = sse_client.connect(nil, sse_callbacks)
+	if success then
+		return true
+	else
+		return false, err or "Failed to request new stream"
+	end
 end
 
 -- Get session ID

@@ -75,6 +75,8 @@ pub struct StreamManager {
     max_streams_per_session: usize,
     /// Maximum number of total streams
     max_total_streams: usize,
+    /// Cleanup task handle
+    cleanup_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl StreamManager {
@@ -84,12 +86,18 @@ impl StreamManager {
         max_streams_per_session: usize,
         max_total_streams: usize,
     ) -> Self {
-        Self {
+        let manager = Self {
             streams: Arc::new(RwLock::new(HashMap::new())),
             timeout,
             max_streams_per_session,
             max_total_streams,
-        }
+            cleanup_task: Arc::new(Mutex::new(None)),
+        };
+        
+        // Start the periodic cleanup task
+        manager.start_cleanup_task();
+        
+        manager
     }
 
     /// Create a new SSE stream for a session
@@ -445,6 +453,106 @@ impl StreamManager {
     /// Validate stream ID format
     pub fn validate_stream_id(stream_id: &str) -> bool {
         Uuid::parse_str(stream_id).is_ok()
+    }
+
+    /// Start the periodic cleanup task
+    fn start_cleanup_task(&self) {
+        let streams = Arc::clone(&self.streams);
+        let timeout = self.timeout;
+        
+        let cleanup_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(60)); // Run every minute
+            
+            loop {
+                interval.tick().await;
+                
+                let mut streams_guard = streams.write().await;
+                let now = Instant::now();
+                let initial_count = streams_guard.len();
+
+                // Collect expired streams first
+                let expired_streams: Vec<String> = streams_guard
+                    .iter()
+                    .filter(|(_, stream)| now.duration_since(stream.last_activity) > timeout)
+                    .map(|(stream_id, _)| stream_id.clone())
+                    .collect();
+
+                // Send expiration notifications
+                for stream_id in &expired_streams {
+                    if let Some(stream) = streams_guard.get(stream_id) {
+                        // Try to send expiration notification
+                        let _ = stream.sender.send(SseEvent {
+                            id: format!("expiration_{}", chrono::Utc::now().timestamp_millis()),
+                            event_type: Some("notification".to_string()),
+                            data: serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "method": "notifications/message",
+                                "params": {
+                                    "type": "stream_expired",
+                                    "stream_id": stream_id,
+                                    "message": "Stream expired due to inactivity. Please request a new stream.",
+                                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                                    "reconnect_required": true
+                                }
+                            }).to_string(),
+                            timestamp: Instant::now(),
+                        });
+                        warn!("Sent expiration notification for stream: {} (inactive for {:?})", stream_id, timeout);
+                    }
+                }
+
+                // Remove expired streams
+                streams_guard.retain(|stream_id, _| {
+                    let is_expired = expired_streams.contains(stream_id);
+                    if is_expired {
+                        warn!("Auto-removing expired stream: {} (inactive for {:?})", stream_id, timeout);
+                    }
+                    !is_expired
+                });
+
+                let removed_count = initial_count - streams_guard.len();
+                if removed_count > 0 {
+                    info!("Auto-cleanup: removed {} expired streams", removed_count);
+                }
+            }
+        });
+        
+        // Store the task handle
+        if let Ok(mut guard) = self.cleanup_task.lock() {
+            *guard = Some(cleanup_task);
+        }
+    }
+
+    /// Stop the cleanup task
+    pub async fn stop_cleanup_task(&self) {
+        if let Ok(mut guard) = self.cleanup_task.lock() {
+            if let Some(task) = guard.take() {
+                task.abort();
+                info!("Stopped stream cleanup task");
+            }
+        }
+    }
+
+    /// Send stream expiration notification to client
+    pub async fn send_stream_expiration_notification(&self, stream_id: &str) -> Result<(), StreamError> {
+        let expiration_event = SseEvent {
+            id: format!("expiration_{}", chrono::Utc::now().timestamp_millis()),
+            event_type: Some("notification".to_string()),
+            data: serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": {
+                    "type": "stream_expired",
+                    "stream_id": stream_id,
+                    "message": "Stream expired due to inactivity. Please request a new stream.",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "reconnect_required": true
+                }
+            }).to_string(),
+            timestamp: Instant::now(),
+        };
+
+        self.send_event(stream_id, &expiration_event.data, expiration_event.event_type.as_deref()).await
     }
 }
 
