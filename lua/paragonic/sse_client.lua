@@ -238,6 +238,10 @@ function sse_client.connect(stream_id, callbacks)
 			client_state.is_connected = true
 			client_state.connection_client = client
 			
+			-- Log successful connection
+			local debug = require("paragonic.debug")
+			debug.debug_print("✅ SSE connection established for stream: " .. stream_id, "success")
+			
 			if client_state.callbacks.on_connect then
 				client_state.callbacks.on_connect(stream_id)
 			end
@@ -252,6 +256,7 @@ function sse_client.connect(stream_id, callbacks)
 			-- Use debug buffer instead of print to avoid blocking
 			local debug = require("paragonic.debug")
 			debug.debug_print("⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"), "warning")
+			debug.debug_print("🔧 Falling back to non-SSE mode for stream: " .. stream_id, "info")
 			client_state.is_connected = true
 			
 			if client_state.callbacks.on_connect then
@@ -286,10 +291,14 @@ function sse_client._setup_async_reading(client)
 			return
 		end
 		
-		-- Debug: log received data (only in debug mode)
-		if vim.g.paragonic_debug then
-			local debug = require("paragonic.debug")
-			debug.debug_print("📥 SSE Received data: " .. #data .. " bytes", "debug")
+		-- Always log important SSE events
+		local debug = require("paragonic.debug")
+		
+		-- Log data reception (always)
+		debug.debug_print("📥 SSE Received data: " .. #data .. " bytes", "debug")
+		
+		-- Log detailed data in debug mode
+		if vim.g.paragonic_debug_buffer then
 			if #data < 100 then
 				debug.debug_print("Data: " .. data:gsub("\r", "\\r"):gsub("\n", "\\n"), "debug")
 			end
@@ -489,10 +498,12 @@ function sse_client._establish_connection()
 		table.concat(headers, "\r\n")
 	)
 
-	-- Debug: log the request (only in debug mode)
-	if vim.g.paragonic_debug then
-		local debug = require("paragonic.debug")
-		debug.debug_print("🔍 SSE Request:", "debug")
+	-- Always log SSE connection attempts
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔍 SSE Request:", "debug")
+	
+	-- Log detailed request in debug mode
+	if vim.g.paragonic_debug_buffer then
 		debug.debug_print(request, "debug")
 	end
 
@@ -538,6 +549,10 @@ end
 
 -- Handle parsed SSE event
 function sse_client._handle_event(event)
+	-- Log event handling
+	local debug = require("paragonic.debug")
+	debug.debug_print("📨 SSE Event received - Type: " .. (event.event_type or "message") .. ", ID: " .. (event.id or "none"), "debug")
+	
 	-- Update last event ID
 	if event.id then
 		client_state.last_event_id = event.id
