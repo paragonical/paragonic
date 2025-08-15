@@ -1,28 +1,28 @@
 //! Embedding service for Paragonic
-//! 
+//!
 //! This module handles embedding generation, storage, and semantic search
 //! using Ollama for vector generation and PostgreSQL with pgvector for storage.
 
-use crate::error::{ParagonicError, ParagonicResult};
-use crate::models::{Embedding, CreateEmbeddingRequest};
+use crate::error::ParagonicResult;
+use crate::models::{CreateEmbeddingRequest, Embedding};
 use crate::ollama::OllamaClient;
 use crate::vector::Vector;
-use uuid::Uuid;
 use chrono::Utc;
+use uuid::Uuid;
 
 /// Create an embedding for the given content
-/// 
+///
 /// This function generates an embedding using Ollama and stores it in the database.
 pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResult<Embedding> {
     // Create Ollama client
     let config_manager = crate::config::ConfigManager::new();
     let ollama_client = OllamaClient::from_config_manager(&config_manager)?;
-    
+
     // Generate embedding using Ollama
     let embedding_response = ollama_client
         .generate_embedding(&request.embedding_model, &request.content_text)
         .await?;
-    
+
     // Create embedding record
     let embedding = Embedding {
         id: Uuid::new_v4(),
@@ -35,14 +35,12 @@ pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResul
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    
+
     // Store in database
     store_embedding(&embedding).await?;
-    
+
     Ok(embedding)
 }
-
-
 
 /// Store embedding in database
 async fn store_embedding(embedding: &Embedding) -> ParagonicResult<()> {
@@ -50,10 +48,10 @@ async fn store_embedding(embedding: &Embedding) -> ParagonicResult<()> {
     /*
     use crate::schema::embeddings;
     use diesel::prelude::*;
-    
+
     let pool = crate::database::get_pool()?;
     let mut conn = pool.get()?;
-    
+
     // Use proper Diesel insert with the Vector type
     diesel::insert_into(embeddings::table)
         .values((
@@ -73,7 +71,7 @@ async fn store_embedding(embedding: &Embedding) -> ParagonicResult<()> {
             ParagonicError::Database(format!("Failed to store embedding: {e}"))
         })?;
     */
-    
+
     // For now, just return success
     Ok(())
 }
@@ -93,12 +91,12 @@ mod tests {
             // Skip test if database can't be initialized
             return;
         }
-        
+
         // For now, skip the actual test since we're not initializing the database
         println!("Skipping actual embedding test to avoid shared memory issues");
         assert!(true, "Test skipped - database not actually initialized");
         return;
-        
+
         let request = CreateEmbeddingRequest {
             content_type: "message".to_string(),
             content_id: Uuid::new_v4(),
@@ -106,10 +104,10 @@ mod tests {
             embedding_model: "nomic-embed-text".to_string(),
             metadata: Some(serde_json::json!({"conversation_id": "123"})),
         };
-        
+
         // This test will fail until we implement the function
         let result = create_embedding(request).await;
-        
+
         // For now, we expect this to fail because Ollama is not running or the model is not available
         // This is acceptable for a unit test - in a real scenario, we'd have proper test setup
         match result {
@@ -137,4 +135,4 @@ mod tests {
             }
         }
     }
-} 
+}

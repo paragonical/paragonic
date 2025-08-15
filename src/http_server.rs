@@ -1,5 +1,5 @@
 //! HTTP server for MCP Streamable HTTP transport
-//! 
+//!
 //! This module provides an HTTP server that implements the MCP 2025-06-18
 //! Streamable HTTP transport specification.
 
@@ -7,7 +7,7 @@ use axum::{
     extract::{Json, State},
     http::{HeaderMap, StatusCode},
     response::{sse::Event, Sse},
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Router,
 };
 use serde_json::Value;
@@ -18,10 +18,10 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // Import modules for MCP tool implementations
-use crate::ollama::{OllamaClient, ChatMessage, OllamaConfig, ChatCompletionRequest};
-use crate::patterns::{PatternRegistry, PatternBootstrap};
-use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
 use crate::embeddings::create_embedding;
+use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
+use crate::ollama::{ChatMessage, OllamaClient, OllamaConfig};
+use crate::patterns::{PatternBootstrap, PatternRegistry};
 
 #[derive(Debug)]
 struct ThinkingChunk {
@@ -70,7 +70,11 @@ pub struct Session {
 /// Stream manager for SSE streams
 #[derive(Clone)]
 pub struct StreamManager {
-    streams: Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::sync::broadcast::Sender<Value>>>>,
+    streams: Arc<
+        tokio::sync::RwLock<
+            std::collections::HashMap<String, tokio::sync::broadcast::Sender<Value>>,
+        >,
+    >,
 }
 
 impl McpHttpServer {
@@ -79,13 +83,14 @@ impl McpHttpServer {
         // Initialize pattern registry with bootstrap
         let patterns_dir = std::path::PathBuf::from("patterns");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        let pattern_registry = bootstrap.bootstrap_pattern_system()
+        let pattern_registry = bootstrap
+            .bootstrap_pattern_system()
             .unwrap_or_else(|_| PatternRegistry::new());
-        
+
         // Create Ollama client
         let config_manager = crate::config::ConfigManager::new();
-        let ollama_client = OllamaClient::from_config_manager(&config_manager)
-            .unwrap_or_else(|_| {
+        let ollama_client =
+            OllamaClient::from_config_manager(&config_manager).unwrap_or_else(|_| {
                 let config = OllamaConfig {
                     base_url: "http://localhost:11434".to_string(),
                     timeout_seconds: 30,
@@ -93,7 +98,7 @@ impl McpHttpServer {
                 };
                 OllamaClient::new(config).expect("Failed to create Ollama client")
             });
-        
+
         Self {
             server_info: ServerInfo {
                 name: "paragonic-mcp-server".to_string(),
@@ -148,9 +153,7 @@ impl McpHttpServer {
 
         // Handle the message based on type
         match jsonrpc_message {
-            JsonRpcMessage::Request(request) => {
-                Self::handle_jsonrpc_request(server, request).await
-            }
+            JsonRpcMessage::Request(request) => Self::handle_jsonrpc_request(server, request).await,
             JsonRpcMessage::Notification(notification) => {
                 Self::handle_jsonrpc_notification(server, notification).await
             }
@@ -181,11 +184,14 @@ impl McpHttpServer {
 
         // Get or create session
         let session_id = Self::get_session_id(&headers);
-        let session = server.session_manager.get_or_create_session(session_id).await;
+        let session = server
+            .session_manager
+            .get_or_create_session(session_id)
+            .await;
 
         // Create SSE stream
         let stream = server.stream_manager.create_stream(&session.id).await;
-        
+
         Ok(Sse::new(stream))
     }
 
@@ -289,10 +295,11 @@ impl McpHttpServer {
         server: Self,
         request: Value,
     ) -> Result<axum::response::Response, StatusCode> {
-        let method = request.get("method")
+        let method = request
+            .get("method")
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         let params = request.get("params");
         let id = request.get("id").unwrap_or(&Value::Null);
 
@@ -306,88 +313,110 @@ impl McpHttpServer {
             "resources/read" => Self::handle_resources_read(&server, params).await,
             "resources/subscribe" => Self::handle_resources_subscribe(&server, params).await,
             "resources/unsubscribe" => Self::handle_resources_unsubscribe(&server, params).await,
-            "resources/templates/list" => Self::handle_resources_templates_list(&server, params).await,
-            
+            "resources/templates/list" => {
+                Self::handle_resources_templates_list(&server, params).await
+            }
+
             // Prompts
             "prompts/list" => Self::handle_prompts_list(&server, params).await,
             "prompts/get" => Self::handle_prompts_get(&server, params).await,
-            
+
             // Roots
             "roots/list" => Self::handle_roots_list(&server, params).await,
-            
+
             // Logging
             "logging/setLevel" => Self::handle_logging_set_level(&server, params).await,
-            
+
             // Notifications (handled as requests for now)
-            "notifications/cancelled" => Self::handle_notifications_cancelled(&server, params).await,
-            "notifications/initialized" => Self::handle_notifications_initialized(&server, params).await,
+            "notifications/cancelled" => {
+                Self::handle_notifications_cancelled(&server, params).await
+            }
+            "notifications/initialized" => {
+                Self::handle_notifications_initialized(&server, params).await
+            }
             "notifications/message" => Self::handle_notifications_message(&server, params).await,
             "notifications/progress" => Self::handle_notifications_progress(&server, params).await,
-            "notifications/prompts/list_changed" => Self::handle_notifications_prompts_list_changed(&server, params).await,
-            "notifications/resources/list_changed" => Self::handle_notifications_resources_list_changed(&server, params).await,
-            "notifications/resources/updated" => Self::handle_notifications_resources_updated(&server, params).await,
-            "notifications/roots/list_changed" => Self::handle_notifications_roots_list_changed(&server, params).await,
-            "notifications/tools/list_changed" => Self::handle_notifications_tools_list_changed(&server, params).await,
-            
+            "notifications/prompts/list_changed" => {
+                Self::handle_notifications_prompts_list_changed(&server, params).await
+            }
+            "notifications/resources/list_changed" => {
+                Self::handle_notifications_resources_list_changed(&server, params).await
+            }
+            "notifications/resources/updated" => {
+                Self::handle_notifications_resources_updated(&server, params).await
+            }
+            "notifications/roots/list_changed" => {
+                Self::handle_notifications_roots_list_changed(&server, params).await
+            }
+            "notifications/tools/list_changed" => {
+                Self::handle_notifications_tools_list_changed(&server, params).await
+            }
+
             // AI and Thinking Model Support (Critical)
             "completion/complete" => Self::handle_completion_complete(&server, params).await,
             "elicitation/create" => Self::handle_elicitation_create(&server, params).await,
             "sampling/createMessage" => Self::handle_sampling_create_message(&server, params).await,
-            
+
             // Ping
             "ping" => Self::handle_ping(&server, params).await,
-            
+
             // Legacy support for direct tool calls (for backward compatibility)
             "chat_completion" => Self::handle_chat_completion(&server, params).await,
-            "formatted_chat_completion" => Self::handle_formatted_chat_completion(&server, params).await,
+            "formatted_chat_completion" => {
+                Self::handle_formatted_chat_completion(&server, params).await
+            }
             "agent_chat_completion" => Self::handle_agent_chat_completion(&server, params).await,
-            "streaming_chat_completion" => Self::handle_streaming_chat_completion(&server, params).await,
-            
+            "streaming_chat_completion" => {
+                Self::handle_streaming_chat_completion(&server, params).await
+            }
+
             // File Operations
             "read_file" => Self::handle_read_file(&server, params).await,
             "write_file" => Self::handle_write_file(&server, params).await,
             "list_files" => Self::handle_list_files(&server, params).await,
-            
+
             // Model Management
             "list_models" => Self::handle_list_models(&server, params).await,
             "model_info" => Self::handle_model_info(&server, params).await,
             "generate_embedding" => Self::handle_generate_embedding(&server, params).await,
-            
+
             // Project Management
             "create_project" => Self::handle_create_project(&server, params).await,
             "get_project" => Self::handle_get_project(&server, params).await,
             "list_projects" => Self::handle_list_projects(&server, params).await,
             "update_project" => Self::handle_update_project(&server, params).await,
             "delete_project" => Self::handle_delete_project(&server, params).await,
-            
+
             // Goal Management
             "create_goal" => Self::handle_create_goal(&server, params).await,
             "get_goal" => Self::handle_get_goal(&server, params).await,
             "list_goals" => Self::handle_list_goals(&server, params).await,
             "update_goal" => Self::handle_update_goal(&server, params).await,
             "delete_goal" => Self::handle_delete_goal(&server, params).await,
-            
+
             // Task Management
             "create_task" => Self::handle_create_task(&server, params).await,
             "get_task" => Self::handle_get_task(&server, params).await,
             "list_tasks" => Self::handle_list_tasks(&server, params).await,
             "update_task" => Self::handle_update_task(&server, params).await,
             "delete_task" => Self::handle_delete_task(&server, params).await,
-            
+
             // Search & Knowledge Management
             "search_embeddings" => Self::handle_search_embeddings(&server, params).await,
             "find_similar_content" => Self::handle_find_similar_content(&server, params).await,
             "iragl_search" => Self::handle_iragl_search(&server, params).await,
             "hybrid_search" => Self::handle_hybrid_search(&server, params).await,
             "content_association" => Self::handle_content_association(&server, params).await,
-            "ingest_knowledge_stream" => Self::handle_ingest_knowledge_stream(&server, params).await,
-            
+            "ingest_knowledge_stream" => {
+                Self::handle_ingest_knowledge_stream(&server, params).await
+            }
+
             // Agent Management
             "create_agent" => Self::handle_create_agent(&server, params).await,
             "delete_agent" => Self::handle_delete_agent(&server, params).await,
             "create_conversation" => Self::handle_create_conversation(&server, params).await,
             "get_conversation" => Self::handle_get_conversation(&server, params).await,
-            
+
             // Pattern Management
             "list_patterns" => Self::handle_list_patterns(&server, params).await,
             "get_pattern" => Self::handle_get_pattern(&server, params).await,
@@ -395,20 +424,24 @@ impl McpHttpServer {
             "get_pattern_executions" => Self::handle_get_pattern_executions(&server, params).await,
             "get_pattern_metrics" => Self::handle_get_pattern_metrics(&server, params).await,
             "get_tool_patterns" => Self::handle_get_tool_patterns(&server, params).await,
-            "trigger_session_patterns" => Self::handle_trigger_session_patterns(&server, params).await,
-            
+            "trigger_session_patterns" => {
+                Self::handle_trigger_session_patterns(&server, params).await
+            }
+
             // Optimization & Debug
-            "optimize_knowledge_base" => Self::handle_optimize_knowledge_base(&server, params).await,
+            "optimize_knowledge_base" => {
+                Self::handle_optimize_knowledge_base(&server, params).await
+            }
             "optimization_status" => Self::handle_optimization_status(&server, params).await,
             "optimization_history" => Self::handle_optimization_history(&server, params).await,
             "debug_markdown_test" => Self::handle_debug_markdown_test(&server, params).await,
             "test_streaming_format" => Self::handle_test_streaming_format(&server, params).await,
             "get_next_chunk" => Self::handle_get_next_chunk(&server, params).await,
-            
+
             // Tool Execution
             "execute_tool_call" => Self::handle_execute_tool_call(&server, params).await,
             "parse_tool_calls" => Self::handle_parse_tool_calls(&server, params).await,
-            
+
             // Unknown method
             _ => {
                 error!("Unknown method: {}", method);
@@ -427,7 +460,9 @@ impl McpHttpServer {
                 Ok(axum::response::Response::builder()
                     .status(StatusCode::OK)
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&response).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&response).unwrap(),
+                    ))
                     .unwrap())
             }
             Err(status_code) => {
@@ -443,7 +478,9 @@ impl McpHttpServer {
                 Ok(axum::response::Response::builder()
                     .status(status_code)
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&error_response).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&error_response).unwrap(),
+                    ))
                     .unwrap())
             }
         }
@@ -520,7 +557,7 @@ impl McpHttpServer {
                     }
                 },
                 {
-                    "name": "formatted_chat_completion", 
+                    "name": "formatted_chat_completion",
                     "description": "Generate formatted AI chat completions",
                     "inputSchema": {
                         "type": "object",
@@ -723,12 +760,10 @@ impl McpHttpServer {
         }))
     }
 
-    async fn handle_tools_call(
-        server: &Self,
-        params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_tools_call(server: &Self, params: Option<&Value>) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let name = params.get("name")
+        let name = params
+            .get("name")
             .and_then(|n| n.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
         let default_args = serde_json::json!({});
@@ -739,48 +774,87 @@ impl McpHttpServer {
         let result = match name {
             // AI & Chat Tools
             "chat_completion" => {
-                let model = arguments.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
-                let message = arguments.get("message").and_then(|m| m.as_str()).ok_or(StatusCode::BAD_REQUEST)?;
+                let model = arguments
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("deepseek-r1:1.5b");
+                let message = arguments
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .ok_or(StatusCode::BAD_REQUEST)?;
                 let options = arguments.get("options");
-                
+
                 // Use the existing MCP completion handler
-                Self::handle_completion_complete(server, Some(&serde_json::json!({
-                    "prompt": message,
-                    "model": model,
-                    "options": options
-                }))).await
-            },
+                Self::handle_completion_complete(
+                    server,
+                    Some(&serde_json::json!({
+                        "prompt": message,
+                        "model": model,
+                        "options": options
+                    })),
+                )
+                .await
+            }
             "formatted_chat_completion" => {
-                let model = arguments.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
-                let message = arguments.get("message").and_then(|m| m.as_str()).ok_or(StatusCode::BAD_REQUEST)?;
+                let model = arguments
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("deepseek-r1:1.5b");
+                let message = arguments
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .ok_or(StatusCode::BAD_REQUEST)?;
                 let format_config = arguments.get("format_config");
-                
+
                 // Use the existing formatted chat completion handler
-                Self::handle_formatted_chat_completion(server, Some(&serde_json::json!({
-                    "model": model,
-                    "message": message,
-                    "format_config": format_config
-                }))).await
-            },
+                Self::handle_formatted_chat_completion(
+                    server,
+                    Some(&serde_json::json!({
+                        "model": model,
+                        "message": message,
+                        "format_config": format_config
+                    })),
+                )
+                .await
+            }
             "streaming_chat_completion" => {
-                let model = arguments.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
-                let message = arguments.get("message").and_then(|m| m.as_str()).ok_or(StatusCode::BAD_REQUEST)?;
-                let chunk_size = arguments.get("chunk_size").and_then(|c| c.as_u64()).unwrap_or(30);
-                
+                let model = arguments
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("deepseek-r1:1.5b");
+                let message = arguments
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .ok_or(StatusCode::BAD_REQUEST)?;
+                let chunk_size = arguments
+                    .get("chunk_size")
+                    .and_then(|c| c.as_u64())
+                    .unwrap_or(30);
+
                 // Use the existing streaming chat completion handler
-                Self::handle_streaming_chat_completion(server, Some(&serde_json::json!({
-                    "model": model,
-                    "message": message,
-                    "chunk_size": chunk_size
-                }))).await
-            },
+                Self::handle_streaming_chat_completion(
+                    server,
+                    Some(&serde_json::json!({
+                        "model": model,
+                        "message": message,
+                        "chunk_size": chunk_size
+                    })),
+                )
+                .await
+            }
             // Model Management Tools
             "list_models" => Self::handle_list_models(server, Some(&arguments_clone)).await,
             "model_info" => Self::handle_model_info(server, Some(&arguments_clone)).await,
-            "generate_embedding" => Self::handle_generate_embedding(server, Some(&arguments_clone)).await,
+            "generate_embedding" => {
+                Self::handle_generate_embedding(server, Some(&arguments_clone)).await
+            }
             // Search & Knowledge Tools
-            "search_embeddings" => Self::handle_search_embeddings(server, Some(&arguments_clone)).await,
-            "find_similar_content" => Self::handle_find_similar_content(server, Some(&arguments_clone)).await,
+            "search_embeddings" => {
+                Self::handle_search_embeddings(server, Some(&arguments_clone)).await
+            }
+            "find_similar_content" => {
+                Self::handle_find_similar_content(server, Some(&arguments_clone)).await
+            }
             "hybrid_search" => Self::handle_hybrid_search(server, Some(&arguments_clone)).await,
             "iragl_search" => Self::handle_iragl_search(server, Some(&arguments_clone)).await,
             // Project Management Tools
@@ -857,7 +931,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let uri = params.get("uri")
+        let uri = params
+            .get("uri")
             .and_then(|u| u.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -874,41 +949,37 @@ impl McpHttpServer {
                     ]
                 }))
             }
-            "neovim://session" => {
-                Ok(serde_json::json!({
-                    "contents": [
-                        {
-                            "uri": "neovim://session",
-                            "mimeType": "application/json",
-                            "text": serde_json::to_string(&serde_json::json!({
-                                "session_id": "test-session",
-                                "buffers": 1,
-                                "windows": 1
-                            })).unwrap()
-                        }
-                    ]
-                }))
-            }
-            "patterns://list" => {
-                Ok(serde_json::json!({
-                    "contents": [
-                        {
-                            "uri": "patterns://list",
-                            "mimeType": "application/json",
-                            "text": serde_json::to_string(&serde_json::json!({
-                                "patterns": [
-                                    {
-                                        "name": "session_summary_generation",
-                                        "description": "Generate session summary",
-                                        "category": "session_management"
-                                    }
-                                ]
-                            })).unwrap()
-                        }
-                    ]
-                }))
-            }
-            _ => Err(StatusCode::NOT_FOUND)
+            "neovim://session" => Ok(serde_json::json!({
+                "contents": [
+                    {
+                        "uri": "neovim://session",
+                        "mimeType": "application/json",
+                        "text": serde_json::to_string(&serde_json::json!({
+                            "session_id": "test-session",
+                            "buffers": 1,
+                            "windows": 1
+                        })).unwrap()
+                    }
+                ]
+            })),
+            "patterns://list" => Ok(serde_json::json!({
+                "contents": [
+                    {
+                        "uri": "patterns://list",
+                        "mimeType": "application/json",
+                        "text": serde_json::to_string(&serde_json::json!({
+                            "patterns": [
+                                {
+                                    "name": "session_summary_generation",
+                                    "description": "Generate session summary",
+                                    "category": "session_management"
+                                }
+                            ]
+                        })).unwrap()
+                    }
+                ]
+            })),
+            _ => Err(StatusCode::NOT_FOUND),
         }
     }
 
@@ -928,16 +999,18 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let model = params.get("model")
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("deepseek-r1:1.5b");
-        let message = params.get("message")
+        let message = params
+            .get("message")
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
         // Check if this is a thinking model
         let is_thinking_model = Self::is_thinking_model(model);
-        
+
         // Create chat message with appropriate prompt for thinking models
         let chat_message = if is_thinking_model {
             // For thinking models, wrap the message in a thinking prompt
@@ -958,14 +1031,16 @@ impl McpHttpServer {
         };
 
         // Send to Ollama
-        match server.ollama_client.chat_completion(model, vec![chat_message], false).await {
-            Ok(response) => {
-                Ok(serde_json::json!({
-                    "content": response.message.content,
-                    "model": model,
-                    "done": response.done
-                }))
-            }
+        match server
+            .ollama_client
+            .chat_completion(model, vec![chat_message], false)
+            .await
+        {
+            Ok(response) => Ok(serde_json::json!({
+                "content": response.message.content,
+                "model": model,
+                "done": response.done
+            })),
             Err(e) => {
                 error!("Chat completion failed: {}", e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -978,17 +1053,19 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let model = params.get("model")
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("deepseek-r1:1.5b");
-        let message = params.get("message")
+        let message = params
+            .get("message")
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
         let format_config = params.get("format_config");
 
         // Check if this is a thinking model
         let is_thinking_model = Self::is_thinking_model(model);
-        
+
         // Create chat message with appropriate prompt for thinking models
         let chat_message = if is_thinking_model {
             // For thinking models, wrap the message in a thinking prompt
@@ -1009,10 +1086,14 @@ impl McpHttpServer {
         };
 
         // Send to Ollama
-        match server.ollama_client.chat_completion(model, vec![chat_message], false).await {
+        match server
+            .ollama_client
+            .chat_completion(model, vec![chat_message], false)
+            .await
+        {
             Ok(response) => {
                 let content = response.message.content;
-                
+
                 // Format the response based on format_config
                 let formatted_content = if let Some(config) = format_config {
                     // Apply formatting based on config
@@ -1021,7 +1102,7 @@ impl McpHttpServer {
                     // Default formatting
                     Self::format_response_default(&content)
                 };
-                
+
                 Ok(serde_json::json!({
                     "formatted_content": formatted_content,
                     "original_content": content,
@@ -1050,10 +1131,12 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let model = params.get("model")
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("deepseek-r1:1.5b");
-        let message = params.get("message")
+        let message = params
+            .get("message")
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -1064,7 +1147,7 @@ impl McpHttpServer {
         // Check if this is a thinking model
         let is_thinking_model = Self::is_thinking_model(model);
         info!("   Is thinking model: {}", is_thinking_model);
-        
+
         // Create chat message with appropriate prompt for thinking models
         let chat_message = if is_thinking_model {
             // For thinking models, wrap the message in a thinking prompt
@@ -1088,68 +1171,81 @@ impl McpHttpServer {
 
         // Send to Ollama with streaming enabled
         info!("   Sending to Ollama with streaming enabled...");
-        match server.ollama_client.chat_completion(model, vec![chat_message], true).await {
+        match server
+            .ollama_client
+            .chat_completion(model, vec![chat_message], true)
+            .await
+        {
             Ok(response) => {
                 let content = response.message.content;
                 info!("   ✅ Ollama response received:");
                 info!("   Content length: {} characters", content.len());
-                info!("   Content preview: {}", content.chars().take(100).collect::<String>());
-                
+                info!(
+                    "   Content preview: {}",
+                    content.chars().take(100).collect::<String>()
+                );
+
                 // Parse thinking content and send as structured chunks
-                        if is_thinking_model {
-            let chunks = Self::parse_thinking_content(&content);
-            info!("   📤 Sending {} thinking chunks to client", chunks.len());
-            
-            // For now, send the first chunk (the client will handle the rest via SSE)
-            if let Some(first_chunk) = chunks.first() {
-                let response_json = serde_json::json!({
-                    "type": "streaming_chunk",
-                    "chunk": first_chunk.content,
-                    "chunk_type": first_chunk.chunk_type,
-                    "chunk_index": 0,
-                    "total_chunks": chunks.len(),
-                    "remaining_chunks": chunks[1..].iter().map(|c| {
-                        serde_json::json!({
+                if is_thinking_model {
+                    let chunks = Self::parse_thinking_content(&content);
+                    info!("   📤 Sending {} thinking chunks to client", chunks.len());
+
+                    // For now, send the first chunk (the client will handle the rest via SSE)
+                    if let Some(first_chunk) = chunks.first() {
+                        let response_json = serde_json::json!({
                             "type": "streaming_chunk",
-                            "chunk": c.content,
-                            "chunk_type": c.chunk_type
-                        })
-                    }).collect::<Vec<_>>()
-                });
-                
-                info!("   📤 Sending first chunk to client:");
-                info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
-                
-                Ok(response_json)
-            } else {
-                // Fallback to regular content if no thinking chunks found
-                let response_json = serde_json::json!({
-                    "type": "streaming_chunk",
-                    "chunk": content,
-                    "chunk_type": "regular_content",
-                    "chunk_index": 0,
-                    "total_chunks": 1,
-                    "remaining_chunks": []
-                });
-                
-                Ok(response_json)
-            }
-        } else {
-            // Regular content for non-thinking models
-            let response_json = serde_json::json!({
-                "type": "streaming_chunk",
-                "chunk": content,
-                "chunk_type": "regular_content",
-                "chunk_index": 0,
-                "total_chunks": 1,
-                "remaining_chunks": []
-            });
-            
-            info!("   📤 Sending regular content to client:");
-            info!("   Response JSON: {}", serde_json::to_string_pretty(&response_json).unwrap());
-            
-            Ok(response_json)
-        }
+                            "chunk": first_chunk.content,
+                            "chunk_type": first_chunk.chunk_type,
+                            "chunk_index": 0,
+                            "total_chunks": chunks.len(),
+                            "remaining_chunks": chunks[1..].iter().map(|c| {
+                                serde_json::json!({
+                                    "type": "streaming_chunk",
+                                    "chunk": c.content,
+                                    "chunk_type": c.chunk_type
+                                })
+                            }).collect::<Vec<_>>()
+                        });
+
+                        info!("   📤 Sending first chunk to client:");
+                        info!(
+                            "   Response JSON: {}",
+                            serde_json::to_string_pretty(&response_json).unwrap()
+                        );
+
+                        Ok(response_json)
+                    } else {
+                        // Fallback to regular content if no thinking chunks found
+                        let response_json = serde_json::json!({
+                            "type": "streaming_chunk",
+                            "chunk": content,
+                            "chunk_type": "regular_content",
+                            "chunk_index": 0,
+                            "total_chunks": 1,
+                            "remaining_chunks": []
+                        });
+
+                        Ok(response_json)
+                    }
+                } else {
+                    // Regular content for non-thinking models
+                    let response_json = serde_json::json!({
+                        "type": "streaming_chunk",
+                        "chunk": content,
+                        "chunk_type": "regular_content",
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "remaining_chunks": []
+                    });
+
+                    info!("   📤 Sending regular content to client:");
+                    info!(
+                        "   Response JSON: {}",
+                        serde_json::to_string_pretty(&response_json).unwrap()
+                    );
+
+                    Ok(response_json)
+                }
             }
             Err(e) => {
                 error!("❌ Streaming chat completion failed: {}", e);
@@ -1159,22 +1255,18 @@ impl McpHttpServer {
     }
 
     // File Operations
-    async fn handle_read_file(
-        _server: &Self,
-        params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_read_file(_server: &Self, params: Option<&Value>) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let file_path = params.get("file_path")
+        let file_path = params
+            .get("file_path")
             .and_then(|p| p.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
         match std::fs::read_to_string(file_path) {
-            Ok(content) => {
-                Ok(serde_json::json!({
-                    "content": content,
-                    "file_path": file_path
-                }))
-            }
+            Ok(content) => Ok(serde_json::json!({
+                "content": content,
+                "file_path": file_path
+            })),
             Err(e) => {
                 error!("Failed to read file {}: {}", file_path, e);
                 Err(StatusCode::NOT_FOUND)
@@ -1187,21 +1279,21 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let file_path = params.get("file_path")
+        let file_path = params
+            .get("file_path")
             .and_then(|p| p.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        let content = params.get("content")
+        let content = params
+            .get("content")
             .and_then(|c| c.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
         match std::fs::write(file_path, content) {
-            Ok(_) => {
-                Ok(serde_json::json!({
-                    "success": true,
-                    "file_path": file_path,
-                    "bytes_written": content.len()
-                }))
-            }
+            Ok(_) => Ok(serde_json::json!({
+                "success": true,
+                "file_path": file_path,
+                "bytes_written": content.len()
+            })),
             Err(e) => {
                 error!("Failed to write file {}: {}", file_path, e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1214,7 +1306,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let directory = params.get("directory")
+        let directory = params
+            .get("directory")
             .and_then(|d| d.as_str())
             .unwrap_or(".");
 
@@ -1232,14 +1325,12 @@ impl McpHttpServer {
                         })
                     })
                     .collect();
-                
+
                 match files {
-                    Ok(file_list) => {
-                        Ok(serde_json::json!({
-                            "files": file_list,
-                            "directory": directory
-                        }))
-                    }
+                    Ok(file_list) => Ok(serde_json::json!({
+                        "files": file_list,
+                        "directory": directory
+                    })),
                     Err(e) => {
                         error!("Failed to read directory {}: {}", directory, e);
                         Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1259,11 +1350,9 @@ impl McpHttpServer {
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         match server.ollama_client.list_models().await {
-            Ok(models) => {
-                Ok(serde_json::json!({
-                    "models": models
-                }))
-            }
+            Ok(models) => Ok(serde_json::json!({
+                "models": models
+            })),
             Err(e) => {
                 error!("Failed to list models: {}", e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1271,22 +1360,18 @@ impl McpHttpServer {
         }
     }
 
-    async fn handle_model_info(
-        server: &Self,
-        params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_model_info(server: &Self, params: Option<&Value>) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let model = params.get("model")
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
         match server.ollama_client.model_info(model).await {
-            Ok(info) => {
-                Ok(serde_json::json!({
-                    "model": model,
-                    "info": info
-                }))
-            }
+            Ok(info) => Ok(serde_json::json!({
+                "model": model,
+                "info": info
+            })),
             Err(e) => {
                 error!("Failed to get model info for {}: {}", model, e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1299,10 +1384,12 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let text = params.get("text")
+        let text = params
+            .get("text")
             .and_then(|t| t.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        let model = params.get("model")
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("nomic-embed-text");
 
@@ -1316,13 +1403,11 @@ impl McpHttpServer {
         };
 
         match create_embedding(request).await {
-            Ok(embedding) => {
-                Ok(serde_json::json!({
-                    "embedding": embedding.embedding_vector,
-                    "model": model,
-                    "dimensions": embedding.embedding_vector.as_ref().map(|v| v.values.len()).unwrap_or(0)
-                }))
-            }
+            Ok(embedding) => Ok(serde_json::json!({
+                "embedding": embedding.embedding_vector,
+                "model": model,
+                "dimensions": embedding.embedding_vector.as_ref().map(|v| v.values.len()).unwrap_or(0)
+            })),
             Err(e) => {
                 error!("Failed to generate embedding: {}", e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1405,10 +1490,7 @@ impl McpHttpServer {
         }))
     }
 
-    async fn handle_get_goal(
-        _server: &Self,
-        _params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_get_goal(_server: &Self, _params: Option<&Value>) -> Result<Value, StatusCode> {
         Ok(serde_json::json!({
             "goal": {
                 "id": "test-goal",
@@ -1469,10 +1551,7 @@ impl McpHttpServer {
         }))
     }
 
-    async fn handle_get_task(
-        _server: &Self,
-        _params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_get_task(_server: &Self, _params: Option<&Value>) -> Result<Value, StatusCode> {
         Ok(serde_json::json!({
             "task": {
                 "id": "test-task",
@@ -1528,12 +1607,11 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let query = params.get("query")
+        let query = params
+            .get("query")
             .and_then(|q| q.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        let limit = params.get("limit")
-            .and_then(|l| l.as_u64())
-            .unwrap_or(10);
+        let limit = params.get("limit").and_then(|l| l.as_u64()).unwrap_or(10);
 
         // Placeholder implementation
         Ok(serde_json::json!({
@@ -1554,7 +1632,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let content = params.get("content")
+        let content = params
+            .get("content")
             .and_then(|c| c.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -1576,15 +1655,15 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let query = params.get("query")
+        let query = params
+            .get("query")
             .and_then(|q| q.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        let search_type = params.get("search_type")
+        let search_type = params
+            .get("search_type")
             .and_then(|s| s.as_str())
             .unwrap_or("semantic");
-        let limit = params.get("limit")
-            .and_then(|l| l.as_u64())
-            .unwrap_or(10);
+        let limit = params.get("limit").and_then(|l| l.as_u64()).unwrap_or(10);
 
         // Create search query
         let search_query = IraglSearchQuery {
@@ -1603,16 +1682,19 @@ impl McpHttpServer {
 
         match search_iragl_index(search_query).await {
             Ok(results) => {
-                let results_json: Vec<Value> = results.iter().map(|result| {
-                    serde_json::json!({
-                        "content": result.content_text,
-                        "similarity_score": result.similarity_score,
-                        "source_info": {
-                            "file_path": result.source_info.file_path,
-                            "section": result.source_info.section
-                        }
+                let results_json: Vec<Value> = results
+                    .iter()
+                    .map(|result| {
+                        serde_json::json!({
+                            "content": result.content_text,
+                            "similarity_score": result.similarity_score,
+                            "source_info": {
+                                "file_path": result.source_info.file_path,
+                                "section": result.source_info.section
+                            }
+                        })
                     })
-                }).collect();
+                    .collect();
 
                 Ok(serde_json::json!({
                     "results": results_json,
@@ -1633,7 +1715,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let query = params.get("query")
+        let query = params
+            .get("query")
             .and_then(|q| q.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -1656,7 +1739,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let content = params.get("content")
+        let content = params
+            .get("content")
             .and_then(|c| c.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -1678,7 +1762,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let content = params.get("content")
+        let content = params
+            .get("content")
             .and_then(|c| c.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -1740,14 +1825,18 @@ impl McpHttpServer {
         _params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let pattern_registry = server.pattern_registry.read().await;
-        let patterns: Vec<Value> = pattern_registry.list_patterns(None, None).iter().map(|pattern| {
-            serde_json::json!({
-                "name": pattern.name,
-                "description": pattern.description,
-                "category": pattern.category,
-                "meta_level": pattern.meta_level
+        let patterns: Vec<Value> = pattern_registry
+            .list_patterns(None, None)
+            .iter()
+            .map(|pattern| {
+                serde_json::json!({
+                    "name": pattern.name,
+                    "description": pattern.description,
+                    "category": pattern.category,
+                    "meta_level": pattern.meta_level
+                })
             })
-        }).collect();
+            .collect();
 
         Ok(serde_json::json!({
             "patterns": patterns
@@ -1759,7 +1848,8 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let pattern_name = params.get("pattern_name")
+        let pattern_name = params
+            .get("pattern_name")
             .and_then(|n| n.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -1780,21 +1870,20 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        let pattern_name = params.get("pattern_name")
+        let pattern_name = params
+            .get("pattern_name")
             .and_then(|n| n.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
         let parameters = params.get("parameters").cloned();
 
         let mut pattern_registry = server.pattern_registry.write().await;
         match pattern_registry.execute_pattern(pattern_name, parameters) {
-            Ok(execution) => {
-                Ok(serde_json::json!({
-                    "execution_id": execution.id,
-                    "pattern_name": pattern_name,
-                    "status": "executed",
-                    "trigger_type": execution.trigger_type
-                }))
-            }
+            Ok(execution) => Ok(serde_json::json!({
+                "execution_id": execution.id,
+                "pattern_name": pattern_name,
+                "status": "executed",
+                "trigger_type": execution.trigger_type
+            })),
             Err(e) => {
                 error!("Pattern execution failed: {}", e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1963,11 +2052,11 @@ impl McpHttpServer {
         // List of models that support thinking with <think> tags
         let thinking_models = vec![
             "deepseek-r1:1.5b",
-            "deepseek-coder:1.3b", 
+            "deepseek-coder:1.3b",
             "deepseek-coder:6.7b",
             "deepseek-coder:33b",
         ];
-        
+
         thinking_models.contains(&model)
     }
 
@@ -1975,7 +2064,7 @@ impl McpHttpServer {
     fn format_response_default(content: &str) -> String {
         let mut formatted = String::new();
         let mut last_was_empty = false;
-        
+
         for line in content.lines() {
             if !line.trim().is_empty() {
                 formatted.push_str("🮮   ");
@@ -2006,10 +2095,10 @@ impl McpHttpServer {
         let mut current_chunk = String::new();
         let mut in_thinking = false;
         let mut thinking_step_count = 0;
-        
+
         for line in content.lines() {
             let line = line.trim();
-            
+
             if line.contains("<think>") {
                 in_thinking = true;
                 // Start thinking section
@@ -2019,7 +2108,7 @@ impl McpHttpServer {
                 });
                 continue;
             }
-            
+
             if line.contains("</think>") {
                 in_thinking = false;
                 // End thinking section
@@ -2029,7 +2118,7 @@ impl McpHttpServer {
                 });
                 continue;
             }
-            
+
             if in_thinking {
                 if line.starts_with('>') {
                     // This is a thinking step
@@ -2053,7 +2142,7 @@ impl McpHttpServer {
                 }
             }
         }
-        
+
         // Add any remaining regular content
         if !current_chunk.trim().is_empty() {
             chunks.push(ThinkingChunk {
@@ -2061,7 +2150,7 @@ impl McpHttpServer {
                 content: current_chunk.trim().to_string(),
             });
         }
-        
+
         chunks
     }
 
@@ -2071,28 +2160,34 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         // Extract completion parameters
-        let prompt = params.get("prompt")
+        let prompt = params
+            .get("prompt")
             .and_then(|p| p.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let model = params.get("model")
+
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("deepseek-r1:1.5b");
-        
+
         let options = params.get("options").and_then(|o| o.as_object());
-        
+
         // Create session for completion
         let session = server.session_manager.get_or_create_session(None).await;
-        
+
         // Use existing chat completion logic but with thinking model support
         let chat_message = ChatMessage {
             role: "user".to_string(),
             content: prompt.to_string(),
         };
-        
-        match server.ollama_client.chat_completion(model, vec![chat_message], false).await {
+
+        match server
+            .ollama_client
+            .chat_completion(model, vec![chat_message], false)
+            .await
+        {
             Ok(response) => {
                 Ok(serde_json::json!({
                     "completion": response.message.content,
@@ -2117,21 +2212,23 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         // Extract sampling parameters
-        let prompt = params.get("prompt")
+        let prompt = params
+            .get("prompt")
             .and_then(|p| p.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let model = params.get("model")
+
+        let model = params
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("deepseek-r1:1.5b");
-        
+
         let sampling_options = params.get("sampling_options").and_then(|o| o.as_object());
-        
+
         // Create session for sampling
         let session = server.session_manager.get_or_create_session(None).await;
-        
+
         // Create sampling message with thinking model support
         let sampling_message = ChatMessage {
             role: "user".to_string(),
@@ -2140,19 +2237,21 @@ impl McpHttpServer {
                 prompt
             ),
         };
-        
-        match server.ollama_client.chat_completion(model, vec![sampling_message], false).await {
-            Ok(response) => {
-                Ok(serde_json::json!({
-                    "message": {
-                        "role": "assistant",
-                        "content": response.message.content,
-                    },
-                    "model": model,
-                    "session_id": session.id,
-                    "sampling_id": uuid::Uuid::new_v4().to_string(),
-                }))
-            }
+
+        match server
+            .ollama_client
+            .chat_completion(model, vec![sampling_message], false)
+            .await
+        {
+            Ok(response) => Ok(serde_json::json!({
+                "message": {
+                    "role": "assistant",
+                    "content": response.message.content,
+                },
+                "model": model,
+                "session_id": session.id,
+                "sampling_id": uuid::Uuid::new_v4().to_string(),
+            })),
             Err(e) => {
                 tracing::error!("Sampling failed: {}", e);
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -2165,22 +2264,24 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         // Extract elicitation parameters
-        let prompt = params.get("prompt")
+        let prompt = params
+            .get("prompt")
             .and_then(|p| p.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let elicitation_type = params.get("type")
+
+        let elicitation_type = params
+            .get("type")
             .and_then(|t| t.as_str())
             .unwrap_or("user_input");
-        
+
         // Create session for elicitation
         let session = server.session_manager.get_or_create_session(None).await;
-        
+
         // Generate elicitation ID
         let elicitation_id = uuid::Uuid::new_v4().to_string();
-        
+
         Ok(serde_json::json!({
             "elicitation_id": elicitation_id,
             "type": elicitation_type,
@@ -2196,20 +2297,21 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let level = params.get("level")
+
+        let level = params
+            .get("level")
             .and_then(|l| l.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         // Validate log level
         let valid_levels = ["debug", "info", "warn", "error"];
         if !valid_levels.contains(&level) {
             return Err(StatusCode::BAD_REQUEST);
         }
-        
+
         // Set log level (this would integrate with your logging system)
         tracing::info!("Log level set to: {}", level);
-        
+
         Ok(serde_json::json!({
             "level": level,
             "status": "updated",
@@ -2239,9 +2341,9 @@ impl McpHttpServer {
                 "description": "AI assistant for debugging and problem-solving",
                 "content": "You are a debugging assistant. Help identify and fix issues systematically. Ask clarifying questions when needed.",
                 "tags": ["debugging", "troubleshooting", "problem-solving"]
-            })
+            }),
         ];
-        
+
         Ok(serde_json::json!({
             "prompts": prompts
         }))
@@ -2252,11 +2354,12 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let name = params.get("name")
+
+        let name = params
+            .get("name")
             .and_then(|n| n.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         // Return specific prompt by name
         let prompt = match name {
             "thinking_assistant" => serde_json::json!({
@@ -2277,49 +2380,43 @@ impl McpHttpServer {
                 "content": "You are a debugging assistant. Help identify and fix issues systematically. Ask clarifying questions when needed.",
                 "tags": ["debugging", "troubleshooting", "problem-solving"]
             }),
-            _ => return Err(StatusCode::NOT_FOUND)
+            _ => return Err(StatusCode::NOT_FOUND),
         };
-        
+
         Ok(prompt)
     }
 
-    async fn handle_roots_list(
-        server: &Self,
-        params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_roots_list(server: &Self, params: Option<&Value>) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let uri = params.get("uri")
+
+        let uri = params
+            .get("uri")
             .and_then(|u| u.as_str())
             .unwrap_or("neovim://buffers");
-        
+
         let options = params.get("options").and_then(|o| o.as_object());
-        
+
         // Return roots for the specified URI
         let roots = match uri {
             "neovim://buffers" => {
                 // Return buffer roots
-                vec![
-                    serde_json::json!({
-                        "uri": "neovim://buffers",
-                        "name": "Neovim Buffers",
-                        "description": "All open buffers in the current session"
-                    })
-                ]
-            },
+                vec![serde_json::json!({
+                    "uri": "neovim://buffers",
+                    "name": "Neovim Buffers",
+                    "description": "All open buffers in the current session"
+                })]
+            }
             "neovim://session" => {
                 // Return session roots
-                vec![
-                    serde_json::json!({
-                        "uri": "neovim://session",
-                        "name": "Neovim Session",
-                        "description": "Current Neovim session information"
-                    })
-                ]
-            },
-            _ => vec![]
+                vec![serde_json::json!({
+                    "uri": "neovim://session",
+                    "name": "Neovim Session",
+                    "description": "Current Neovim session information"
+                })]
+            }
+            _ => vec![],
         };
-        
+
         Ok(serde_json::json!({
             "roots": roots,
             "uri": uri,
@@ -2332,14 +2429,15 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let uri = params.get("uri")
+
+        let uri = params
+            .get("uri")
             .and_then(|u| u.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         // Handle resource unsubscription
         tracing::info!("Unsubscribing from resource: {}", uri);
-        
+
         Ok(serde_json::json!({
             "uri": uri,
             "status": "unsubscribed"
@@ -2363,18 +2461,15 @@ impl McpHttpServer {
                 "description": "Template for Neovim session resources",
                 "uri_pattern": "neovim://session/*",
                 "mime_type": "application/json"
-            })
+            }),
         ];
-        
+
         Ok(serde_json::json!({
             "templates": templates
         }))
     }
 
-    async fn handle_ping(
-        server: &Self,
-        params: Option<&Value>,
-    ) -> Result<Value, StatusCode> {
+    async fn handle_ping(server: &Self, params: Option<&Value>) -> Result<Value, StatusCode> {
         Ok(serde_json::json!({
             "pong": true,
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -2391,13 +2486,14 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let request_id = params.get("requestId")
+
+        let request_id = params
+            .get("requestId")
             .and_then(|r| r.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         tracing::info!("Request cancelled: {}", request_id);
-        
+
         Ok(serde_json::json!({
             "request_id": request_id,
             "status": "cancelled"
@@ -2419,15 +2515,16 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let level = params.get("level")
+
+        let level = params
+            .get("level")
             .and_then(|l| l.as_str())
             .unwrap_or("info");
-        
+
         let data = params.get("data");
-        
+
         tracing::info!("MCP message: level={}, data={:?}", level, data);
-        
+
         Ok(serde_json::json!({
             "level": level,
             "data": data,
@@ -2440,21 +2537,25 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let progress_token = params.get("progressToken")
+
+        let progress_token = params
+            .get("progressToken")
             .and_then(|p| p.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let progress = params.get("progress")
-            .and_then(|p| p.as_u64())
-            .unwrap_or(0);
-        
+
+        let progress = params.get("progress").and_then(|p| p.as_u64()).unwrap_or(0);
+
         let total = params.get("total").and_then(|t| t.as_u64());
         let message = params.get("message").and_then(|m| m.as_str());
-        
-        tracing::info!("Progress update: token={}, progress={}, total={:?}, message={:?}", 
-            progress_token, progress, total, message);
-        
+
+        tracing::info!(
+            "Progress update: token={}, progress={}, total={:?}, message={:?}",
+            progress_token,
+            progress,
+            total,
+            message
+        );
+
         Ok(serde_json::json!({
             "progress_token": progress_token,
             "progress": progress,
@@ -2489,11 +2590,12 @@ impl McpHttpServer {
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
-        
-        let uri = params.get("uri")
+
+        let uri = params
+            .get("uri")
             .and_then(|u| u.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
-        
+
         Ok(serde_json::json!({
             "event": "resources_updated",
             "uri": uri,
@@ -2544,7 +2646,7 @@ impl SessionManager {
         let now = chrono::Utc::now();
 
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get(&id) {
             // Update last activity
             let mut updated_session = session.clone();
@@ -2587,9 +2689,12 @@ impl StreamManager {
     }
 
     /// Create a new SSE stream for a session
-    pub async fn create_stream(&self, session_id: &str) -> impl Stream<Item = Result<Event, axum::Error>> {
+    pub async fn create_stream(
+        &self,
+        session_id: &str,
+    ) -> impl Stream<Item = Result<Event, axum::Error>> {
         let (tx, rx) = tokio::sync::broadcast::channel(100);
-        
+
         {
             let mut streams = self.streams.write().await;
             streams.insert(session_id.to_string(), tx);
@@ -2642,43 +2747,55 @@ mod tests {
     #[tokio::test]
     async fn test_header_validation() {
         let mut headers = HeaderMap::new();
-        
+
         // Test missing headers
         assert!(McpHttpServer::validate_headers(&headers).is_err());
-        
+
         // Test with required headers
-        headers.insert("mcp-protocol-version", HeaderValue::from_static("2025-06-18"));
+        headers.insert(
+            "mcp-protocol-version",
+            HeaderValue::from_static("2025-06-18"),
+        );
         headers.insert("origin", HeaderValue::from_static("http://localhost:3000"));
-        
+
         assert!(McpHttpServer::validate_headers(&headers).is_ok());
     }
 
     #[tokio::test]
     async fn test_sse_acceptance() {
         let mut headers = HeaderMap::new();
-        
+
         // Test without SSE accept header
         assert!(!McpHttpServer::accepts_sse(&headers));
-        
+
         // Test with SSE accept header
         headers.insert("accept", HeaderValue::from_static("text/event-stream"));
         assert!(McpHttpServer::accepts_sse(&headers));
-        
+
         // Test with multiple accept types
-        headers.insert("accept", HeaderValue::from_static("application/json, text/event-stream"));
+        headers.insert(
+            "accept",
+            HeaderValue::from_static("application/json, text/event-stream"),
+        );
         assert!(McpHttpServer::accepts_sse(&headers));
     }
 
     #[tokio::test]
     async fn test_session_id_extraction() {
         let mut headers = HeaderMap::new();
-        
+
         // Test without session ID
         assert!(McpHttpServer::get_session_id(&headers).is_none());
-        
+
         // Test with session ID
-        headers.insert("mcp-session-id", HeaderValue::from_static("test-session-123"));
-        assert_eq!(McpHttpServer::get_session_id(&headers), Some("test-session-123".to_string()));
+        headers.insert(
+            "mcp-session-id",
+            HeaderValue::from_static("test-session-123"),
+        );
+        assert_eq!(
+            McpHttpServer::get_session_id(&headers),
+            Some("test-session-123".to_string())
+        );
     }
 
     #[tokio::test]
@@ -2727,17 +2844,17 @@ mod tests {
     #[tokio::test]
     async fn test_session_manager() {
         let manager = SessionManager::new();
-        
+
         // Test session creation
         let session = manager.get_or_create_session(None).await;
         assert!(!session.id.is_empty());
         assert!(session.created_at <= chrono::Utc::now());
-        
+
         // Test session retrieval
         let retrieved = manager.get_session(&session.id).await;
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().id, session.id);
-        
+
         // Test session termination
         assert!(manager.terminate_session(&session.id).await);
         assert!(manager.get_session(&session.id).await.is_none());
@@ -2747,10 +2864,10 @@ mod tests {
     async fn test_stream_manager() {
         let manager = StreamManager::new();
         let session_id = "test-session";
-        
+
         // Test stream creation
         let _stream = manager.create_stream(session_id).await;
-        
+
         // Test message sending
         let message = serde_json::json!({"test": "message"});
         assert!(manager.send_message(session_id, message).await);
@@ -2763,13 +2880,13 @@ mod tests {
         assert!(McpHttpServer::is_thinking_model("deepseek-coder:1.3b"));
         assert!(McpHttpServer::is_thinking_model("deepseek-coder:6.7b"));
         assert!(McpHttpServer::is_thinking_model("deepseek-coder:33b"));
-        
+
         // Test non-thinking models
         assert!(!McpHttpServer::is_thinking_model("llama2"));
         assert!(!McpHttpServer::is_thinking_model("llama2:7b"));
         assert!(!McpHttpServer::is_thinking_model("mistral"));
         assert!(!McpHttpServer::is_thinking_model("codellama"));
-        
+
         // Test unknown models
         assert!(!McpHttpServer::is_thinking_model("unknown-model"));
         assert!(!McpHttpServer::is_thinking_model(""));
@@ -2779,7 +2896,7 @@ mod tests {
     fn test_format_response_default() {
         let content = "Hello world\nThis is a test\n\nWith empty lines";
         let formatted = McpHttpServer::format_response_default(content);
-        
+
         let expected = "🮮   Hello world\n🮮   This is a test\n\n🮮   With empty lines\n";
         assert_eq!(formatted, expected);
     }
@@ -2789,7 +2906,7 @@ mod tests {
         let content = "Test content";
         let config = json!({"max_width": 80});
         let formatted = McpHttpServer::format_response_with_config(content, &config);
-        
+
         // Should use default formatting for now
         let expected = "🮮   Test content\n";
         assert_eq!(formatted, expected);
@@ -2822,11 +2939,11 @@ mod tests {
         // For now, we'll test the prompt generation logic
         let model = "deepseek-r1:1.5b";
         let message = "Create a parts list for a pencil";
-        
+
         // Test that thinking models get the thinking prompt
         let is_thinking = McpHttpServer::is_thinking_model(model);
         assert!(is_thinking);
-        
+
         // The actual prompt would be generated in the handler
         let expected_prompt_contains = "use <think> tags to show your reasoning process";
         // In a real test, we'd verify the prompt contains this text
@@ -2836,11 +2953,11 @@ mod tests {
     async fn test_handle_chat_completion_normal_model() {
         let model = "llama2";
         let message = "What is a pencil?";
-        
+
         // Test that normal models don't get thinking prompts
         let is_thinking = McpHttpServer::is_thinking_model(model);
         assert!(!is_thinking);
-        
+
         // The actual prompt would be the message directly
         // In a real test, we'd verify the prompt is just the message
     }
@@ -2851,10 +2968,10 @@ mod tests {
         // For now, we'll test the model detection logic
         let model = "deepseek-coder:1.3b";
         let message = "Explain quantum computing";
-        
+
         let is_thinking = McpHttpServer::is_thinking_model(model);
         assert!(is_thinking);
-        
+
         // In a real test, we'd verify:
         // 1. The thinking prompt is generated
         // 2. The response is returned with type "regular_content"
@@ -2865,11 +2982,11 @@ mod tests {
     async fn test_handle_formatted_chat_completion_thinking_model() {
         let model = "deepseek-coder:6.7b";
         let message = "Design a database schema";
-        
+
         // Test that thinking models get the thinking prompt
         let is_thinking = McpHttpServer::is_thinking_model(model);
         assert!(is_thinking);
-        
+
         // In a real test, we'd verify:
         // 1. The thinking prompt is generated
         // 2. The response is formatted with diamond symbols
@@ -2883,10 +3000,10 @@ mod tests {
         let thinking_models = vec![
             "deepseek-r1:1.5b",
             "deepseek-coder:1.3b",
-            "deepseek-coder:6.7b", 
+            "deepseek-coder:6.7b",
             "deepseek-coder:33b",
         ];
-        
+
         for model in thinking_models {
             assert!(
                 McpHttpServer::is_thinking_model(model),
@@ -2913,7 +3030,7 @@ mod tests {
             "codellama:7b",
             "codellama:13b",
         ];
-        
+
         for model in normal_models {
             assert!(
                 !McpHttpServer::is_thinking_model(model),
@@ -2927,14 +3044,14 @@ mod tests {
     fn test_format_response_preserves_structure() {
         let content = "# Title\n\n## Subtitle\n\n- Item 1\n- Item 2\n\n**Bold text**";
         let formatted = McpHttpServer::format_response_default(content);
-        
+
         // Should preserve line structure
         assert!(formatted.contains("# Title"));
         assert!(formatted.contains("## Subtitle"));
         assert!(formatted.contains("- Item 1"));
         assert!(formatted.contains("- Item 2"));
         assert!(formatted.contains("**Bold text**"));
-        
+
         // Should add diamond prefix to non-empty lines
         assert!(formatted.contains("🮮   # Title"));
         assert!(formatted.contains("🮮   ## Subtitle"));
@@ -2948,32 +3065,35 @@ mod tests {
         // Test the complete streaming chat completion flow
         // This would require a mock Ollama client
         // For now, we'll test the request parsing and response format
-        
+
         let server = McpHttpServer::new();
-        
+
         // Test request parameters
         let params = serde_json::json!({
             "model": "deepseek-r1:1.5b",
             "message": "Create a parts list for a pencil"
         });
-        
+
         // Test model detection
-        let model = params.get("model").and_then(|m| m.as_str()).unwrap_or("deepseek-r1:1.5b");
+        let model = params
+            .get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("deepseek-r1:1.5b");
         let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("");
-        
+
         assert_eq!(model, "deepseek-r1:1.5b");
         assert_eq!(message, "Create a parts list for a pencil");
-        
+
         // Test thinking model detection
         let is_thinking_model = McpHttpServer::is_thinking_model(model);
         assert!(is_thinking_model);
-        
+
         // Test prompt generation for thinking models
         let thinking_prompt = format!(
             "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
             message
         );
-        
+
         assert!(thinking_prompt.contains("use <think> tags"));
         assert!(thinking_prompt.contains("Create a parts list for a pencil"));
         assert!(thinking_prompt.contains("Assistant:"));
@@ -2983,22 +3103,25 @@ mod tests {
     async fn test_handle_streaming_chat_completion_normal_model() {
         // Test streaming chat completion with a normal (non-thinking) model
         let server = McpHttpServer::new();
-        
+
         let params = serde_json::json!({
             "model": "llama2",
             "message": "What is a pencil?"
         });
-        
-        let model = params.get("model").and_then(|m| m.as_str()).unwrap_or("llama2");
+
+        let model = params
+            .get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("llama2");
         let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("");
-        
+
         assert_eq!(model, "llama2");
         assert_eq!(message, "What is a pencil?");
-        
+
         // Test that normal models are not detected as thinking
         let is_thinking_model = McpHttpServer::is_thinking_model(model);
         assert!(!is_thinking_model);
-        
+
         // Test that normal models get the message directly (no thinking prompt)
         let normal_prompt = message.to_string();
         assert_eq!(normal_prompt, "What is a pencil?");
@@ -3015,18 +3138,24 @@ mod tests {
             "total_chunks": 1,
             "remaining_chunks": []
         });
-        
+
         // Verify the response structure
         assert_eq!(expected_response["type"], "streaming_chunk");
         assert!(expected_response["chunk"].is_string());
         assert!(expected_response["chunk_index"].is_number());
         assert!(expected_response["total_chunks"].is_number());
         assert!(expected_response["remaining_chunks"].is_array());
-        
+
         // Verify the chunk index and total chunks
         assert_eq!(expected_response["chunk_index"], 0);
         assert_eq!(expected_response["total_chunks"], 1);
-        assert_eq!(expected_response["remaining_chunks"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            expected_response["remaining_chunks"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -3037,7 +3166,7 @@ mod tests {
             "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
             test_message
         );
-        
+
         // Verify prompt structure
         assert!(thinking_prompt.starts_with("You are a helpful AI assistant"));
         assert!(thinking_prompt.contains("use <think> tags"));
@@ -3045,7 +3174,7 @@ mod tests {
         assert!(thinking_prompt.contains("step by step"));
         assert!(thinking_prompt.contains("User: Explain quantum computing"));
         assert!(thinking_prompt.ends_with("Assistant:"));
-        
+
         // Verify the prompt is properly formatted
         let lines: Vec<&str> = thinking_prompt.lines().collect();
         assert!(lines.len() >= 4); // Should have multiple lines
@@ -3057,28 +3186,28 @@ mod tests {
     fn test_chat_message_creation() {
         // Test ChatMessage creation for both thinking and normal models
         let test_message = "Create a parts list for a pencil";
-        
+
         // Test thinking model message
         let thinking_prompt = format!(
             "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: {}\n\nAssistant:",
             test_message
         );
-        
+
         let thinking_chat_message = ChatMessage {
             role: "user".to_string(),
             content: thinking_prompt,
         };
-        
+
         assert_eq!(thinking_chat_message.role, "user");
         assert!(thinking_chat_message.content.contains("use <think> tags"));
         assert!(thinking_chat_message.content.contains(test_message));
-        
+
         // Test normal model message
         let normal_chat_message = ChatMessage {
             role: "user".to_string(),
             content: test_message.to_string(),
         };
-        
+
         assert_eq!(normal_chat_message.role, "user");
         assert_eq!(normal_chat_message.content, test_message);
         assert!(!normal_chat_message.content.contains("use <think> tags"));
@@ -3087,20 +3216,15 @@ mod tests {
     #[test]
     fn test_streaming_chunk_processing() {
         // Test the processing of streaming chunks in the response
-        let mock_chunks = vec![
-            "Hello",
-            ", ",
-            "world",
-            "!"
-        ];
-        
+        let mock_chunks = vec!["Hello", ", ", "world", "!"];
+
         let mut accumulated_content = String::new();
         for chunk in mock_chunks {
             accumulated_content.push_str(chunk);
         }
-        
+
         assert_eq!(accumulated_content, "Hello, world!");
-        
+
         // Test response format
         let response = serde_json::json!({
             "type": "streaming_chunk",
@@ -3109,7 +3233,7 @@ mod tests {
             "total_chunks": 1,
             "remaining_chunks": []
         });
-        
+
         assert_eq!(response["chunk"], "Hello, world!");
         assert_eq!(response["type"], "streaming_chunk");
     }
@@ -3118,18 +3242,18 @@ mod tests {
     fn test_thinking_content_processing() {
         // Test processing of thinking content with <think> tags
         let thinking_content = "<think>\nLet me think about this step by step.\n</think>\n\nHere is the answer: The answer is 42.";
-        
+
         // Verify thinking tags are present
         assert!(thinking_content.contains("<think>"));
         assert!(thinking_content.contains("</think>"));
-        
+
         // Verify content structure
         let parts: Vec<&str> = thinking_content.split("</think>").collect();
         assert_eq!(parts.len(), 2);
-        
+
         let thinking_part = parts[0];
         let answer_part = parts[1];
-        
+
         assert!(thinking_part.contains("<think>"));
         assert!(thinking_part.contains("Let me think about this step by step."));
         assert!(answer_part.contains("Here is the answer:"));

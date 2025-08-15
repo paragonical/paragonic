@@ -7,10 +7,10 @@
 // - Definition lists (Pandoc syntax)
 // - Configurable indentation (default 3 spaces)
 
+use crate::error::ParagonicResult;
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{parse_document, Arena, ComrakOptions};
 use serde::{Deserialize, Serialize};
-use crate::error::{ParagonicError, ParagonicResult};
 
 /// Configuration for Markdown source formatting
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +67,7 @@ impl MarkdownSourceFormatter {
     pub fn format_markdown_source(&self, input: &str) -> ParagonicResult<String> {
         let arena = Arena::new();
         let mut options = ComrakOptions::default();
-        
+
         // Enable GitHub-flavored markdown extensions
         options.extension.strikethrough = true;
         options.extension.tagfilter = false;
@@ -82,7 +82,7 @@ impl MarkdownSourceFormatter {
 
         let mut formatter = AstFormatter::new(&self.config);
         formatter.format_node(root)?;
-        
+
         Ok(formatter.finish())
     }
 
@@ -93,10 +93,10 @@ impl MarkdownSourceFormatter {
         if !trimmed.starts_with('>') {
             return 0;
         }
-        
+
         let mut level = 0;
         let mut chars = trimmed.chars();
-        
+
         while let Some(ch) = chars.next() {
             if ch == '>' {
                 level += 1;
@@ -108,7 +108,7 @@ impl MarkdownSourceFormatter {
                 break;
             }
         }
-        
+
         level
     }
 
@@ -117,20 +117,20 @@ impl MarkdownSourceFormatter {
     fn format_blockquote_with_nesting_levels(&self, lines: &[&str]) -> ParagonicResult<String> {
         let mut result = String::new();
         let mut prev_level = 0;
-        
+
         for line in lines {
             let current_level = self.detect_blockquote_nesting_level(line);
-            
+
             // Add empty line when transitioning between nesting levels
             if prev_level > 0 && current_level != prev_level {
                 result.push_str(">\n");
             }
-            
+
             // Format the current line based on its nesting level
             if current_level > 0 {
                 // Extract the content after the '>' markers
                 let content = self.extract_blockquote_content(line);
-                
+
                 // Build the proper number of '>' markers with correct spacing
                 for i in 0..current_level {
                     result.push('>');
@@ -139,17 +139,17 @@ impl MarkdownSourceFormatter {
                         result.push(' ');
                     }
                 }
-                
+
                 if !content.is_empty() {
                     result.push(' ');
                     result.push_str(&content);
                 }
                 result.push('\n');
-                
+
                 prev_level = current_level;
             }
         }
-        
+
         Ok(result)
     }
 
@@ -157,7 +157,7 @@ impl MarkdownSourceFormatter {
     fn extract_blockquote_content(&self, line: &str) -> String {
         let trimmed = line.trim_start();
         let mut chars = trimmed.chars();
-        
+
         // Skip past all '>' markers and whitespace
         while let Some(ch) = chars.next() {
             if ch == '>' {
@@ -170,7 +170,7 @@ impl MarkdownSourceFormatter {
                 return format!("{}{}", ch, remaining);
             }
         }
-        
+
         String::new()
     }
 }
@@ -304,7 +304,7 @@ impl<'a> AstFormatter<'a> {
         // Add header text
         self.collect_text_content(node)?;
         self.output.push('\n');
-        
+
         self.last_was_header = true;
         Ok(())
     }
@@ -312,7 +312,7 @@ impl<'a> AstFormatter<'a> {
     fn format_blockquote(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
         // Increment depth when entering a blockquote
         self.increment_blockquote_depth();
-        
+
         // Process children and format as blockquote
         for child in node.children() {
             match &child.data.borrow().value {
@@ -326,7 +326,7 @@ impl<'a> AstFormatter<'a> {
                 }
             }
         }
-        
+
         // Decrement depth when exiting a blockquote
         self.decrement_blockquote_depth();
         Ok(())
@@ -334,7 +334,7 @@ impl<'a> AstFormatter<'a> {
 
     fn format_blockquote_paragraph(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
         let mut current_line = String::new();
-        
+
         for child in node.children() {
             match &child.data.borrow().value {
                 NodeValue::Text(text) => {
@@ -355,14 +355,14 @@ impl<'a> AstFormatter<'a> {
                 }
             }
         }
-        
+
         // Handle the last line if there's content
         if !current_line.is_empty() {
             self.add_blockquote_prefix();
             self.output.push_str(&current_line);
             self.output.push('\n');
         }
-        
+
         Ok(())
     }
 
@@ -371,16 +371,21 @@ impl<'a> AstFormatter<'a> {
         let borrowed = node.data.borrow();
         let list_data = match &borrowed.value {
             NodeValue::List(data) => data,
-            _ => return Err(crate::error::ParagonicError::Internal("Expected List node".to_string())),
+            _ => {
+                return Err(crate::error::ParagonicError::Internal(
+                    "Expected List node".to_string(),
+                ))
+            }
         };
-        
+
         let mut item_number = list_data.start;
-        
+
         // Process each list item
         for child in node.children() {
             match &child.data.borrow().value {
                 NodeValue::Item(_) => {
-                    let is_ordered = matches!(list_data.list_type, comrak::nodes::ListType::Ordered);
+                    let is_ordered =
+                        matches!(list_data.list_type, comrak::nodes::ListType::Ordered);
                     self.format_list_item(child, is_ordered, item_number)?;
                     if is_ordered {
                         item_number += 1;
@@ -395,23 +400,28 @@ impl<'a> AstFormatter<'a> {
         Ok(())
     }
 
-    fn format_list_item(&mut self, node: &'a AstNode<'a>, is_ordered: bool, item_number: usize) -> ParagonicResult<()> {
+    fn format_list_item(
+        &mut self,
+        node: &'a AstNode<'a>,
+        is_ordered: bool,
+        item_number: usize,
+    ) -> ParagonicResult<()> {
         // Add appropriate indentation based on current nesting level
         for _ in 0..self.current_indent {
             self.output.push(' ');
         }
-        
+
         // Add list marker
         if is_ordered {
             self.output.push_str(&format!("{}. ", item_number));
         } else {
             self.output.push_str("- ");
         }
-        
+
         // Increase indentation for nested content
         let old_indent = self.current_indent;
         self.current_indent += self.config.base_indent;
-        
+
         // Process item content (usually paragraphs)
         let mut first_child = true;
         for child in node.children() {
@@ -441,7 +451,7 @@ impl<'a> AstFormatter<'a> {
                 }
             }
         }
-        
+
         // Restore previous indentation
         self.current_indent = old_indent;
         Ok(())
@@ -452,7 +462,11 @@ impl<'a> AstFormatter<'a> {
         let borrowed = node.data.borrow();
         let code_block = match &borrowed.value {
             NodeValue::CodeBlock(data) => data,
-            _ => return Err(crate::error::ParagonicError::Internal("Expected CodeBlock node".to_string())),
+            _ => {
+                return Err(crate::error::ParagonicError::Internal(
+                    "Expected CodeBlock node".to_string(),
+                ))
+            }
         };
 
         // Add spacing before code block
@@ -462,7 +476,7 @@ impl<'a> AstFormatter<'a> {
 
         // Add opening fence
         self.output.push_str("```");
-        
+
         // Add language if specified
         if !code_block.info.is_empty() {
             self.output.push_str(&code_block.info);
@@ -474,7 +488,7 @@ impl<'a> AstFormatter<'a> {
 
         // Add closing fence
         self.output.push_str("```\n");
-        
+
         Ok(())
     }
 
@@ -486,18 +500,18 @@ impl<'a> AstFormatter<'a> {
                 self.output.push('\n');
                 self.last_was_header = false;
             } else if !self.output.ends_with("\n\n") {
-                // Ensure blank line between paragraphs  
+                // Ensure blank line between paragraphs
                 if !self.output.ends_with('\n') {
                     self.output.push('\n');
                 }
                 self.output.push('\n');
             }
         }
-        
+
         // Collect text content from paragraph
         self.collect_text_content(node)?;
         self.output.push('\n');
-        
+
         Ok(())
     }
 
@@ -506,7 +520,7 @@ impl<'a> AstFormatter<'a> {
         let children: Vec<_> = node.children().collect();
         for (i, child) in children.iter().enumerate() {
             self.format_node(child)?;
-            
+
             // Remove the trailing newline from the last item
             if i == children.len() - 1 && self.output.ends_with("\n\n") {
                 self.output.pop(); // Remove the extra trailing newline
@@ -518,15 +532,18 @@ impl<'a> AstFormatter<'a> {
     fn format_description_item(&mut self, node: &'a AstNode<'a>) -> ParagonicResult<()> {
         // Description items contain terms and descriptions as children
         let mut has_processed_term = false;
-        
+
         for child in node.children() {
             match &child.data.borrow().value {
                 NodeValue::DescriptionTerm => {
                     // Add spacing before term if this isn't the first definition item
-                    if !self.output.is_empty() && !self.output.ends_with("\n\n") && has_processed_term {
+                    if !self.output.is_empty()
+                        && !self.output.ends_with("\n\n")
+                        && has_processed_term
+                    {
                         self.output.push('\n');
                     }
-                    
+
                     // Format the term
                     self.collect_text_content(child)?;
                     self.output.push('\n');
@@ -544,7 +561,7 @@ impl<'a> AstFormatter<'a> {
                 }
             }
         }
-        
+
         // Add blank line after each definition item for proper spacing
         self.output.push('\n');
         Ok(())
@@ -565,7 +582,11 @@ impl<'a> AstFormatter<'a> {
         Ok(())
     }
 
-    fn collect_text_content_into_string(&self, node: &'a AstNode<'a>, output: &mut String) -> ParagonicResult<()> {
+    fn collect_text_content_into_string(
+        &self,
+        node: &'a AstNode<'a>,
+        output: &mut String,
+    ) -> ParagonicResult<()> {
         match &node.data.borrow().value {
             NodeValue::Text(text) => {
                 output.push_str(text);
@@ -595,7 +616,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "# Main Title";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should have 4 blank lines before H1, then header, then final newline
         let expected = "\n\n\n\n# Main Title\n";
         assert_eq!(result, expected);
@@ -606,7 +627,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "## Subtitle";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should have 3 blank lines before H2
         let expected = "\n\n\n## Subtitle\n";
         assert_eq!(result, expected);
@@ -617,7 +638,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "### Section";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should have 2 blank lines before H3
         let expected = "\n\n### Section\n";
         assert_eq!(result, expected);
@@ -628,7 +649,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "#### Subsection";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should have 1 blank line before H4+
         let expected = "\n#### Subsection\n";
         assert_eq!(result, expected);
@@ -646,7 +667,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::with_config(config);
         let input = "# Custom Title";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should have 2 blank lines before H1 with custom config
         let expected = "\n\n# Custom Title\n";
         assert_eq!(result, expected);
@@ -657,7 +678,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "> This is a quote";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format as blockquote with proper indentation
         let expected = "> This is a quote\n";
         assert_eq!(result, expected);
@@ -668,7 +689,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "> First line of quote\n> Second line of quote";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format multi-line blockquote with proper indentation
         let expected = "> First line of quote\n> Second line of quote\n";
         assert_eq!(result, expected);
@@ -679,7 +700,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "> Outer quote\n>> Nested quote\n> Back to outer";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should handle nested blockquotes with correct indentation levels
         let expected = "> Outer quote\n> > Nested quote\n> > Back to outer\n";
         assert_eq!(result, expected);
@@ -688,19 +709,31 @@ mod tests {
     #[test]
     fn test_detect_blockquote_nesting_level() {
         let formatter = MarkdownSourceFormatter::new();
-        
+
         // Test single level
-        assert_eq!(formatter.detect_blockquote_nesting_level("> Simple quote"), 1);
-        
+        assert_eq!(
+            formatter.detect_blockquote_nesting_level("> Simple quote"),
+            1
+        );
+
         // Test nested level
-        assert_eq!(formatter.detect_blockquote_nesting_level(">> Nested quote"), 2);
-        
+        assert_eq!(
+            formatter.detect_blockquote_nesting_level(">> Nested quote"),
+            2
+        );
+
         // Test deeply nested
-        assert_eq!(formatter.detect_blockquote_nesting_level(">>> Deep quote"), 3);
-        
+        assert_eq!(
+            formatter.detect_blockquote_nesting_level(">>> Deep quote"),
+            3
+        );
+
         // Test with spaces between markers
-        assert_eq!(formatter.detect_blockquote_nesting_level("> > Spaced quote"), 2);
-        
+        assert_eq!(
+            formatter.detect_blockquote_nesting_level("> > Spaced quote"),
+            2
+        );
+
         // Test non-blockquote
         assert_eq!(formatter.detect_blockquote_nesting_level("Regular text"), 0);
     }
@@ -708,16 +741,14 @@ mod tests {
     #[test]
     fn test_format_blockquote_with_nesting_levels() {
         let formatter = MarkdownSourceFormatter::new();
-        
+
         // Test that nested blockquotes are properly formatted with spacing and correct nesting
-        let lines = vec![
-            "> Outer quote",
-            ">> Nested quote", 
-            "> Back to outer"
-        ];
-        
-        let result = formatter.format_blockquote_with_nesting_levels(&lines).unwrap();
-        
+        let lines = vec!["> Outer quote", ">> Nested quote", "> Back to outer"];
+
+        let result = formatter
+            .format_blockquote_with_nesting_levels(&lines)
+            .unwrap();
+
         // Should format with proper nesting levels and spacing
         let expected = "> Outer quote\n>\n> > Nested quote\n>\n> Back to outer\n";
         assert_eq!(result, expected);
@@ -727,19 +758,19 @@ mod tests {
     fn test_ast_formatter_with_blockquote_depth_tracking() {
         let config = MarkdownFormatConfig::default();
         let mut formatter = AstFormatter::new(&config);
-        
+
         // Test that blockquote depth tracking works correctly
         assert_eq!(formatter.get_blockquote_depth(), 0);
-        
+
         formatter.increment_blockquote_depth();
         assert_eq!(formatter.get_blockquote_depth(), 1);
-        
+
         formatter.increment_blockquote_depth();
         assert_eq!(formatter.get_blockquote_depth(), 2);
-        
+
         formatter.decrement_blockquote_depth();
         assert_eq!(formatter.get_blockquote_depth(), 1);
-        
+
         formatter.decrement_blockquote_depth();
         assert_eq!(formatter.get_blockquote_depth(), 0);
     }
@@ -748,7 +779,7 @@ mod tests {
     fn test_debug_ast_structure_for_nested_blockquotes() {
         use comrak::nodes::{AstNode, NodeValue};
         use comrak::{parse_document, Arena, ComrakOptions};
-        
+
         let arena = Arena::new();
         let mut options = ComrakOptions::default();
         options.extension.strikethrough = true;
@@ -762,7 +793,7 @@ mod tests {
 
         let input = "> Outer quote\n>> Nested quote\n> Back to outer";
         let root = parse_document(&arena, input, &options);
-        
+
         // This test will help us understand how comrak parses nested blockquotes
         // We expect nested BlockQuote nodes, not text with >> markers
         let mut found_nested = false;
@@ -789,9 +820,9 @@ mod tests {
                 visit_node(child, depth + 1, found_nested);
             }
         }
-        
+
         visit_node(root, 0, &mut found_nested);
-        
+
         // For now, just check that we have blockquotes in the AST
         // The real implementation will handle the nesting properly
         assert!(found_nested, "Should find nested blockquote structure");
@@ -806,7 +837,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::with_config(config);
         let input = "> Custom indent quote";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format with custom base indentation
         let expected = "> Custom indent quote\n";
         assert_eq!(result, expected);
@@ -817,7 +848,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "- First item\n- Second item\n- Third item";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format unordered list with proper spacing
         let expected = "- First item\n- Second item\n- Third item\n";
         assert_eq!(result, expected);
@@ -828,7 +859,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "1. First item\n2. Second item\n3. Third item";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format ordered list with proper numbering
         let expected = "1. First item\n2. Second item\n3. Third item\n";
         assert_eq!(result, expected);
@@ -839,7 +870,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "- Top level\n  - Nested item\n  - Another nested\n- Back to top";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format nested list with proper indentation (3 spaces default)
         let expected = "- Top level\n   - Nested item\n   - Another nested\n- Back to top\n";
         assert_eq!(result, expected);
@@ -850,7 +881,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "1. Top level\n   1. Nested item\n   2. Another nested\n2. Back to top";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format nested ordered list with proper indentation
         let expected = "1. Top level\n   1. Nested item\n   2. Another nested\n2. Back to top\n";
         assert_eq!(result, expected);
@@ -859,11 +890,13 @@ mod tests {
     #[test]
     fn test_format_mixed_nested_lists() {
         let formatter = MarkdownSourceFormatter::new();
-        let input = "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered";
+        let input =
+            "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should handle mixed list types with proper indentation
-        let expected = "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered\n";
+        let expected =
+            "1. Ordered top\n   - Unordered nested\n   - Another unordered\n2. Back to ordered\n";
         assert_eq!(result, expected);
     }
 
@@ -876,7 +909,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format with proper spacing before the code block
         let expected = "\n```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\n";
         assert_eq!(result, expected);
@@ -887,7 +920,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "```\necho \"Hello, world!\"\n```";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format without language specification
         let expected = "\n```\necho \"Hello, world!\"\n```\n";
         assert_eq!(result, expected);
@@ -898,7 +931,7 @@ mod tests {
         let formatter = MarkdownSourceFormatter::new();
         let input = "```bash\n#!/bin/bash\necho \"Script started\"\nls -la\n```";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         let expected = "\n```bash\n#!/bin/bash\necho \"Script started\"\nls -la\n```\n";
         assert_eq!(result, expected);
     }
@@ -906,9 +939,10 @@ mod tests {
     #[test]
     fn test_format_multiple_fenced_code_blocks() {
         let formatter = MarkdownSourceFormatter::new();
-        let input = "```rust\nfn hello() {}\n```\n\nSome text\n\n```python\ndef world():\n    pass\n```";
+        let input =
+            "```rust\nfn hello() {}\n```\n\nSome text\n\n```python\ndef world():\n    pass\n```";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should properly space multiple code blocks
         let expected = "\n```rust\nfn hello() {}\n```\n\nSome text\n\n```python\ndef world():\n    pass\n```\n";
         assert_eq!(result, expected);
@@ -923,33 +957,34 @@ mod tests {
         let formatter = MarkdownSourceFormatter::with_config(config);
         let input = "```typescript\ninterface User {\n  name: string;\n}\n```";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should have 2 blank lines before the code block
         let expected = "\n\n```typescript\ninterface User {\n  name: string;\n}\n```\n";
         assert_eq!(result, expected);
     }
 
     // === Definition List Tests (Pandoc syntax) ===
-    
+
     #[test]
     fn test_format_simple_definition_list() {
         let formatter = MarkdownSourceFormatter::new();
         let input = "Term 1\n:   Definition for term 1\n\nTerm 2\n:   Definition for term 2";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should format definition lists with proper spacing
         let expected = "Term 1\n:   Definition for term 1\n\nTerm 2\n:   Definition for term 2\n";
         assert_eq!(result, expected);
     }
 
     // === Mixed Content Tests (improve text handling) ===
-    
+
     #[test]
     fn test_format_mixed_content_with_paragraphs() {
         let formatter = MarkdownSourceFormatter::new();
-        let input = "# Header\n\nSome text paragraph.\n\n```rust\ncode here\n```\n\nAnother paragraph.";
+        let input =
+            "# Header\n\nSome text paragraph.\n\n```rust\ncode here\n```\n\nAnother paragraph.";
         let result = formatter.format_markdown_source(input).unwrap();
-        
+
         // Should handle mixed content properly
         let expected = "\n\n\n\n# Header\n\nSome text paragraph.\n\n```rust\ncode here\n```\n\nAnother paragraph.\n";
         assert_eq!(result, expected);

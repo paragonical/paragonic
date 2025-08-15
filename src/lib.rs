@@ -1,26 +1,26 @@
 //! Paragonic - Agentic Neovim Extension
-//! 
+//!
 //! This library provides the Rust backend for the Paragonic Neovim plugin,
 //! handling AI integration, database operations, and core business logic.
 
-pub mod database;
-pub mod ollama;
 pub mod config;
-pub mod error;
-pub mod models;
-pub mod schema;
+pub mod database;
 pub mod embeddings;
 pub mod embeddings_local;
+pub mod error;
 pub mod http_server;
+pub mod models;
+pub mod ollama;
+pub mod schema;
 pub mod session_manager;
 pub mod stream_manager;
 pub mod vector;
 // pub mod fulltext; // TODO: Fix type annotation issue in Tantivy integration
-pub mod operations;
 pub mod iragl;
+pub mod markdown_formatter;
+pub mod operations;
 pub mod patterns;
 pub mod text;
-pub mod markdown_formatter;
 
 pub use error::{ParagonicError, ParagonicResult};
 
@@ -30,17 +30,19 @@ use tokio::sync::OnceCell;
 static INITIALIZED: OnceCell<()> = OnceCell::const_new();
 
 /// Initialize the Paragonic backend
-/// 
+///
 /// This function sets up logging, database connections, and other core services.
 /// It should be called once when the plugin is loaded.
 /// This function is idempotent - calling it multiple times is safe.
 pub async fn initialize() -> ParagonicResult<()> {
     // Ensure initialization only happens once
-    INITIALIZED.get_or_init(|| async {
-        // Logging is initialized in main.rs, so we don't initialize it here
-        tracing::info!("Backend initialization started");
-    }).await;
-    
+    INITIALIZED
+        .get_or_init(|| async {
+            // Logging is initialized in main.rs, so we don't initialize it here
+            tracing::info!("Backend initialization started");
+        })
+        .await;
+
     // Check if database is already initialized before trying to initialize it
     match database::get_pool() {
         Ok(_) => {
@@ -51,40 +53,40 @@ pub async fn initialize() -> ParagonicResult<()> {
             database::initialize().await?;
         }
     }
-    
+
     tracing::info!("Paragonic backend initialized successfully");
     Ok(())
 }
 
 /// Start the MCP HTTP server
-/// 
+///
 /// This function starts the MCP HTTP server that implements the MCP 2025-06-18
 /// Streamable HTTP transport specification.
 pub async fn start_http_server(addr: &str) -> ParagonicResult<()> {
     tracing::info!("Starting MCP HTTP server on {}", addr);
-    
+
     let server = http_server::McpHttpServer::new();
     let app = server.create_router();
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("MCP HTTP server listening on {}", addr);
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
 // NOTE: Legacy TCP JSON-RPC server has been removed in favor of MCP HTTP transport
 
 /// Shutdown the Paragonic backend
-/// 
+///
 /// This function gracefully shuts down all services and closes connections.
 pub async fn shutdown() -> ParagonicResult<()> {
     tracing::info!("Shutting down Paragonic backend");
-    
+
     // Close database connections
     database::shutdown().await?;
-    
+
     tracing::info!("Paragonic backend shutdown complete");
     Ok(())
 }
@@ -166,7 +168,7 @@ mod tests {
         // Verify that logging is working by checking if we can log a message
         // This is a basic test - in a real scenario we might capture log output
         tracing::info!("Test log message from initialize test");
-        
+
         // If we get here without panicking, logging is working
         assert!(true, "Logging should be functional after initialize()");
     }
@@ -177,8 +179,11 @@ mod tests {
         // Test that we can create the components without actually starting the server
         let config_manager = crate::config::ConfigManager::new();
         let ollama_client = crate::ollama::OllamaClient::from_config_manager(&config_manager);
-        assert!(ollama_client.is_ok(), "Ollama client creation should succeed");
-        
+        assert!(
+            ollama_client.is_ok(),
+            "Ollama client creation should succeed"
+        );
+
         // Test address parsing separately without starting server
         let addr = "127.0.0.1:0";
         let parsed = addr.parse::<std::net::SocketAddr>();
@@ -192,13 +197,14 @@ mod tests {
         let addr = "invalid:address";
         let parsed = addr.parse::<std::net::SocketAddr>();
         assert!(parsed.is_err(), "Invalid address should fail to parse");
-        
+
         let error = parsed.unwrap_err();
-        assert!(error.to_string().contains("invalid") || error.to_string().contains("parse"),
-            "Error should be related to address parsing, got: {:?}", error);
+        assert!(
+            error.to_string().contains("invalid") || error.to_string().contains("parse"),
+            "Error should be related to address parsing, got: {:?}",
+            error
+        );
     }
-
-
 
     /// Test that shutdown() function completes successfully
     #[tokio::test]
@@ -287,7 +293,7 @@ mod tests {
         // Test that shutdown() can be called and logs messages
         // This is a basic test - in a real scenario we might capture log output
         let result = shutdown().await;
-        
+
         // Regardless of success/failure, the function should have logged messages
         // If we get here without panicking, logging is working
         match result {
@@ -300,24 +306,22 @@ mod tests {
                 }
             }
         }
-        
+
         assert!(true, "shutdown() should log appropriate messages");
     }
 }
 
+mod content_association_tests;
 #[cfg(test)]
 mod iragl_database_tests;
 #[cfg(test)]
 mod iragl_processor_tests;
-mod content_association_tests;
-mod optimization_engine_tests;
 mod iragl_search_engine_tests;
+mod optimization_engine_tests;
 // Legacy RPC-based tests removed from compilation
 // mod rpc_integration_tests;
 // mod integration_tests;
 #[cfg(test)]
-mod pattern_database_tests;
-#[cfg(test)]
 mod pattern_database_operations_tests;
-
- 
+#[cfg(test)]
+mod pattern_database_tests;

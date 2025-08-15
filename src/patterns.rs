@@ -1,12 +1,12 @@
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use crate::error::{ParagonicError, ParagonicResult};
-use tera::{Tera, Context};
-use std::path::PathBuf;
-use std::collections::HashMap;
 use crate::patterns::database::PatternRepository;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use tera::{Context, Tera};
+use uuid::Uuid;
 
 /// Categories for system patterns
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -69,24 +69,24 @@ impl PatternRelationship {
         // Validate that source and target are different
         if source_pattern_id == target_pattern_id {
             return Err(ParagonicError::InvalidInput(
-                "Source and target pattern IDs must be different".to_string()
+                "Source and target pattern IDs must be different".to_string(),
             ));
         }
-        
+
         // Validate strength is between 0.0 and 1.0
         if strength < 0.0 || strength > 1.0 {
             return Err(ParagonicError::InvalidInput(
-                "Strength must be between 0.0 and 1.0".to_string()
+                "Strength must be between 0.0 and 1.0".to_string(),
             ));
         }
-        
+
         // Validate description is not empty
         if description.trim().is_empty() {
             return Err(ParagonicError::InvalidInput(
-                "Description cannot be empty".to_string()
+                "Description cannot be empty".to_string(),
             ));
         }
-        
+
         Ok(Self {
             id: Uuid::new_v4(),
             source_pattern_id,
@@ -129,21 +129,29 @@ impl SystemPattern {
     ) -> ParagonicResult<Self> {
         // Validate required fields
         if name.trim().is_empty() {
-            return Err(ParagonicError::InvalidInput("Pattern name cannot be empty".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Pattern name cannot be empty".to_string(),
+            ));
         }
-        
+
         if description.trim().is_empty() {
-            return Err(ParagonicError::InvalidInput("Pattern description cannot be empty".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Pattern description cannot be empty".to_string(),
+            ));
         }
-        
+
         if !workflow_steps.is_array() {
-            return Err(ParagonicError::InvalidInput("Workflow steps must be an array".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Workflow steps must be an array".to_string(),
+            ));
         }
-        
+
         if !output_format.is_object() {
-            return Err(ParagonicError::InvalidInput("Output format must be an object".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Output format must be an object".to_string(),
+            ));
         }
-        
+
         let now = Utc::now();
         Ok(Self {
             id: Uuid::new_v4(),
@@ -186,9 +194,11 @@ impl PatternExecution {
     ) -> ParagonicResult<Self> {
         // Validate that pattern_id is not null
         if pattern_id.is_nil() {
-            return Err(ParagonicError::InvalidInput("Pattern ID cannot be null".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Pattern ID cannot be null".to_string(),
+            ));
         }
-        
+
         let now = Utc::now();
         Ok(Self {
             id: Uuid::new_v4(),
@@ -209,69 +219,78 @@ impl PatternExecution {
         // Check if execution is already in progress
         if self.success {
             return Err(ParagonicError::InvalidInput(
-                "Cannot start execution that is already completed".to_string()
+                "Cannot start execution that is already completed".to_string(),
             ));
         }
-        
+
         // Check if execution is already started
         if self.execution_duration_ms.is_some() {
             return Err(ParagonicError::InvalidInput(
-                "Execution is already in progress".to_string()
+                "Execution is already in progress".to_string(),
             ));
         }
-        
+
         // Mark execution as started by setting a placeholder duration
         self.execution_duration_ms = Some(0);
         Ok(())
     }
 
     /// Completes execution tracking and records results
-    pub fn complete_execution(&mut self, success: bool, output_result: Option<Value>, error_message: Option<String>) -> ParagonicResult<()> {
+    pub fn complete_execution(
+        &mut self,
+        success: bool,
+        output_result: Option<Value>,
+        error_message: Option<String>,
+    ) -> ParagonicResult<()> {
         // Check if execution has been started
         if self.execution_duration_ms.is_none() {
             return Err(ParagonicError::InvalidInput(
-                "Cannot complete execution that has not been started".to_string()
+                "Cannot complete execution that has not been started".to_string(),
             ));
         }
-        
+
         // Check if execution is already completed
         if self.success {
             return Err(ParagonicError::InvalidInput(
-                "Execution is already completed".to_string()
+                "Execution is already completed".to_string(),
             ));
         }
-        
+
         // Set execution results
         self.success = success;
         self.output_result = output_result;
         self.error_message = error_message;
-        
+
         // Calculate execution duration (placeholder for now)
         self.execution_duration_ms = Some(100); // Mock duration
-        
+
         Ok(())
     }
 
     /// Updates execution with intermediate results
-    pub fn update_execution(&mut self, output_result: Option<Value>, error_message: Option<String>) -> ParagonicResult<()> {
+    pub fn update_execution(
+        &mut self,
+        output_result: Option<Value>,
+        error_message: Option<String>,
+    ) -> ParagonicResult<()> {
         // Check if execution has been started
         if self.execution_duration_ms.is_none() {
             return Err(ParagonicError::InvalidInput(
-                "Cannot update execution that has not been started".to_string()
+                "Cannot update execution that has not been started".to_string(),
             ));
         }
-        
+
         // Check if execution is already completed
         if self.success {
             return Err(ParagonicError::InvalidInput(
-                "Cannot update execution that is already completed".to_string()
+                "Cannot update execution that is already completed".to_string(),
             ));
         }
-        
+
         // Update output and error message
         self.output_result = output_result;
         self.error_message = error_message;
-        
+
         Ok(())
     }
 
@@ -313,13 +332,19 @@ impl PatternTemplate {
         template_content: String,
     ) -> ParagonicResult<Self> {
         if name.trim().is_empty() {
-            return Err(ParagonicError::InvalidInput("Pattern template name cannot be empty".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Pattern template name cannot be empty".to_string(),
+            ));
         }
         if description.trim().is_empty() {
-            return Err(ParagonicError::InvalidInput("Pattern template description cannot be empty".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Pattern template description cannot be empty".to_string(),
+            ));
         }
         if template_content.trim().is_empty() {
-            return Err(ParagonicError::InvalidInput("Pattern template content cannot be empty".to_string()));
+            return Err(ParagonicError::InvalidInput(
+                "Pattern template content cannot be empty".to_string(),
+            ));
         }
 
         let now = Utc::now();
@@ -336,38 +361,34 @@ impl PatternTemplate {
     /// Renders the template with the provided context
     pub fn render(&self, context: &serde_json::Value) -> ParagonicResult<String> {
         let mut tera = Tera::default();
-        
+
         // Add the template to Tera
         let template_name = "pattern_template";
         tera.add_raw_template(template_name, &self.template_content)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to parse template: {}", e)
-            ))?;
-        
+            .map_err(|e| {
+                ParagonicError::InvalidInput(format!("Failed to parse template: {}", e))
+            })?;
+
         // Create Tera context from JSON
-        let tera_context = Context::from_serialize(context)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to create template context: {}", e)
-            ))?;
-        
+        let tera_context = Context::from_serialize(context).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to create template context: {}", e))
+        })?;
+
         // Render the template
-        Ok(tera.render(template_name, &tera_context)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to render template: {}", e)
-            ))?)
+        Ok(tera.render(template_name, &tera_context).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to render template: {}", e))
+        })?)
     }
 
     /// Validates the template syntax without rendering
     pub fn validate_syntax(&self) -> ParagonicResult<()> {
         let mut tera = Tera::default();
-        
+
         // Try to add the template to Tera - this will fail if syntax is invalid
         let template_name = "validation_template";
         tera.add_raw_template(template_name, &self.template_content)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Invalid template syntax: {}", e)
-            ))?;
-        
+            .map_err(|e| ParagonicError::InvalidInput(format!("Invalid template syntax: {}", e)))?;
+
         Ok(())
     }
 }
@@ -449,11 +470,12 @@ impl PatternRegistry {
     pub fn register_pattern(&mut self, pattern: SystemPattern) -> ParagonicResult<()> {
         // Validate pattern name uniqueness
         if self.patterns.iter().any(|p| p.name == pattern.name) {
-            return Err(ParagonicError::InvalidInput(
-                format!("Pattern with name '{}' already exists", pattern.name)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Pattern with name '{}' already exists",
+                pattern.name
+            )));
         }
-        
+
         self.patterns.push(pattern);
         Ok(())
     }
@@ -469,8 +491,13 @@ impl PatternRegistry {
     }
 
     /// Lists all patterns with optional filtering
-    pub fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> Vec<&SystemPattern> {
-        self.patterns.iter()
+    pub fn list_patterns(
+        &self,
+        category: Option<PatternCategory>,
+        meta_level: Option<MetaLevel>,
+    ) -> Vec<&SystemPattern> {
+        self.patterns
+            .iter()
             .filter(|p| {
                 if let Some(ref cat) = category {
                     if p.category != *cat {
@@ -491,41 +518,52 @@ impl PatternRegistry {
     pub fn remove_pattern(&mut self, id: Uuid) -> ParagonicResult<()> {
         let initial_len = self.patterns.len();
         self.patterns.retain(|p| p.id != id);
-        
+
         if self.patterns.len() == initial_len {
-            return Err(ParagonicError::InvalidInput(
-                format!("Pattern with id '{}' not found", id)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Pattern with id '{}' not found",
+                id
+            )));
         }
-        
+
         Ok(())
     }
 
     /// Adds a relationship between two patterns
     pub fn add_relationship(&mut self, relationship: PatternRelationship) -> ParagonicResult<()> {
         // Validate that both patterns exist
-        if !self.patterns.iter().any(|p| p.id == relationship.source_pattern_id) {
-            return Err(ParagonicError::InvalidInput(
-                format!("Source pattern with id '{}' does not exist", relationship.source_pattern_id)
-            ));
+        if !self
+            .patterns
+            .iter()
+            .any(|p| p.id == relationship.source_pattern_id)
+        {
+            return Err(ParagonicError::InvalidInput(format!(
+                "Source pattern with id '{}' does not exist",
+                relationship.source_pattern_id
+            )));
         }
-        if !self.patterns.iter().any(|p| p.id == relationship.target_pattern_id) {
-            return Err(ParagonicError::InvalidInput(
-                format!("Target pattern with id '{}' does not exist", relationship.target_pattern_id)
-            ));
+        if !self
+            .patterns
+            .iter()
+            .any(|p| p.id == relationship.target_pattern_id)
+        {
+            return Err(ParagonicError::InvalidInput(format!(
+                "Target pattern with id '{}' does not exist",
+                relationship.target_pattern_id
+            )));
         }
-        
+
         // Check for duplicate relationships
         if self.relationships.iter().any(|r| {
-            r.source_pattern_id == relationship.source_pattern_id &&
-            r.target_pattern_id == relationship.target_pattern_id &&
-            r.relationship_type == relationship.relationship_type
+            r.source_pattern_id == relationship.source_pattern_id
+                && r.target_pattern_id == relationship.target_pattern_id
+                && r.relationship_type == relationship.relationship_type
         }) {
             return Err(ParagonicError::InvalidInput(
-                "Relationship already exists".to_string()
+                "Relationship already exists".to_string(),
             ));
         }
-        
+
         self.relationships.push(relationship);
         Ok(())
     }
@@ -534,24 +572,28 @@ impl PatternRegistry {
     pub fn remove_relationship(&mut self, id: Uuid) -> ParagonicResult<()> {
         let initial_len = self.relationships.len();
         self.relationships.retain(|r| r.id != id);
-        
+
         if self.relationships.len() == initial_len {
-            return Err(ParagonicError::InvalidInput(
-                format!("Relationship with id '{}' not found", id)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Relationship with id '{}' not found",
+                id
+            )));
         }
-        
+
         Ok(())
     }
 
     /// Executes a pattern with the given context
-    pub fn execute_pattern(&mut self, pattern_name: &str, context: Option<Value>) -> ParagonicResult<PatternExecution> {
+    pub fn execute_pattern(
+        &mut self,
+        pattern_name: &str,
+        context: Option<Value>,
+    ) -> ParagonicResult<PatternExecution> {
         // Find the pattern by name
-        let pattern = self.get_pattern_by_name(pattern_name)
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found", pattern_name)
-            ))?;
-        
+        let pattern = self.get_pattern_by_name(pattern_name).ok_or_else(|| {
+            ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+        })?;
+
         // Create a new execution
         let mut execution = PatternExecution::new(
             pattern.id,
@@ -559,31 +601,29 @@ impl PatternRegistry {
             TriggerType::Manual,
             context.clone(),
         )?;
-        
+
         // Start execution
         execution.start_execution()?;
-        
+
         // Execute the actual pattern logic
         let result = PatternExecutionEngine::execute_pattern_workflow_internal(&pattern, &context)?;
-        
+
         // Complete execution with the actual result
-        execution.complete_execution(
-            true,
-            Some(result),
-            None
-        )?;
-        
+        execution.complete_execution(true, Some(result), None)?;
+
         Ok(execution)
     }
 
     /// Returns execution history for a specific pattern
-    pub fn get_execution_history(&self, pattern_name: &str) -> ParagonicResult<Vec<&PatternExecution>> {
+    pub fn get_execution_history(
+        &self,
+        pattern_name: &str,
+    ) -> ParagonicResult<Vec<&PatternExecution>> {
         // Find the pattern by name
-        let pattern = self.get_pattern_by_name(pattern_name)
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found", pattern_name)
-            ))?;
-        
+        let pattern = self.get_pattern_by_name(pattern_name).ok_or_else(|| {
+            ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+        })?;
+
         // For now, we'll return an empty vector since we don't store executions yet
         // In a full implementation, this would query a database or storage
         Ok(Vec::new())
@@ -592,11 +632,10 @@ impl PatternRegistry {
     /// Returns statistics for a specific pattern
     pub fn get_pattern_statistics(&self, pattern_name: &str) -> ParagonicResult<PatternStatistics> {
         // Find the pattern by name
-        let _pattern = self.get_pattern_by_name(pattern_name)
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found", pattern_name)
-            ))?;
-        
+        let _pattern = self.get_pattern_by_name(pattern_name).ok_or_else(|| {
+            ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+        })?;
+
         // For now, we'll return default statistics since we don't store executions yet
         // In a full implementation, this would calculate from execution history
         Ok(PatternStatistics {
@@ -634,16 +673,14 @@ impl PatternBootstrap {
     /// Load core patterns from repository files
     pub fn load_core_patterns(&self) -> ParagonicResult<Vec<SystemPattern>> {
         let core_patterns_file = self.patterns_dir.join("bootstrap/core_patterns.json");
-        let content = std::fs::read_to_string(core_patterns_file)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to read core patterns file: {}", e)
-            ))?;
-        
-        let data: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to parse core patterns JSON: {}", e)
-            ))?;
-        
+        let content = std::fs::read_to_string(core_patterns_file).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to read core patterns file: {}", e))
+        })?;
+
+        let data: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to parse core patterns JSON: {}", e))
+        })?;
+
         // Parse and validate patterns
         let patterns = self.parse_patterns(data)?;
         Ok(patterns)
@@ -651,39 +688,45 @@ impl PatternBootstrap {
 
     /// Parse patterns from JSON data
     fn parse_patterns(&self, data: serde_json::Value) -> ParagonicResult<Vec<SystemPattern>> {
-        let patterns_array = data.get("patterns")
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Missing 'patterns' field in JSON data".to_string()
-            ))?
+        let patterns_array = data
+            .get("patterns")
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Missing 'patterns' field in JSON data".to_string())
+            })?
             .as_array()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "'patterns' field must be an array".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("'patterns' field must be an array".to_string())
+            })?;
+
         let mut patterns = Vec::new();
         for pattern_data in patterns_array {
             let pattern = self.parse_single_pattern(pattern_data)?;
             patterns.push(pattern);
         }
-        
+
         Ok(patterns)
     }
 
     /// Parse a single pattern from JSON data
-    fn parse_single_pattern(&self, pattern_data: &serde_json::Value) -> ParagonicResult<SystemPattern> {
-        let name = pattern_data.get("name")
+    fn parse_single_pattern(
+        &self,
+        pattern_data: &serde_json::Value,
+    ) -> ParagonicResult<SystemPattern> {
+        let name = pattern_data
+            .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Pattern missing 'name' field".to_string()
-            ))?
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Pattern missing 'name' field".to_string())
+            })?
             .to_string();
-        
-        let category_str = pattern_data.get("category")
+
+        let category_str = pattern_data
+            .get("category")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Pattern missing 'category' field".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Pattern missing 'category' field".to_string())
+            })?;
+
         let category = match category_str {
             "SessionManagement" => PatternCategory::SessionManagement,
             "SelfReflection" => PatternCategory::SelfReflection,
@@ -691,46 +734,56 @@ impl PatternBootstrap {
             "ActivityLabeling" => PatternCategory::ActivityLabeling,
             "ProgressTracking" => PatternCategory::ProgressTracking,
             "KnowledgeExtraction" => PatternCategory::KnowledgeExtraction,
-            _ => return Err(ParagonicError::InvalidInput(
-                format!("Invalid category: {}", category_str)
-            )),
+            _ => {
+                return Err(ParagonicError::InvalidInput(format!(
+                    "Invalid category: {}",
+                    category_str
+                )))
+            }
         };
-        
-        let meta_level_str = pattern_data.get("meta_level")
+
+        let meta_level_str = pattern_data
+            .get("meta_level")
             .and_then(|v| v.as_str())
             .unwrap_or("System");
-        
+
         let meta_level = match meta_level_str {
             "System" => MetaLevel::System,
             "User" => MetaLevel::User,
             "Hybrid" => MetaLevel::Hybrid,
-            _ => return Err(ParagonicError::InvalidInput(
-                format!("Invalid meta_level: {}", meta_level_str)
-            )),
+            _ => {
+                return Err(ParagonicError::InvalidInput(format!(
+                    "Invalid meta_level: {}",
+                    meta_level_str
+                )))
+            }
         };
-        
-        let description = pattern_data.get("description")
+
+        let description = pattern_data
+            .get("description")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Pattern missing 'description' field".to_string()
-            ))?
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Pattern missing 'description' field".to_string())
+            })?
             .to_string();
-        
-        let workflow_steps = pattern_data.get("workflow_steps")
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Pattern missing 'workflow_steps' field".to_string()
-            ))?
+
+        let workflow_steps = pattern_data
+            .get("workflow_steps")
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Pattern missing 'workflow_steps' field".to_string())
+            })?
             .clone();
-        
-        let output_format = pattern_data.get("output_format")
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Pattern missing 'output_format' field".to_string()
-            ))?
+
+        let output_format = pattern_data
+            .get("output_format")
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Pattern missing 'output_format' field".to_string())
+            })?
             .clone();
-        
+
         let trigger_conditions = pattern_data.get("trigger_conditions").cloned();
         let success_criteria = pattern_data.get("success_criteria").cloned();
-        
+
         SystemPattern::new(
             name,
             category,
@@ -746,16 +799,14 @@ impl PatternBootstrap {
     /// Load pattern templates from repository files
     pub fn load_templates(&self) -> ParagonicResult<Vec<PatternTemplate>> {
         let templates_file = self.patterns_dir.join("bootstrap/pattern_templates.json");
-        let content = std::fs::read_to_string(templates_file)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to read templates file: {}", e)
-            ))?;
-        
-        let data: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to parse templates JSON: {}", e)
-            ))?;
-        
+        let content = std::fs::read_to_string(templates_file).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to read templates file: {}", e))
+        })?;
+
+        let data: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to parse templates JSON: {}", e))
+        })?;
+
         // Parse and validate templates
         let templates = self.parse_templates(data)?;
         Ok(templates)
@@ -763,153 +814,181 @@ impl PatternBootstrap {
 
     /// Parse templates from JSON data
     fn parse_templates(&self, data: serde_json::Value) -> ParagonicResult<Vec<PatternTemplate>> {
-        let templates_array = data.get("templates")
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Missing 'templates' field in JSON data".to_string()
-            ))?
+        let templates_array = data
+            .get("templates")
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Missing 'templates' field in JSON data".to_string())
+            })?
             .as_array()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "'templates' field must be an array".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("'templates' field must be an array".to_string())
+            })?;
+
         let mut templates = Vec::new();
         for template_data in templates_array {
             let template = self.parse_single_template(template_data)?;
             templates.push(template);
         }
-        
+
         Ok(templates)
     }
 
     /// Parse a single template from JSON data
-    fn parse_single_template(&self, template_data: &serde_json::Value) -> ParagonicResult<PatternTemplate> {
-        let name = template_data.get("name")
+    fn parse_single_template(
+        &self,
+        template_data: &serde_json::Value,
+    ) -> ParagonicResult<PatternTemplate> {
+        let name = template_data
+            .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Template missing 'name' field".to_string()
-            ))?
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Template missing 'name' field".to_string())
+            })?
             .to_string();
-        
-        let description = template_data.get("description")
+
+        let description = template_data
+            .get("description")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Template missing 'description' field".to_string()
-            ))?
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Template missing 'description' field".to_string())
+            })?
             .to_string();
-        
-        let template_file = template_data.get("template_file")
+
+        let template_file = template_data
+            .get("template_file")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Template missing 'template_file' field".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Template missing 'template_file' field".to_string())
+            })?;
+
         // Load the actual template content from file
         let template_path = self.patterns_dir.join("templates").join(template_file);
-        let template_content = std::fs::read_to_string(template_path)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to read template file '{}': {}", template_file, e)
-            ))?;
-        
-        PatternTemplate::new(
-            name,
-            description,
-            template_content,
-        )
+        let template_content = std::fs::read_to_string(template_path).map_err(|e| {
+            ParagonicError::InvalidInput(format!(
+                "Failed to read template file '{}': {}",
+                template_file, e
+            ))
+        })?;
+
+        PatternTemplate::new(name, description, template_content)
     }
 
     /// Load pattern relationships from repository files
     pub fn load_relationships(&self) -> ParagonicResult<Vec<PatternRelationship>> {
-        let relationships_file = self.patterns_dir.join("bootstrap/pattern_relationships.json");
-        let content = std::fs::read_to_string(relationships_file)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to read relationships file: {}", e)
-            ))?;
-        
-        let data: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| ParagonicError::InvalidInput(
-                format!("Failed to parse relationships JSON: {}", e)
-            ))?;
-        
+        let relationships_file = self
+            .patterns_dir
+            .join("bootstrap/pattern_relationships.json");
+        let content = std::fs::read_to_string(relationships_file).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to read relationships file: {}", e))
+        })?;
+
+        let data: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+            ParagonicError::InvalidInput(format!("Failed to parse relationships JSON: {}", e))
+        })?;
+
         // Parse and validate relationships
         let relationships = self.parse_relationships(data)?;
         Ok(relationships)
     }
 
     /// Parse relationships from JSON data
-    fn parse_relationships(&self, data: serde_json::Value) -> ParagonicResult<Vec<PatternRelationship>> {
-        let relationships_array = data.get("relationships")
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Missing 'relationships' field in JSON data".to_string()
-            ))?
+    fn parse_relationships(
+        &self,
+        data: serde_json::Value,
+    ) -> ParagonicResult<Vec<PatternRelationship>> {
+        let relationships_array = data
+            .get("relationships")
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput(
+                    "Missing 'relationships' field in JSON data".to_string(),
+                )
+            })?
             .as_array()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "'relationships' field must be an array".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("'relationships' field must be an array".to_string())
+            })?;
+
         let mut relationships = Vec::new();
         for relationship_data in relationships_array {
             let relationship = self.parse_single_relationship(relationship_data)?;
             relationships.push(relationship);
         }
-        
+
         Ok(relationships)
     }
 
     /// Parse a single relationship from JSON data
-    fn parse_single_relationship(&self, relationship_data: &serde_json::Value) -> ParagonicResult<PatternRelationship> {
-        let source_pattern_id_str = relationship_data.get("source_pattern_id")
+    fn parse_single_relationship(
+        &self,
+        relationship_data: &serde_json::Value,
+    ) -> ParagonicResult<PatternRelationship> {
+        let source_pattern_id_str = relationship_data
+            .get("source_pattern_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Relationship missing 'source_pattern_id' field".to_string()
-            ))?;
-        
-        let target_pattern_id_str = relationship_data.get("target_pattern_id")
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput(
+                    "Relationship missing 'source_pattern_id' field".to_string(),
+                )
+            })?;
+
+        let target_pattern_id_str = relationship_data
+            .get("target_pattern_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Relationship missing 'target_pattern_id' field".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput(
+                    "Relationship missing 'target_pattern_id' field".to_string(),
+                )
+            })?;
+
         // Convert string IDs to UUIDs (for now, we'll use a simple hash-based approach)
         // In a real implementation, these would be actual UUIDs from the database
         let source_pattern_id = Uuid::new_v4(); // Generate new UUID for now
         let target_pattern_id = Uuid::new_v4(); // Generate new UUID for now
-        
-        let relationship_type_str = relationship_data.get("relationship_type")
+
+        let relationship_type_str = relationship_data
+            .get("relationship_type")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Relationship missing 'relationship_type' field".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput(
+                    "Relationship missing 'relationship_type' field".to_string(),
+                )
+            })?;
+
         let relationship_type = match relationship_type_str {
             "DependsOn" => RelationshipType::DependsOn,
             "Triggers" => RelationshipType::Triggers,
             "Enhances" => RelationshipType::Enhances,
             "Conflicts" => RelationshipType::Conflicts,
             "Replaces" => RelationshipType::Replaces,
-            _ => return Err(ParagonicError::InvalidInput(
-                format!("Unknown relationship type: {}", relationship_type_str)
-            )),
+            _ => {
+                return Err(ParagonicError::InvalidInput(format!(
+                    "Unknown relationship type: {}",
+                    relationship_type_str
+                )))
+            }
         };
-        
-        let description = relationship_data.get("description")
+
+        let description = relationship_data
+            .get("description")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Relationship missing 'description' field".to_string()
-            ))?
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Relationship missing 'description' field".to_string())
+            })?
             .to_string();
-        
-        let strength = relationship_data.get("strength")
+
+        let strength = relationship_data
+            .get("strength")
             .and_then(|v| v.as_f64())
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Relationship missing 'strength' field".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                ParagonicError::InvalidInput("Relationship missing 'strength' field".to_string())
+            })?;
+
         if strength < 0.0 || strength > 1.0 {
             return Err(ParagonicError::InvalidInput(
-                "Relationship strength must be between 0.0 and 1.0".to_string()
+                "Relationship strength must be between 0.0 and 1.0".to_string(),
             ));
         }
-        
+
         PatternRelationship::new(
             source_pattern_id,
             target_pattern_id,
@@ -925,10 +1004,10 @@ impl PatternBootstrap {
         let patterns = self.load_core_patterns()?;
         let templates = self.load_templates()?;
         let relationships = self.load_relationships()?;
-        
+
         // Create a new pattern registry
         let mut registry = PatternRegistry::new();
-        
+
         // Register all patterns and build a mapping from name to UUID
         let mut pattern_id_map = std::collections::HashMap::new();
         for pattern in patterns {
@@ -937,7 +1016,7 @@ impl PatternBootstrap {
             pattern_id_map.insert(pattern_name, pattern_id);
             registry.register_pattern(pattern)?;
         }
-        
+
         // Add all relationships, mapping string IDs to actual pattern UUIDs
         for relationship in relationships {
             // For now, we'll skip relationships that reference non-existent patterns
@@ -945,10 +1024,10 @@ impl PatternBootstrap {
             // and either create the referenced patterns or skip invalid relationships
             let _ = registry.add_relationship(relationship);
         }
-        
+
         // Note: Templates are not stored in the registry yet
         // They would be stored separately or integrated into patterns
-        
+
         Ok(registry)
     }
 }
@@ -979,7 +1058,7 @@ impl PatternExecutionEngine {
             max_concurrent_executions: 5, // Default limit
             active_executions: std::collections::HashMap::new(),
             execution_timeout_ms: None,
-            max_retries: 0, // Default: no retries
+            max_retries: 0,       // Default: no retries
             retry_delay_ms: 1000, // Default: 1 second
         }
     }
@@ -992,7 +1071,7 @@ impl PatternExecutionEngine {
             max_concurrent_executions: max_concurrent,
             active_executions: std::collections::HashMap::new(),
             execution_timeout_ms: None,
-            max_retries: 0, // Default: no retries
+            max_retries: 0,       // Default: no retries
             retry_delay_ms: 1000, // Default: 1 second
         }
     }
@@ -1010,10 +1089,9 @@ impl PatternExecutionEngine {
         context: Option<Value>,
     ) -> ParagonicResult<PatternExecution> {
         // Find the pattern
-        let pattern = registry.get_pattern_by_name(pattern_name)
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found", pattern_name)
-            ))?;
+        let pattern = registry.get_pattern_by_name(pattern_name).ok_or_else(|| {
+            ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+        })?;
 
         // Create execution
         let mut execution = PatternExecution::new(
@@ -1072,11 +1150,8 @@ impl PatternExecutionEngine {
         context: Option<Value>,
         priority: u32,
     ) {
-        let queued_execution = QueuedPatternExecution::new(
-            pattern_name.to_string(),
-            context,
-            priority,
-        );
+        let queued_execution =
+            QueuedPatternExecution::new(pattern_name.to_string(), context, priority);
         self.execution_queue.push(queued_execution);
     }
 
@@ -1086,21 +1161,30 @@ impl PatternExecutionEngine {
     }
 
     /// Processes the execution queue
-    pub fn process_execution_queue(&mut self, registry: &mut PatternRegistry) -> ParagonicResult<Vec<PatternExecution>> {
+    pub fn process_execution_queue(
+        &mut self,
+        registry: &mut PatternRegistry,
+    ) -> ParagonicResult<Vec<PatternExecution>> {
         let mut executions = Vec::new();
 
         // Sort queue by priority (highest first)
-        self.execution_queue.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.execution_queue
+            .sort_by(|a, b| b.priority.cmp(&a.priority));
 
         // Process queue items
-        while !self.execution_queue.is_empty() && self.active_executions.len() < self.max_concurrent_executions {
+        while !self.execution_queue.is_empty()
+            && self.active_executions.len() < self.max_concurrent_executions
+        {
             let queued = self.execution_queue.remove(0);
-            
+
             match self.execute_pattern(registry, &queued.pattern_name, queued.context) {
                 Ok(execution) => executions.push(execution),
                 Err(e) => {
                     // Log error but continue processing other items
-                    eprintln!("Failed to execute pattern '{}': {:?}", queued.pattern_name, e);
+                    eprintln!(
+                        "Failed to execute pattern '{}': {:?}",
+                        queued.pattern_name, e
+                    );
                 }
             }
         }
@@ -1144,14 +1228,17 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the actual pattern workflow
-    fn execute_pattern_workflow(&self, pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_pattern_workflow(
+        &self,
+        pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // For now, we'll implement a basic workflow execution
         // In a full implementation, this would parse and execute the workflow_steps
-        
-        let workflow_steps = pattern.workflow_steps.as_array()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Workflow steps must be an array".to_string()
-            ))?;
+
+        let workflow_steps = pattern.workflow_steps.as_array().ok_or_else(|| {
+            ParagonicError::InvalidInput("Workflow steps must be an array".to_string())
+        })?;
 
         let mut result = json!({
             "pattern_name": pattern.name,
@@ -1205,9 +1292,9 @@ impl PatternExecutionEngine {
         }
 
         // If we get here, all retries failed
-        Err(last_error.unwrap_or_else(|| ParagonicError::Internal(
-            "Pattern execution failed after all retries".to_string()
-        )))
+        Err(last_error.unwrap_or_else(|| {
+            ParagonicError::Internal("Pattern execution failed after all retries".to_string())
+        }))
     }
 
     /// Executes the pattern workflow with timeout handling
@@ -1244,28 +1331,31 @@ impl PatternExecutionEngine {
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 // Thread is still running, but we've timed out
                 // Note: In a production system, you might want to implement thread cancellation
-                Err(ParagonicError::Timeout(
-                    format!("Pattern execution timed out after {}ms", timeout_ms)
-                ))
+                Err(ParagonicError::Timeout(format!(
+                    "Pattern execution timed out after {}ms",
+                    timeout_ms
+                )))
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 // Thread finished but didn't send a result (shouldn't happen)
                 Err(ParagonicError::Internal(
-                    "Pattern execution thread disconnected unexpectedly".to_string()
+                    "Pattern execution thread disconnected unexpectedly".to_string(),
                 ))
             }
         }
     }
 
     /// Internal method to execute pattern workflow (used by timeout wrapper)
-    fn execute_pattern_workflow_internal(pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_pattern_workflow_internal(
+        pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // For now, we'll implement a basic workflow execution
         // In a full implementation, this would parse and execute the workflow_steps
-        
-        let workflow_steps = pattern.workflow_steps.as_array()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Workflow steps must be an array".to_string()
-            ))?;
+
+        let workflow_steps = pattern.workflow_steps.as_array().ok_or_else(|| {
+            ParagonicError::InvalidInput("Workflow steps must be an array".to_string())
+        })?;
 
         // Check if this is a "slow" pattern (for testing purposes)
         if pattern.name == "SlowPattern" {
@@ -1280,22 +1370,23 @@ impl PatternExecutionEngine {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
             use std::time::SystemTime;
-            
+
             let now = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            
+
             let mut hasher = DefaultHasher::new();
             now.hash(&mut hasher);
             let hash = hasher.finish();
-            
+
             // Use the hash to determine if this attempt should fail
             if hash % 10 < 7 {
                 // Fail ~70% of the time
-                return Err(ParagonicError::Internal(
-                    format!("Flaky pattern failed on attempt with hash {}", hash)
-                ));
+                return Err(ParagonicError::Internal(format!(
+                    "Flaky pattern failed on attempt with hash {}",
+                    hash
+                )));
             }
         }
 
@@ -1345,12 +1436,16 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the Session Summary Generation pattern
-    fn execute_session_summary_generation(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_session_summary_generation(
+        _pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // Extract session data from context
-        let session_data = context.as_ref()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Session data context is required for Session Summary Generation".to_string()
-            ))?;
+        let session_data = context.as_ref().ok_or_else(|| {
+            ParagonicError::InvalidInput(
+                "Session data context is required for Session Summary Generation".to_string(),
+            )
+        })?;
 
         // Step 1: Analyze session data
         let session_analysis = Self::analyze_session_data(session_data)?;
@@ -1368,7 +1463,8 @@ impl PatternExecutionEngine {
         let key_points = Self::extract_key_points(session_data, &session_analysis)?;
 
         // Step 6: Suggest next actions
-        let next_actions = Self::suggest_next_actions(session_data, &session_analysis, &key_decisions)?;
+        let next_actions =
+            Self::suggest_next_actions(session_data, &session_analysis, &key_decisions)?;
 
         // Format the result according to the pattern's output format
         let result = json!({
@@ -1390,12 +1486,16 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the Activity Labeling pattern
-    fn execute_activity_labeling(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_activity_labeling(
+        _pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // Extract session data from context
-        let session_data = context.as_ref()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Session data context is required for Activity Labeling".to_string()
-            ))?;
+        let session_data = context.as_ref().ok_or_else(|| {
+            ParagonicError::InvalidInput(
+                "Session data context is required for Activity Labeling".to_string(),
+            )
+        })?;
 
         // Step 1: Analyze context
         let context_analysis = Self::analyze_activity_context(session_data)?;
@@ -1413,7 +1513,8 @@ impl PatternExecutionEngine {
         let complexity = Self::determine_activity_complexity(session_data, &context_analysis)?;
 
         // Step 6: Generate activity label
-        let activity_label = Self::generate_activity_label(&activity_type, &technologies, &scope, &complexity)?;
+        let activity_label =
+            Self::generate_activity_label(&activity_type, &technologies, &scope, &complexity)?;
 
         // Format the result according to the pattern's output format
         let result = json!({
@@ -1430,26 +1531,31 @@ impl PatternExecutionEngine {
     /// Analyzes session data to extract insights
     fn analyze_session_data(session_data: &Value) -> ParagonicResult<Value> {
         let empty_vec = Vec::new();
-        let messages = session_data.get("messages")
+        let messages = session_data
+            .get("messages")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let activities = session_data.get("activities")
+        let activities = session_data
+            .get("activities")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let duration_minutes = session_data.get("session_duration_minutes")
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
         let message_count = messages.len() as u64;
 
         // Analyze conversation patterns
-        let user_messages = messages.iter()
+        let user_messages = messages
+            .iter()
             .filter(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("user"))
             .count();
 
-        let assistant_messages = messages.iter()
+        let assistant_messages = messages
+            .iter()
             .filter(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("assistant"))
             .count();
 
@@ -1459,15 +1565,15 @@ impl PatternExecutionEngine {
             "assistant_messages": assistant_messages,
             "session_duration_minutes": duration_minutes,
             "activities_count": activities.len(),
-            "conversation_ratio": if user_messages > 0 { 
-                assistant_messages as f64 / user_messages as f64 
-            } else { 
-                0.0 
+            "conversation_ratio": if user_messages > 0 {
+                assistant_messages as f64 / user_messages as f64
+            } else {
+                0.0
             },
-            "messages_per_minute": if duration_minutes > 0 { 
-                message_count as f64 / duration_minutes as f64 
-            } else { 
-                0.0 
+            "messages_per_minute": if duration_minutes > 0 {
+                message_count as f64 / duration_minutes as f64
+            } else {
+                0.0
             }
         });
 
@@ -1475,9 +1581,13 @@ impl PatternExecutionEngine {
     }
 
     /// Extracts key decisions from session data
-    fn extract_key_decisions(session_data: &Value, _analysis: &Value) -> ParagonicResult<Vec<String>> {
+    fn extract_key_decisions(
+        session_data: &Value,
+        _analysis: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let empty_vec = Vec::new();
-        let messages = session_data.get("messages")
+        let messages = session_data
+            .get("messages")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
@@ -1485,21 +1595,32 @@ impl PatternExecutionEngine {
 
         // Look for decision-related keywords in messages
         let decision_keywords = [
-            "decided", "chose", "selected", "opted", "determined", "resolved",
-            "agreed", "concluded", "settled", "picked", "went with", "chose to"
+            "decided",
+            "chose",
+            "selected",
+            "opted",
+            "determined",
+            "resolved",
+            "agreed",
+            "concluded",
+            "settled",
+            "picked",
+            "went with",
+            "chose to",
         ];
 
         for message in messages {
             if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
                 let content_lower = content.to_lowercase();
-                
+
                 for keyword in &decision_keywords {
                     if content_lower.contains(keyword) {
                         // Extract the sentence containing the decision
-                        let sentences: Vec<&str> = content.split('.')
+                        let sentences: Vec<&str> = content
+                            .split('.')
                             .filter(|s| s.to_lowercase().contains(keyword))
                             .collect();
-                        
+
                         for sentence in sentences {
                             let trimmed = sentence.trim();
                             if !trimmed.is_empty() && !decisions.contains(&trimmed.to_string()) {
@@ -1530,7 +1651,8 @@ impl PatternExecutionEngine {
     /// Identifies files that were modified during the session
     fn identify_files_modified(session_data: &Value) -> ParagonicResult<Vec<String>> {
         let empty_vec = Vec::new();
-        let files = session_data.get("files_modified")
+        let files = session_data
+            .get("files_modified")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
@@ -1545,17 +1667,24 @@ impl PatternExecutionEngine {
     }
 
     /// Generates a comprehensive summary text
-    fn generate_summary_text(session_data: &Value, _analysis: &Value, key_decisions: &[String]) -> ParagonicResult<String> {
-        let duration_minutes = session_data.get("session_duration_minutes")
+    fn generate_summary_text(
+        session_data: &Value,
+        _analysis: &Value,
+        key_decisions: &[String],
+    ) -> ParagonicResult<String> {
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = session_data.get("message_count")
+        let message_count = session_data
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
         let empty_vec = Vec::new();
-        let activities = session_data.get("activities")
+        let activities = session_data
+            .get("activities")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
@@ -1569,7 +1698,8 @@ impl PatternExecutionEngine {
 
         // Activities performed
         if !activities.is_empty() {
-            let activity_list: Vec<String> = activities.iter()
+            let activity_list: Vec<String> = activities
+                .iter()
                 .filter_map(|a| a.as_str().map(|s| s.to_string()))
                 .collect();
             summary_parts.push(format!("Activities included: {}", activity_list.join(", ")));
@@ -1595,7 +1725,9 @@ impl PatternExecutionEngine {
         let mut key_points = Vec::new();
 
         // Extract insights from analysis
-        if let Some(conversation_ratio) = analysis.get("conversation_ratio").and_then(|v| v.as_f64()) {
+        if let Some(conversation_ratio) =
+            analysis.get("conversation_ratio").and_then(|v| v.as_f64())
+        {
             if conversation_ratio > 1.5 {
                 key_points.push("High assistant engagement with detailed responses".to_string());
             } else if conversation_ratio < 0.5 {
@@ -1603,11 +1735,14 @@ impl PatternExecutionEngine {
             }
         }
 
-        if let Some(messages_per_minute) = analysis.get("messages_per_minute").and_then(|v| v.as_f64()) {
+        if let Some(messages_per_minute) =
+            analysis.get("messages_per_minute").and_then(|v| v.as_f64())
+        {
             if messages_per_minute > 2.0 {
                 key_points.push("Fast-paced conversation with rapid iteration".to_string());
             } else if messages_per_minute < 0.5 {
-                key_points.push("Thoughtful, deliberate session with careful consideration".to_string());
+                key_points
+                    .push("Thoughtful, deliberate session with careful consideration".to_string());
             }
         }
 
@@ -1616,7 +1751,10 @@ impl PatternExecutionEngine {
             if activities.iter().any(|a| a.as_str() == Some("testing")) {
                 key_points.push("Testing and validation were key components".to_string());
             }
-            if activities.iter().any(|a| a.as_str() == Some("documentation")) {
+            if activities
+                .iter()
+                .any(|a| a.as_str() == Some("documentation"))
+            {
                 key_points.push("Documentation and knowledge sharing occurred".to_string());
             }
             if activities.iter().any(|a| a.as_str() == Some("code_review")) {
@@ -1634,17 +1772,20 @@ impl PatternExecutionEngine {
     }
 
     /// Suggests next actions based on session analysis
-    fn suggest_next_actions(session_data: &Value, _analysis: &Value, _key_decisions: &[String]) -> ParagonicResult<Vec<String>> {
+    fn suggest_next_actions(
+        session_data: &Value,
+        _analysis: &Value,
+        _key_decisions: &[String],
+    ) -> ParagonicResult<Vec<String>> {
         let mut next_actions = Vec::new();
 
         // Suggest based on activities performed
         if let Some(activities) = session_data.get("activities").and_then(|v| v.as_array()) {
-            let activity_list: Vec<&str> = activities.iter()
-                .filter_map(|a| a.as_str())
-                .collect();
+            let activity_list: Vec<&str> = activities.iter().filter_map(|a| a.as_str()).collect();
 
             if activity_list.contains(&"testing") {
-                next_actions.push("Continue testing and validation of implemented features".to_string());
+                next_actions
+                    .push("Continue testing and validation of implemented features".to_string());
             }
             if activity_list.contains(&"documentation") {
                 next_actions.push("Review and refine documentation for clarity".to_string());
@@ -1676,23 +1817,28 @@ impl PatternExecutionEngine {
     /// Extracts relevant context from session data
     fn extract_session_context(session_data: &Value) -> ParagonicResult<Value> {
         let empty_vec = Vec::new();
-        let messages = session_data.get("messages")
+        let messages = session_data
+            .get("messages")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let files_modified = session_data.get("files_modified")
+        let files_modified = session_data
+            .get("files_modified")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let technologies = session_data.get("technologies")
+        let technologies = session_data
+            .get("technologies")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let duration_minutes = session_data.get("session_duration_minutes")
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = session_data.get("message_count")
+        let message_count = session_data
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -1709,18 +1855,38 @@ impl PatternExecutionEngine {
     }
 
     /// Identifies key points from session context
-    fn identify_context_key_points(session_data: &Value, extracted_context: &Value) -> ParagonicResult<Vec<String>> {
+    fn identify_context_key_points(
+        session_data: &Value,
+        extracted_context: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let mut key_points = Vec::new();
 
         // Extract key points from messages
         if let Some(messages) = session_data.get("messages").and_then(|v| v.as_array()) {
             for message in messages {
                 if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-                    if content.contains("implement") || content.contains("add") || content.contains("create") {
-                        key_points.push(format!("Development task: {}", content.split_whitespace().take(5).collect::<Vec<_>>().join(" ")));
+                    if content.contains("implement")
+                        || content.contains("add")
+                        || content.contains("create")
+                    {
+                        key_points.push(format!(
+                            "Development task: {}",
+                            content
+                                .split_whitespace()
+                                .take(5)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        ));
                     }
                     if content.contains("test") || content.contains("debug") {
-                        key_points.push(format!("Testing/debugging: {}", content.split_whitespace().take(5).collect::<Vec<_>>().join(" ")));
+                        key_points.push(format!(
+                            "Testing/debugging: {}",
+                            content
+                                .split_whitespace()
+                                .take(5)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        ));
                     }
                 }
             }
@@ -1736,7 +1902,10 @@ impl PatternExecutionEngine {
         }
 
         // Add file modification key points
-        if let Some(files) = session_data.get("files_modified").and_then(|v| v.as_array()) {
+        if let Some(files) = session_data
+            .get("files_modified")
+            .and_then(|v| v.as_array())
+        {
             for file in files {
                 if let Some(file_str) = file.as_str() {
                     key_points.push(format!("File modified: {}", file_str));
@@ -1750,7 +1919,10 @@ impl PatternExecutionEngine {
     }
 
     /// Categorizes information by type
-    fn categorize_context_information(session_data: &Value, _extracted_context: &Value) -> ParagonicResult<Value> {
+    fn categorize_context_information(
+        session_data: &Value,
+        _extracted_context: &Value,
+    ) -> ParagonicResult<Value> {
         let mut technical = Vec::new();
         let mut business = Vec::new();
         let mut decisions = Vec::new();
@@ -1759,11 +1931,20 @@ impl PatternExecutionEngine {
         if let Some(messages) = session_data.get("messages").and_then(|v| v.as_array()) {
             for message in messages {
                 if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-                    if content.contains("Rust") || content.contains("code") || content.contains("implementation") {
+                    if content.contains("Rust")
+                        || content.contains("code")
+                        || content.contains("implementation")
+                    {
                         technical.push(content.to_string());
-                    } else if content.contains("business") || content.contains("user") || content.contains("requirement") {
+                    } else if content.contains("business")
+                        || content.contains("user")
+                        || content.contains("requirement")
+                    {
                         business.push(content.to_string());
-                    } else if content.contains("decide") || content.contains("choose") || content.contains("select") {
+                    } else if content.contains("decide")
+                        || content.contains("choose")
+                        || content.contains("select")
+                    {
                         decisions.push(content.to_string());
                     }
                 }
@@ -1780,16 +1961,23 @@ impl PatternExecutionEngine {
     }
 
     /// Generates a concise context summary
-    fn generate_context_summary(extracted_context: &Value, key_points: &[String], categories: &Value) -> ParagonicResult<String> {
-        let duration_minutes = extracted_context.get("duration_minutes")
+    fn generate_context_summary(
+        extracted_context: &Value,
+        key_points: &[String],
+        categories: &Value,
+    ) -> ParagonicResult<String> {
+        let duration_minutes = extracted_context
+            .get("duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = extracted_context.get("message_count")
+        let message_count = extracted_context
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let has_technical_content = extracted_context.get("has_technical_content")
+        let has_technical_content = extracted_context
+            .get("has_technical_content")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -1850,45 +2038,55 @@ impl PatternExecutionEngine {
 
     /// Collects progress metrics from session data
     fn collect_progress_metrics(session_data: &Value) -> ParagonicResult<Value> {
-        let duration_minutes = session_data.get("session_duration_minutes")
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = session_data.get("message_count")
+        let message_count = session_data
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
         let empty_vec = Vec::new();
-        let files_modified = session_data.get("files_modified")
+        let files_modified = session_data
+            .get("files_modified")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let technologies = session_data.get("technologies")
+        let technologies = session_data
+            .get("technologies")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let activities = session_data.get("activities")
+        let activities = session_data
+            .get("activities")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
         let empty_map = serde_json::Map::new();
-        let progress_metrics = session_data.get("progress_metrics")
+        let progress_metrics = session_data
+            .get("progress_metrics")
             .and_then(|v| v.as_object())
             .unwrap_or(&empty_map);
 
-        let lines_added = progress_metrics.get("lines_added")
+        let lines_added = progress_metrics
+            .get("lines_added")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let lines_removed = progress_metrics.get("lines_removed")
+        let lines_removed = progress_metrics
+            .get("lines_removed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let tests_passed = progress_metrics.get("tests_passed")
+        let tests_passed = progress_metrics
+            .get("tests_passed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let tests_failed = progress_metrics.get("tests_failed")
+        let tests_failed = progress_metrics
+            .get("tests_failed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -1914,18 +2112,24 @@ impl PatternExecutionEngine {
     }
 
     /// Analyzes progress trends over time
-    fn analyze_progress_trends(_session_data: &Value, metrics: &Value) -> ParagonicResult<Vec<String>> {
+    fn analyze_progress_trends(
+        _session_data: &Value,
+        metrics: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let mut trends = Vec::new();
 
-        let net_lines = metrics.get("net_lines")
+        let net_lines = metrics
+            .get("net_lines")
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
-        let test_success_rate = metrics.get("test_success_rate")
+        let test_success_rate = metrics
+            .get("test_success_rate")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let files_modified_count = metrics.get("files_modified_count")
+        let files_modified_count = metrics
+            .get("files_modified_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -1951,18 +2155,24 @@ impl PatternExecutionEngine {
     }
 
     /// Identifies achieved milestones
-    fn identify_achieved_milestones(_session_data: &Value, metrics: &Value) -> ParagonicResult<Vec<String>> {
+    fn identify_achieved_milestones(
+        _session_data: &Value,
+        metrics: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let mut milestones = Vec::new();
 
-        let lines_added = metrics.get("lines_added")
+        let lines_added = metrics
+            .get("lines_added")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let tests_passed = metrics.get("tests_passed")
+        let tests_passed = metrics
+            .get("tests_passed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let files_modified_count = metrics.get("files_modified_count")
+        let files_modified_count = metrics
+            .get("files_modified_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -1986,20 +2196,27 @@ impl PatternExecutionEngine {
     }
 
     /// Calculates development velocity
-    fn calculate_development_velocity(session_data: &Value, metrics: &Value) -> ParagonicResult<f64> {
-        let duration_minutes = session_data.get("session_duration_minutes")
+    fn calculate_development_velocity(
+        session_data: &Value,
+        metrics: &Value,
+    ) -> ParagonicResult<f64> {
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(1); // Avoid division by zero
 
-        let lines_added = metrics.get("lines_added")
+        let lines_added = metrics
+            .get("lines_added")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let tests_passed = metrics.get("tests_passed")
+        let tests_passed = metrics
+            .get("tests_passed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let files_modified_count = metrics.get("files_modified_count")
+        let files_modified_count = metrics
+            .get("files_modified_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -2011,18 +2228,26 @@ impl PatternExecutionEngine {
     }
 
     /// Generates a comprehensive progress report
-    fn generate_progress_report(metrics: &Value, trends: &[String], milestones: &[String], velocity: f64) -> ParagonicResult<String> {
+    fn generate_progress_report(
+        metrics: &Value,
+        trends: &[String],
+        milestones: &[String],
+        velocity: f64,
+    ) -> ParagonicResult<String> {
         let mut report_parts = Vec::new();
 
-        let duration_minutes = metrics.get("session_duration_minutes")
+        let duration_minutes = metrics
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let lines_added = metrics.get("lines_added")
+        let lines_added = metrics
+            .get("lines_added")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let tests_passed = metrics.get("tests_passed")
+        let tests_passed = metrics
+            .get("tests_passed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -2047,28 +2272,34 @@ impl PatternExecutionEngine {
 
     /// Analyzes performance metrics from session data
     fn analyze_performance_metrics(session_data: &Value) -> ParagonicResult<Value> {
-        let duration_minutes = session_data.get("session_duration_minutes")
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = session_data.get("message_count")
+        let message_count = session_data
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
         let empty_map = serde_json::Map::new();
-        let performance_metrics = session_data.get("performance_metrics")
+        let performance_metrics = session_data
+            .get("performance_metrics")
             .and_then(|v| v.as_object())
             .unwrap_or(&empty_map);
 
-        let response_time_avg = performance_metrics.get("response_time_avg")
+        let response_time_avg = performance_metrics
+            .get("response_time_avg")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let accuracy_score = performance_metrics.get("accuracy_score")
+        let accuracy_score = performance_metrics
+            .get("accuracy_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let user_satisfaction = performance_metrics.get("user_satisfaction")
+        let user_satisfaction = performance_metrics
+            .get("user_satisfaction")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
@@ -2086,22 +2317,29 @@ impl PatternExecutionEngine {
     }
 
     /// Identifies strengths based on session data and performance analysis
-    fn identify_strengths(session_data: &Value, performance_analysis: &Value) -> ParagonicResult<Vec<String>> {
+    fn identify_strengths(
+        session_data: &Value,
+        performance_analysis: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let mut strengths = Vec::new();
 
-        let overall_performance = performance_analysis.get("overall_performance")
+        let overall_performance = performance_analysis
+            .get("overall_performance")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let efficiency_score = performance_analysis.get("efficiency_score")
+        let efficiency_score = performance_analysis
+            .get("efficiency_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let accuracy_score = performance_analysis.get("accuracy_score")
+        let accuracy_score = performance_analysis
+            .get("accuracy_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let user_satisfaction = performance_analysis.get("user_satisfaction")
+        let user_satisfaction = performance_analysis
+            .get("user_satisfaction")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
@@ -2129,22 +2367,29 @@ impl PatternExecutionEngine {
     }
 
     /// Identifies weaknesses based on session data and performance analysis
-    fn identify_weaknesses(session_data: &Value, performance_analysis: &Value) -> ParagonicResult<Vec<String>> {
+    fn identify_weaknesses(
+        session_data: &Value,
+        performance_analysis: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let mut weaknesses = Vec::new();
 
-        let overall_performance = performance_analysis.get("overall_performance")
+        let overall_performance = performance_analysis
+            .get("overall_performance")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let efficiency_score = performance_analysis.get("efficiency_score")
+        let efficiency_score = performance_analysis
+            .get("efficiency_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let accuracy_score = performance_analysis.get("accuracy_score")
+        let accuracy_score = performance_analysis
+            .get("accuracy_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let user_satisfaction = performance_analysis.get("user_satisfaction")
+        let user_satisfaction = performance_analysis
+            .get("user_satisfaction")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
@@ -2172,18 +2417,26 @@ impl PatternExecutionEngine {
     }
 
     /// Generates insights based on session data, performance analysis, strengths, and weaknesses
-    fn generate_insights(session_data: &Value, performance_analysis: &Value, strengths: &[String], weaknesses: &[String]) -> ParagonicResult<Vec<String>> {
+    fn generate_insights(
+        session_data: &Value,
+        performance_analysis: &Value,
+        strengths: &[String],
+        weaknesses: &[String],
+    ) -> ParagonicResult<Vec<String>> {
         let mut insights = Vec::new();
 
-        let duration_minutes = performance_analysis.get("duration_minutes")
+        let duration_minutes = performance_analysis
+            .get("duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = performance_analysis.get("message_count")
+        let message_count = performance_analysis
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let overall_performance = performance_analysis.get("overall_performance")
+        let overall_performance = performance_analysis
+            .get("overall_performance")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
@@ -2216,18 +2469,25 @@ impl PatternExecutionEngine {
     }
 
     /// Suggests improvements based on session data, performance analysis, and weaknesses
-    fn suggest_improvements(session_data: &Value, performance_analysis: &Value, weaknesses: &[String]) -> ParagonicResult<Vec<String>> {
+    fn suggest_improvements(
+        session_data: &Value,
+        performance_analysis: &Value,
+        weaknesses: &[String],
+    ) -> ParagonicResult<Vec<String>> {
         let mut improvements = Vec::new();
 
-        let overall_performance = performance_analysis.get("overall_performance")
+        let overall_performance = performance_analysis
+            .get("overall_performance")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let efficiency_score = performance_analysis.get("efficiency_score")
+        let efficiency_score = performance_analysis
+            .get("efficiency_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let accuracy_score = performance_analysis.get("accuracy_score")
+        let accuracy_score = performance_analysis
+            .get("accuracy_score")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
@@ -2255,16 +2515,25 @@ impl PatternExecutionEngine {
     }
 
     /// Generates a comprehensive reflection summary
-    fn generate_reflection_summary(performance_analysis: &Value, strengths: &[String], weaknesses: &[String], insights: &[String], improvements: &[String]) -> ParagonicResult<String> {
-        let overall_performance = performance_analysis.get("overall_performance")
+    fn generate_reflection_summary(
+        performance_analysis: &Value,
+        strengths: &[String],
+        weaknesses: &[String],
+        insights: &[String],
+        improvements: &[String],
+    ) -> ParagonicResult<String> {
+        let overall_performance = performance_analysis
+            .get("overall_performance")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let duration_minutes = performance_analysis.get("duration_minutes")
+        let duration_minutes = performance_analysis
+            .get("duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let message_count = performance_analysis.get("message_count")
+        let message_count = performance_analysis
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -2296,7 +2565,10 @@ impl PatternExecutionEngine {
         }
 
         if !improvements.is_empty() {
-            summary_parts.push(format!("Recommended improvements: {}", improvements.join(", ")));
+            summary_parts.push(format!(
+                "Recommended improvements: {}",
+                improvements.join(", ")
+            ));
         }
 
         let summary = summary_parts.join(". ");
@@ -2306,23 +2578,28 @@ impl PatternExecutionEngine {
     /// Analyzes activity context from session data
     fn analyze_activity_context(session_data: &Value) -> ParagonicResult<Value> {
         let empty_vec = Vec::new();
-        let activities = session_data.get("activities")
+        let activities = session_data
+            .get("activities")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let files_modified = session_data.get("files_modified")
+        let files_modified = session_data
+            .get("files_modified")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let technologies = session_data.get("technologies")
+        let technologies = session_data
+            .get("technologies")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let current_file = session_data.get("current_file")
+        let current_file = session_data
+            .get("current_file")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        let mode = session_data.get("mode")
+        let mode = session_data
+            .get("mode")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
@@ -2344,15 +2621,18 @@ impl PatternExecutionEngine {
     /// Identifies the primary activity type
     fn identify_activity_type(session_data: &Value, analysis: &Value) -> ParagonicResult<String> {
         let empty_vec = Vec::new();
-        let activities = session_data.get("activities")
+        let activities = session_data
+            .get("activities")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let is_editing = analysis.get("is_editing")
+        let is_editing = analysis
+            .get("is_editing")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        let has_file_operations = analysis.get("has_file_operations")
+        let has_file_operations = analysis
+            .get("has_file_operations")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -2366,7 +2646,10 @@ impl PatternExecutionEngine {
         if activities.iter().any(|a| a.as_str() == Some("debugging")) {
             return Ok("debugging".to_string());
         }
-        if activities.iter().any(|a| a.as_str() == Some("documentation")) {
+        if activities
+            .iter()
+            .any(|a| a.as_str() == Some("documentation"))
+        {
             return Ok("documentation".to_string());
         }
         if activities.iter().any(|a| a.as_str() == Some("code_review")) {
@@ -2385,7 +2668,10 @@ impl PatternExecutionEngine {
     }
 
     /// Extracts technologies from session data
-    fn extract_technologies(session_data: &Value, _analysis: &Value) -> ParagonicResult<Vec<String>> {
+    fn extract_technologies(
+        session_data: &Value,
+        _analysis: &Value,
+    ) -> ParagonicResult<Vec<String>> {
         let mut technologies = Vec::new();
 
         // Get explicit technologies from context
@@ -2398,7 +2684,10 @@ impl PatternExecutionEngine {
         }
 
         // Infer technologies from file extensions
-        if let Some(files) = session_data.get("files_modified").and_then(|v| v.as_array()) {
+        if let Some(files) = session_data
+            .get("files_modified")
+            .and_then(|v| v.as_array())
+        {
             for file in files {
                 if let Some(file_str) = file.as_str() {
                     if file_str.ends_with(".rs") && !technologies.contains(&"rust".to_string()) {
@@ -2410,10 +2699,13 @@ impl PatternExecutionEngine {
                     if file_str.ends_with(".py") && !technologies.contains(&"python".to_string()) {
                         technologies.push("python".to_string());
                     }
-                    if file_str.ends_with(".js") && !technologies.contains(&"javascript".to_string()) {
+                    if file_str.ends_with(".js")
+                        && !technologies.contains(&"javascript".to_string())
+                    {
                         technologies.push("javascript".to_string());
                     }
-                    if file_str.ends_with(".md") && !technologies.contains(&"markdown".to_string()) {
+                    if file_str.ends_with(".md") && !technologies.contains(&"markdown".to_string())
+                    {
                         technologies.push("markdown".to_string());
                     }
                 }
@@ -2421,7 +2713,9 @@ impl PatternExecutionEngine {
         }
 
         // Add common development tools
-        if technologies.contains(&"rust".to_string()) && !technologies.contains(&"cargo".to_string()) {
+        if technologies.contains(&"rust".to_string())
+            && !technologies.contains(&"cargo".to_string())
+        {
             technologies.push("cargo".to_string());
         }
         if !technologies.contains(&"neovim".to_string()) {
@@ -2432,16 +2726,22 @@ impl PatternExecutionEngine {
     }
 
     /// Determines the scope of the activity
-    fn determine_activity_scope(_session_data: &Value, analysis: &Value) -> ParagonicResult<String> {
-        let files_modified_count = analysis.get("files_modified_count")
+    fn determine_activity_scope(
+        _session_data: &Value,
+        analysis: &Value,
+    ) -> ParagonicResult<String> {
+        let files_modified_count = analysis
+            .get("files_modified_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let activities_count = analysis.get("activities_count")
+        let activities_count = analysis
+            .get("activities_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        let technologies_count = analysis.get("technologies_count")
+        let technologies_count = analysis
+            .get("technologies_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -2455,13 +2755,18 @@ impl PatternExecutionEngine {
     }
 
     /// Determines the complexity of the activity
-    fn determine_activity_complexity(session_data: &Value, analysis: &Value) -> ParagonicResult<String> {
+    fn determine_activity_complexity(
+        session_data: &Value,
+        analysis: &Value,
+    ) -> ParagonicResult<String> {
         let empty_vec = Vec::new();
-        let activities = session_data.get("activities")
+        let activities = session_data
+            .get("activities")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
-        let technologies_count = analysis.get("technologies_count")
+        let technologies_count = analysis
+            .get("technologies_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
@@ -2487,7 +2792,12 @@ impl PatternExecutionEngine {
     }
 
     /// Generates a descriptive activity label
-    fn generate_activity_label(activity_type: &str, technologies: &[String], scope: &str, complexity: &str) -> ParagonicResult<String> {
+    fn generate_activity_label(
+        activity_type: &str,
+        technologies: &[String],
+        scope: &str,
+        complexity: &str,
+    ) -> ParagonicResult<String> {
         let mut label_parts = Vec::new();
 
         // Add activity type
@@ -2528,12 +2838,16 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the Self-Reflection pattern
-    fn execute_self_reflection(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_self_reflection(
+        _pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // Extract session data from context
-        let session_data = context.as_ref()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Session data context is required for Self-Reflection".to_string()
-            ))?;
+        let session_data = context.as_ref().ok_or_else(|| {
+            ParagonicError::InvalidInput(
+                "Session data context is required for Self-Reflection".to_string(),
+            )
+        })?;
 
         // Step 1: Analyze performance
         let performance_analysis = Self::analyze_performance_metrics(session_data)?;
@@ -2545,13 +2859,21 @@ impl PatternExecutionEngine {
         let weaknesses = Self::identify_weaknesses(session_data, &performance_analysis)?;
 
         // Step 4: Generate insights
-        let insights = Self::generate_insights(session_data, &performance_analysis, &strengths, &weaknesses)?;
+        let insights =
+            Self::generate_insights(session_data, &performance_analysis, &strengths, &weaknesses)?;
 
         // Step 5: Suggest improvements
-        let improvements = Self::suggest_improvements(session_data, &performance_analysis, &weaknesses)?;
+        let improvements =
+            Self::suggest_improvements(session_data, &performance_analysis, &weaknesses)?;
 
         // Generate reflection summary
-        let reflection_summary = Self::generate_reflection_summary(&performance_analysis, &strengths, &weaknesses, &insights, &improvements)?;
+        let reflection_summary = Self::generate_reflection_summary(
+            &performance_analysis,
+            &strengths,
+            &weaknesses,
+            &insights,
+            &improvements,
+        )?;
 
         let result = json!({
             "performance_analysis": performance_analysis,
@@ -2566,12 +2888,16 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the Context Summarization pattern
-    fn execute_context_summarization(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_context_summarization(
+        _pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // Extract session data from context
-        let session_data = context.as_ref()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Session data context is required for Context Summarization".to_string()
-            ))?;
+        let session_data = context.as_ref().ok_or_else(|| {
+            ParagonicError::InvalidInput(
+                "Session data context is required for Context Summarization".to_string(),
+            )
+        })?;
 
         // Step 1: Extract context
         let extracted_context = Self::extract_session_context(session_data)?;
@@ -2604,12 +2930,16 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the Progress Tracking pattern
-    fn execute_progress_tracking(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_progress_tracking(
+        _pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // Extract session data from context
-        let session_data = context.as_ref()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Session data context is required for Progress Tracking".to_string()
-            ))?;
+        let session_data = context.as_ref().ok_or_else(|| {
+            ParagonicError::InvalidInput(
+                "Session data context is required for Progress Tracking".to_string(),
+            )
+        })?;
 
         // Step 1: Collect metrics
         let metrics = Self::collect_progress_metrics(session_data)?;
@@ -2638,12 +2968,16 @@ impl PatternExecutionEngine {
     }
 
     /// Executes the Knowledge Extraction pattern
-    fn execute_knowledge_extraction(_pattern: &SystemPattern, context: &Option<Value>) -> ParagonicResult<Value> {
+    fn execute_knowledge_extraction(
+        _pattern: &SystemPattern,
+        context: &Option<Value>,
+    ) -> ParagonicResult<Value> {
         // Extract session data from context
-        let session_data = context.as_ref()
-            .ok_or_else(|| ParagonicError::InvalidInput(
-                "Session data context is required for Knowledge Extraction".to_string()
-            ))?;
+        let session_data = context.as_ref().ok_or_else(|| {
+            ParagonicError::InvalidInput(
+                "Session data context is required for Knowledge Extraction".to_string(),
+            )
+        })?;
 
         // Step 1: Identify knowledge patterns
         let knowledge_patterns = Self::identify_knowledge_patterns(session_data)?;
@@ -2658,7 +2992,8 @@ impl PatternExecutionEngine {
         let tags = Self::apply_knowledge_tags(session_data, &knowledge_patterns)?;
 
         // Step 5: Assess reusability
-        let reusability_score = Self::assess_knowledge_reusability(session_data, &reusable_content)?;
+        let reusability_score =
+            Self::assess_knowledge_reusability(session_data, &reusable_content)?;
 
         let result = json!({
             "knowledge_patterns": knowledge_patterns,
@@ -2675,7 +3010,8 @@ impl PatternExecutionEngine {
     fn identify_knowledge_patterns(session_data: &Value) -> ParagonicResult<Vec<String>> {
         let mut patterns = Vec::new();
         let empty_vec = Vec::new();
-        let messages = session_data.get("messages")
+        let messages = session_data
+            .get("messages")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
@@ -2683,24 +3019,36 @@ impl PatternExecutionEngine {
         for message in messages {
             if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
                 let content_lower = content.to_lowercase();
-                
+
                 // Identify solution patterns
-                if content_lower.contains("solution") || content_lower.contains("fix") || content_lower.contains("resolve") {
+                if content_lower.contains("solution")
+                    || content_lower.contains("fix")
+                    || content_lower.contains("resolve")
+                {
                     patterns.push("Problem-Solution Pattern".to_string());
                 }
-                
+
                 // Identify best practice patterns
-                if content_lower.contains("best practice") || content_lower.contains("recommended") || content_lower.contains("should") {
+                if content_lower.contains("best practice")
+                    || content_lower.contains("recommended")
+                    || content_lower.contains("should")
+                {
                     patterns.push("Best Practice Pattern".to_string());
                 }
-                
+
                 // Identify workflow patterns
-                if content_lower.contains("workflow") || content_lower.contains("process") || content_lower.contains("steps") {
+                if content_lower.contains("workflow")
+                    || content_lower.contains("process")
+                    || content_lower.contains("steps")
+                {
                     patterns.push("Workflow Pattern".to_string());
                 }
-                
+
                 // Identify configuration patterns
-                if content_lower.contains("config") || content_lower.contains("setup") || content_lower.contains("installation") {
+                if content_lower.contains("config")
+                    || content_lower.contains("setup")
+                    || content_lower.contains("installation")
+                {
                     patterns.push("Configuration Pattern".to_string());
                 }
             }
@@ -2709,7 +3057,7 @@ impl PatternExecutionEngine {
         // Remove duplicates
         patterns.sort();
         patterns.dedup();
-        
+
         Ok(patterns)
     }
 
@@ -2717,7 +3065,8 @@ impl PatternExecutionEngine {
     fn extract_reusable_content(session_data: &Value) -> ParagonicResult<Vec<String>> {
         let mut reusable_content = Vec::new();
         let empty_vec = Vec::new();
-        let messages = session_data.get("messages")
+        let messages = session_data
+            .get("messages")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
@@ -2725,30 +3074,44 @@ impl PatternExecutionEngine {
             if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
                 // Extract code snippets
                 if content.contains("```") {
-                    let code_blocks: Vec<&str> = content.split("```")
+                    let code_blocks: Vec<&str> = content
+                        .split("```")
                         .filter(|block| !block.trim().is_empty())
                         .collect();
-                    
+
                     for block in code_blocks {
-                        if !block.starts_with("rust") && !block.starts_with("lua") && !block.starts_with("json") {
+                        if !block.starts_with("rust")
+                            && !block.starts_with("lua")
+                            && !block.starts_with("json")
+                        {
                             reusable_content.push(format!("Code snippet: {}", block.trim()));
                         }
                     }
                 }
-                
+
                 // Extract command examples
-                if content.contains("cargo") || content.contains("git") || content.contains("make") {
+                if content.contains("cargo") || content.contains("git") || content.contains("make")
+                {
                     let lines: Vec<&str> = content.split('\n').collect();
                     for line in lines {
-                        if line.trim().starts_with("cargo") || line.trim().starts_with("git") || line.trim().starts_with("make") {
+                        if line.trim().starts_with("cargo")
+                            || line.trim().starts_with("git")
+                            || line.trim().starts_with("make")
+                        {
                             reusable_content.push(format!("Command: {}", line.trim()));
                         }
                     }
                 }
-                
+
                 // Extract configuration examples
-                if content.contains("config") || content.contains("settings") || content.contains("options") {
-                    reusable_content.push(format!("Configuration: {}", content.split('\n').next().unwrap_or("").trim()));
+                if content.contains("config")
+                    || content.contains("settings")
+                    || content.contains("options")
+                {
+                    reusable_content.push(format!(
+                        "Configuration: {}",
+                        content.split('\n').next().unwrap_or("").trim()
+                    ));
                 }
             }
         }
@@ -2762,14 +3125,15 @@ impl PatternExecutionEngine {
     fn categorize_knowledge(session_data: &Value) -> ParagonicResult<Vec<String>> {
         let mut categories = Vec::new();
         let empty_vec = Vec::new();
-        let messages = session_data.get("messages")
+        let messages = session_data
+            .get("messages")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
         for message in messages {
             if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
                 let content_lower = content.to_lowercase();
-                
+
                 // Technical categories
                 if content_lower.contains("rust") || content_lower.contains("cargo") {
                     categories.push("Rust Development".to_string());
@@ -2783,7 +3147,7 @@ impl PatternExecutionEngine {
                 if content_lower.contains("api") || content_lower.contains("http") {
                     categories.push("API Development".to_string());
                 }
-                
+
                 // Process categories
                 if content_lower.contains("test") || content_lower.contains("testing") {
                     categories.push("Testing & Quality Assurance".to_string());
@@ -2800,14 +3164,17 @@ impl PatternExecutionEngine {
         // Remove duplicates
         categories.sort();
         categories.dedup();
-        
+
         Ok(categories)
     }
 
     /// Applies tags to knowledge for organization
-    fn apply_knowledge_tags(session_data: &Value, patterns: &[String]) -> ParagonicResult<Vec<String>> {
+    fn apply_knowledge_tags(
+        session_data: &Value,
+        patterns: &[String],
+    ) -> ParagonicResult<Vec<String>> {
         let mut tags = Vec::new();
-        
+
         // Add tags based on patterns
         for pattern in patterns {
             match pattern.as_str() {
@@ -2818,24 +3185,26 @@ impl PatternExecutionEngine {
                 _ => tags.push("general".to_string()),
             }
         }
-        
+
         // Add technology tags
         let empty_vec = Vec::new();
-        let technologies = session_data.get("technologies")
+        let technologies = session_data
+            .get("technologies")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
-            
+
         for tech in technologies {
             if let Some(tech_str) = tech.as_str() {
                 tags.push(format!("tech:{}", tech_str));
             }
         }
-        
+
         // Add complexity tags
-        let duration_minutes = session_data.get("session_duration_minutes")
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-            
+
         if duration_minutes > 60 {
             tags.push("complex".to_string());
         } else if duration_minutes > 30 {
@@ -2843,54 +3212,60 @@ impl PatternExecutionEngine {
         } else {
             tags.push("simple".to_string());
         }
-        
+
         Ok(tags)
     }
 
     /// Assesses the reusability of extracted knowledge
-    fn assess_knowledge_reusability(session_data: &Value, reusable_content: &[String]) -> ParagonicResult<f64> {
+    fn assess_knowledge_reusability(
+        session_data: &Value,
+        reusable_content: &[String],
+    ) -> ParagonicResult<f64> {
         let mut score = 0.0;
         let mut factors = 0;
-        
+
         // Factor 1: Amount of reusable content
         if !reusable_content.is_empty() {
             score += (reusable_content.len() as f64).min(5.0) / 5.0;
             factors += 1;
         }
-        
+
         // Factor 2: Session duration (longer sessions may have more valuable knowledge)
-        let duration_minutes = session_data.get("session_duration_minutes")
+        let duration_minutes = session_data
+            .get("session_duration_minutes")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         if duration_minutes > 0 {
             score += (duration_minutes as f64).min(120.0) / 120.0;
             factors += 1;
         }
-        
+
         // Factor 3: File modifications (indicates practical work)
         let empty_vec = Vec::new();
-        let files_modified = session_data.get("files_modified")
+        let files_modified = session_data
+            .get("files_modified")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
         if !files_modified.is_empty() {
             score += (files_modified.len() as f64).min(10.0) / 10.0;
             factors += 1;
         }
-        
+
         // Factor 4: Message count (indicates detailed discussion)
-        let message_count = session_data.get("message_count")
+        let message_count = session_data
+            .get("message_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         if message_count > 0 {
             score += (message_count as f64).min(20.0) / 20.0;
             factors += 1;
         }
-        
+
         // Calculate average score
         if factors > 0 {
             score = score / factors as f64;
         }
-        
+
         // Ensure score is between 0.0 and 1.0
         Ok(score.max(0.0).min(1.0))
     }
@@ -2929,23 +3304,27 @@ impl AutomaticTriggerSystem {
     ) -> ParagonicResult<()> {
         // Validate that the pattern exists
         if registry.get_pattern_by_name(pattern_name).is_none() {
-            return Err(ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found in registry", pattern_name)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Pattern '{}' not found in registry",
+                pattern_name
+            )));
         }
 
         // Check if pattern is already registered
-        if self.registered_patterns.iter().any(|p| p.pattern_name == pattern_name) {
-            return Err(ParagonicError::InvalidInput(
-                format!("Pattern '{}' is already registered for auto-triggering", pattern_name)
-            ));
+        if self
+            .registered_patterns
+            .iter()
+            .any(|p| p.pattern_name == pattern_name)
+        {
+            return Err(ParagonicError::InvalidInput(format!(
+                "Pattern '{}' is already registered for auto-triggering",
+                pattern_name
+            )));
         }
 
         // Register the pattern
-        let auto_trigger_pattern = AutoTriggerPattern::new(
-            pattern_name.to_string(),
-            trigger_conditions,
-        );
+        let auto_trigger_pattern =
+            AutoTriggerPattern::new(pattern_name.to_string(), trigger_conditions);
         self.registered_patterns.push(auto_trigger_pattern);
 
         Ok(())
@@ -2954,14 +3333,16 @@ impl AutomaticTriggerSystem {
     /// Removes a pattern from automatic triggering
     pub fn remove_pattern_from_auto_trigger(&mut self, pattern_name: &str) -> ParagonicResult<()> {
         let initial_len = self.registered_patterns.len();
-        self.registered_patterns.retain(|p| p.pattern_name != pattern_name);
-        
+        self.registered_patterns
+            .retain(|p| p.pattern_name != pattern_name);
+
         if self.registered_patterns.len() == initial_len {
-            return Err(ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found in auto-trigger registry", pattern_name)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Pattern '{}' not found in auto-trigger registry",
+                pattern_name
+            )));
         }
-        
+
         Ok(())
     }
 
@@ -2980,7 +3361,10 @@ impl AutomaticTriggerSystem {
         let mut triggered_patterns = Vec::new();
 
         for auto_trigger_pattern in &self.registered_patterns {
-            if self.evaluate_single_condition(&auto_trigger_pattern.trigger_conditions, session_context) {
+            if self.evaluate_single_condition(
+                &auto_trigger_pattern.trigger_conditions,
+                session_context,
+            ) {
                 triggered_patterns.push(auto_trigger_pattern.pattern_name.clone());
             }
         }
@@ -3019,22 +3403,30 @@ impl AutomaticTriggerSystem {
                 for (operator, value) in operator_obj {
                     match operator.as_str() {
                         "gte" => {
-                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                            if let (Some(condition_num), Some(context_num)) =
+                                (value.as_f64(), context.as_f64())
+                            {
                                 return context_num >= condition_num;
                             }
                         }
                         "lte" => {
-                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                            if let (Some(condition_num), Some(context_num)) =
+                                (value.as_f64(), context.as_f64())
+                            {
                                 return context_num <= condition_num;
                             }
                         }
                         "gt" => {
-                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                            if let (Some(condition_num), Some(context_num)) =
+                                (value.as_f64(), context.as_f64())
+                            {
                                 return context_num > condition_num;
                             }
                         }
                         "lt" => {
-                            if let (Some(condition_num), Some(context_num)) = (value.as_f64(), context.as_f64()) {
+                            if let (Some(condition_num), Some(context_num)) =
+                                (value.as_f64(), context.as_f64())
+                            {
                                 return context_num < condition_num;
                             }
                         }
@@ -3077,10 +3469,7 @@ impl ExecutionContextManager {
     pub fn new() -> Self {
         Self {
             stored_contexts: std::collections::HashMap::new(),
-            required_fields: vec![
-                "session_id".to_string(),
-                "user_id".to_string(),
-            ],
+            required_fields: vec!["session_id".to_string(), "user_id".to_string()],
         }
     }
 
@@ -3106,9 +3495,10 @@ impl ExecutionContextManager {
     ) -> ParagonicResult<Value> {
         // Validate that the pattern exists
         if registry.get_pattern_by_name(pattern_name).is_none() {
-            return Err(ParagonicError::InvalidInput(
-                format!("Pattern '{}' not found", pattern_name)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Pattern '{}' not found",
+                pattern_name
+            )));
         }
 
         // Validate the session data
@@ -3116,7 +3506,7 @@ impl ExecutionContextManager {
 
         // Create prepared context
         let mut prepared_context = session_data.clone();
-        
+
         // Add pattern-specific information
         prepared_context["pattern_name"] = json!(pattern_name);
         prepared_context["prepared_at"] = json!(chrono::Utc::now().to_rfc3339());
@@ -3130,22 +3520,25 @@ impl ExecutionContextManager {
         if let Value::Object(context_obj) = context {
             for required_field in &self.required_fields {
                 if !context_obj.contains_key(required_field) {
-                    return Err(ParagonicError::InvalidInput(
-                        format!("Missing required context field: {}", required_field)
-                    ));
+                    return Err(ParagonicError::InvalidInput(format!(
+                        "Missing required context field: {}",
+                        required_field
+                    )));
                 }
             }
             Ok(())
         } else {
             Err(ParagonicError::InvalidInput(
-                "Context must be a JSON object".to_string()
+                "Context must be a JSON object".to_string(),
             ))
         }
     }
 
     /// Enriches context with additional data
     pub fn enrich_context(&self, base_context: Value, enrichment_data: Value) -> Value {
-        if let (Value::Object(mut base_obj), Value::Object(enrichment_obj)) = (base_context.clone(), enrichment_data) {
+        if let (Value::Object(mut base_obj), Value::Object(enrichment_obj)) =
+            (base_context.clone(), enrichment_data)
+        {
             for (key, value) in enrichment_obj {
                 base_obj.insert(key, value);
             }
@@ -3226,7 +3619,10 @@ impl ResultProcessor {
     }
 
     /// Processes a pattern execution result
-    pub fn process_result(&mut self, execution: &PatternExecution) -> ParagonicResult<ProcessedResult> {
+    pub fn process_result(
+        &mut self,
+        execution: &PatternExecution,
+    ) -> ParagonicResult<ProcessedResult> {
         let processed = ProcessedResult {
             id: Uuid::new_v4(),
             execution_id: execution.id,
@@ -3256,15 +3652,14 @@ impl ResultProcessor {
     fn generate_summary(&self, execution: &PatternExecution) -> String {
         format!(
             "Pattern execution {} completed with success: {}",
-            execution.id,
-            execution.success
+            execution.id, execution.success
         )
     }
 
     /// Extracts key insights from execution result
     fn extract_key_insights(&self, execution: &PatternExecution) -> Vec<String> {
         let mut insights = Vec::new();
-        
+
         if let Some(output) = &execution.output_result {
             if let Some(key_points) = output.get("key_points") {
                 if let Some(points) = key_points.as_array() {
@@ -3283,7 +3678,7 @@ impl ResultProcessor {
     /// Extracts action items from execution result
     fn extract_action_items(&self, execution: &PatternExecution) -> Vec<String> {
         let mut actions = Vec::new();
-        
+
         if let Some(output) = &execution.output_result {
             if let Some(action_items) = output.get("action_items") {
                 if let Some(items) = action_items.as_array() {
@@ -3324,16 +3719,7 @@ impl Default for ResultProcessor {
     }
 }
 
-
-
-
-
-    /// Creates a new ResultProcessor with custom required fields
-
-
-
-
-
+/// Creates a new ResultProcessor with custom required fields
 
 /// Represents a specialized skill that can be mixed into workflows
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -3395,25 +3781,25 @@ impl Skill {
         // Validate inputs
         if name.trim().is_empty() {
             return Err(ParagonicError::InvalidInput(
-                "Skill name cannot be empty".to_string()
+                "Skill name cannot be empty".to_string(),
             ));
         }
 
         if description.trim().is_empty() {
             return Err(ParagonicError::InvalidInput(
-                "Skill description cannot be empty".to_string()
+                "Skill description cannot be empty".to_string(),
             ));
         }
 
         if knowledge_domains.is_empty() {
             return Err(ParagonicError::InvalidInput(
-                "Skill must have at least one knowledge domain".to_string()
+                "Skill must have at least one knowledge domain".to_string(),
             ));
         }
 
         if estimated_completion_time_minutes == 0 {
             return Err(ParagonicError::InvalidInput(
-                "Estimated completion time must be greater than 0".to_string()
+                "Estimated completion time must be greater than 0".to_string(),
             ));
         }
 
@@ -3440,7 +3826,7 @@ impl Skill {
 mod tests {
     use super::*;
     use serde_json::json;
-    
+
     // Thread-local variable for flaky pattern testing
     use std::cell::RefCell;
     thread_local! {
@@ -3458,7 +3844,7 @@ mod tests {
     fn test_pattern_execution_engine_execute_pattern() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create and register a test pattern
         let pattern = SystemPattern::new(
             "Test Execution Pattern".to_string(),
@@ -3471,19 +3857,20 @@ mod tests {
             json!({"result": "string", "status": "boolean"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Execute pattern through engine
         let context = json!({
             "user_id": "123",
             "session_data": {"key": "value"}
         });
-        
+
         let result = engine.execute_pattern(&mut registry, "Test Execution Pattern", Some(context));
         assert!(result.is_ok());
-        
+
         let execution = result.unwrap();
         assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
         assert!(execution.success);
@@ -3493,7 +3880,7 @@ mod tests {
     fn test_pattern_execution_engine_execute_nonexistent_pattern() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         let result = engine.execute_pattern(&mut registry, "Nonexistent Pattern", None);
         assert!(result.is_err());
         match result {
@@ -3508,7 +3895,7 @@ mod tests {
     fn test_pattern_execution_engine_batch_execution() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create multiple patterns
         let pattern1 = SystemPattern::new(
             "Pattern 1".to_string(),
@@ -3519,8 +3906,9 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern2 = SystemPattern::new(
             "Pattern 2".to_string(),
             PatternCategory::SelfReflection,
@@ -3530,18 +3918,19 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1).unwrap();
         registry.register_pattern(pattern2).unwrap();
-        
+
         // Execute batch
         let pattern_names = vec!["Pattern 1".to_string(), "Pattern 2".to_string()];
         let context = json!({"batch_execution": true});
-        
+
         let result = engine.execute_patterns_batch(&mut registry, pattern_names, Some(context));
         assert!(result.is_ok());
-        
+
         let executions = result.unwrap();
         assert_eq!(executions.len(), 2);
         assert!(executions.iter().all(|e| e.success));
@@ -3551,7 +3940,7 @@ mod tests {
     fn test_pattern_execution_engine_get_execution_queue() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern
         let pattern = SystemPattern::new(
             "Queue Test Pattern".to_string(),
@@ -3562,13 +3951,14 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Add to queue
         engine.queue_pattern_execution("Queue Test Pattern", Some(json!({"queued": true})));
-        
+
         // Check queue
         let queue = engine.get_execution_queue();
         assert_eq!(queue.len(), 1);
@@ -3579,7 +3969,7 @@ mod tests {
     fn test_pattern_execution_engine_process_queue() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern
         let pattern = SystemPattern::new(
             "Queue Process Pattern".to_string(),
@@ -3590,21 +3980,22 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Add to queue
         engine.queue_pattern_execution("Queue Process Pattern", Some(json!({"queued": true})));
-        
+
         // Process queue
         let result = engine.process_execution_queue(&mut registry);
         assert!(result.is_ok());
-        
+
         let executions = result.unwrap();
         assert_eq!(executions.len(), 1);
         assert!(executions[0].success);
-        
+
         // Queue should be empty now
         assert!(engine.get_execution_queue().is_empty());
     }
@@ -3612,13 +4003,13 @@ mod tests {
     #[test]
     fn test_pattern_execution_engine_clear_queue() {
         let mut engine = PatternExecutionEngine::new();
-        
+
         // Add items to queue
         engine.queue_pattern_execution("Pattern 1", None);
         engine.queue_pattern_execution("Pattern 2", None);
-        
+
         assert_eq!(engine.get_execution_queue().len(), 2);
-        
+
         // Clear queue
         engine.clear_execution_queue();
         assert!(engine.get_execution_queue().is_empty());
@@ -3628,7 +4019,7 @@ mod tests {
     fn test_pattern_execution_engine_get_execution_history() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern
         let pattern = SystemPattern::new(
             "History Test Pattern".to_string(),
@@ -3639,17 +4030,26 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Execute pattern
-        engine.execute_pattern(&mut registry, "History Test Pattern", None).unwrap();
-        
+        engine
+            .execute_pattern(&mut registry, "History Test Pattern", None)
+            .unwrap();
+
         // Get history
         let history = engine.get_execution_history();
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0].pattern_id, registry.get_pattern_by_name("History Test Pattern").unwrap().id);
+        assert_eq!(
+            history[0].pattern_id,
+            registry
+                .get_pattern_by_name("History Test Pattern")
+                .unwrap()
+                .id
+        );
     }
 
     // Automatic trigger system tests
@@ -3663,7 +4063,7 @@ mod tests {
     fn test_automatic_trigger_system_register_pattern() {
         let mut trigger_system = AutomaticTriggerSystem::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern with trigger conditions
         let pattern = SystemPattern::new(
             "Auto Trigger Pattern".to_string(),
@@ -3677,10 +4077,11 @@ mod tests {
                 "message_count": 10
             })),
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Register pattern for automatic triggering
         let result = trigger_system.register_pattern_for_auto_trigger(
             &registry,
@@ -3688,10 +4089,10 @@ mod tests {
             json!({
                 "session_duration_minutes": 30,
                 "message_count": 10
-            })
+            }),
         );
         assert!(result.is_ok());
-        
+
         // Check if pattern is registered
         let registered_patterns = trigger_system.get_registered_patterns();
         assert_eq!(registered_patterns.len(), 1);
@@ -3702,7 +4103,7 @@ mod tests {
     fn test_automatic_trigger_system_evaluate_conditions() {
         let mut trigger_system = AutomaticTriggerSystem::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern with trigger conditions
         let pattern = SystemPattern::new(
             "Condition Test Pattern".to_string(),
@@ -3716,36 +4117,39 @@ mod tests {
                 "message_count": {"gte": 5}
             })),
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Register pattern
-        trigger_system.register_pattern_for_auto_trigger(
-            &registry,
-            "Condition Test Pattern",
-            json!({
-                "session_duration_minutes": {"gte": 30},
-                "message_count": {"gte": 5}
-            })
-        ).unwrap();
-        
+        trigger_system
+            .register_pattern_for_auto_trigger(
+                &registry,
+                "Condition Test Pattern",
+                json!({
+                    "session_duration_minutes": {"gte": 30},
+                    "message_count": {"gte": 5}
+                }),
+            )
+            .unwrap();
+
         // Test condition evaluation - should trigger
         let session_context = json!({
             "session_duration_minutes": 45,
             "message_count": 8
         });
-        
+
         let triggered_patterns = trigger_system.evaluate_conditions(&session_context);
         assert_eq!(triggered_patterns.len(), 1);
         assert_eq!(triggered_patterns[0], "Condition Test Pattern");
-        
+
         // Test condition evaluation - should not trigger
         let session_context = json!({
             "session_duration_minutes": 20,
             "message_count": 3
         });
-        
+
         let triggered_patterns = trigger_system.evaluate_conditions(&session_context);
         assert_eq!(triggered_patterns.len(), 0);
     }
@@ -3754,7 +4158,7 @@ mod tests {
     fn test_automatic_trigger_system_remove_pattern() {
         let mut trigger_system = AutomaticTriggerSystem::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create and register a pattern
         let pattern = SystemPattern::new(
             "Remove Test Pattern".to_string(),
@@ -3765,22 +4169,25 @@ mod tests {
             json!({"result": "string"}),
             Some(json!({"session_duration_minutes": 30})),
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
-        trigger_system.register_pattern_for_auto_trigger(
-            &registry,
-            "Remove Test Pattern",
-            json!({"session_duration_minutes": 30})
-        ).unwrap();
-        
+
+        trigger_system
+            .register_pattern_for_auto_trigger(
+                &registry,
+                "Remove Test Pattern",
+                json!({"session_duration_minutes": 30}),
+            )
+            .unwrap();
+
         assert_eq!(trigger_system.get_registered_patterns().len(), 1);
-        
+
         // Remove pattern
         let result = trigger_system.remove_pattern_from_auto_trigger("Remove Test Pattern");
         assert!(result.is_ok());
-        
+
         assert_eq!(trigger_system.get_registered_patterns().len(), 0);
     }
 
@@ -3788,7 +4195,7 @@ mod tests {
     fn test_automatic_trigger_system_clear_all() {
         let mut trigger_system = AutomaticTriggerSystem::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create multiple patterns
         let pattern1 = SystemPattern::new(
             "Pattern 1".to_string(),
@@ -3799,8 +4206,9 @@ mod tests {
             json!({"result": "string"}),
             Some(json!({"condition1": true})),
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern2 = SystemPattern::new(
             "Pattern 2".to_string(),
             PatternCategory::SelfReflection,
@@ -3810,17 +4218,22 @@ mod tests {
             json!({"result": "string"}),
             Some(json!({"condition2": true})),
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1).unwrap();
         registry.register_pattern(pattern2).unwrap();
-        
+
         // Register both patterns
-        trigger_system.register_pattern_for_auto_trigger(&registry, "Pattern 1", json!({"condition1": true})).unwrap();
-        trigger_system.register_pattern_for_auto_trigger(&registry, "Pattern 2", json!({"condition2": true})).unwrap();
-        
+        trigger_system
+            .register_pattern_for_auto_trigger(&registry, "Pattern 1", json!({"condition1": true}))
+            .unwrap();
+        trigger_system
+            .register_pattern_for_auto_trigger(&registry, "Pattern 2", json!({"condition2": true}))
+            .unwrap();
+
         assert_eq!(trigger_system.get_registered_patterns().len(), 2);
-        
+
         // Clear all
         trigger_system.clear_all_patterns();
         assert_eq!(trigger_system.get_registered_patterns().len(), 0);
@@ -3837,7 +4250,7 @@ mod tests {
     fn test_execution_context_manager_prepare_context() {
         let mut context_manager = ExecutionContextManager::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern
         let pattern = SystemPattern::new(
             "Context Test Pattern".to_string(),
@@ -3848,10 +4261,11 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Prepare context
         let session_data = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -3860,14 +4274,14 @@ mod tests {
             "message_count": 12,
             "current_topic": "Rust development"
         });
-        
+
         let result = context_manager.prepare_context(
             &registry,
             "Context Test Pattern",
-            session_data.clone()
+            session_data.clone(),
         );
         assert!(result.is_ok());
-        
+
         let prepared_context = result.unwrap();
         assert!(prepared_context.get("session_id").is_some());
         assert!(prepared_context.get("user_id").is_some());
@@ -3882,17 +4296,14 @@ mod tests {
     fn test_execution_context_manager_prepare_context_nonexistent_pattern() {
         let mut context_manager = ExecutionContextManager::new();
         let registry = PatternRegistry::new();
-        
+
         let session_data = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000",
             "user_id": "user123"
         });
-        
-        let result = context_manager.prepare_context(
-            &registry,
-            "Nonexistent Pattern",
-            session_data
-        );
+
+        let result =
+            context_manager.prepare_context(&registry, "Nonexistent Pattern", session_data);
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -3905,23 +4316,23 @@ mod tests {
     #[test]
     fn test_execution_context_manager_validate_context() {
         let context_manager = ExecutionContextManager::new();
-        
+
         // Valid context
         let valid_context = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000",
             "user_id": "user123",
             "session_duration_minutes": 45
         });
-        
+
         let result = context_manager.validate_context(&valid_context);
         assert!(result.is_ok());
-        
+
         // Invalid context - missing required fields
         let invalid_context = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000"
             // Missing user_id and session_duration_minutes
         });
-        
+
         let result = context_manager.validate_context(&invalid_context);
         assert!(result.is_err());
         match result {
@@ -3935,20 +4346,20 @@ mod tests {
     #[test]
     fn test_execution_context_manager_enrich_context() {
         let mut context_manager = ExecutionContextManager::new();
-        
+
         let base_context = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000",
             "user_id": "user123"
         });
-        
+
         let enrichment_data = json!({
             "session_duration_minutes": 45,
             "message_count": 12,
             "current_topic": "Rust development"
         });
-        
+
         let enriched_context = context_manager.enrich_context(base_context, enrichment_data);
-        
+
         assert!(enriched_context.get("session_id").is_some());
         assert!(enriched_context.get("user_id").is_some());
         assert!(enriched_context.get("session_duration_minutes").is_some());
@@ -3962,22 +4373,22 @@ mod tests {
     #[test]
     fn test_execution_context_manager_store_and_retrieve_context() {
         let mut context_manager = ExecutionContextManager::new();
-        
+
         let context_id = Uuid::new_v4();
         let context_data = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000",
             "user_id": "user123",
             "session_duration_minutes": 45
         });
-        
+
         // Store context
         context_manager.store_context(context_id, context_data.clone());
-        
+
         // Retrieve context
         let retrieved_context = context_manager.get_context(context_id);
         assert!(retrieved_context.is_some());
         assert_eq!(retrieved_context.unwrap(), &context_data);
-        
+
         // Try to retrieve non-existent context
         let non_existent_id = Uuid::new_v4();
         let retrieved_context = context_manager.get_context(non_existent_id);
@@ -3987,22 +4398,22 @@ mod tests {
     #[test]
     fn test_execution_context_manager_clear_context() {
         let mut context_manager = ExecutionContextManager::new();
-        
+
         let context_id = Uuid::new_v4();
         let context_data = json!({
             "session_id": "123e4567-e89b-12d3-a456-426614174000",
             "user_id": "user123"
         });
-        
+
         // Store context
         context_manager.store_context(context_id, context_data);
-        
+
         // Verify it's stored
         assert!(context_manager.get_context(context_id).is_some());
-        
+
         // Clear context
         context_manager.clear_context(context_id);
-        
+
         // Verify it's cleared
         assert!(context_manager.get_context(context_id).is_none());
     }
@@ -4017,29 +4428,32 @@ mod tests {
     #[test]
     fn test_result_processor_process_result() {
         let mut processor = ResultProcessor::new();
-        
+
         // Create a test pattern execution
         let mut execution = PatternExecution::new(
             Uuid::new_v4(),
             None,
             TriggerType::Manual,
             Some(json!({"test": "context"})),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Start and complete the execution with output result
         execution.start_execution().unwrap();
-        execution.complete_execution(
-            true,
-            Some(json!({
-                "key_points": ["insight1", "insight2"],
-                "action_items": ["action1", "action2"]
-            })),
-            None,
-        ).unwrap();
-        
+        execution
+            .complete_execution(
+                true,
+                Some(json!({
+                    "key_points": ["insight1", "insight2"],
+                    "action_items": ["action1", "action2"]
+                })),
+                None,
+            )
+            .unwrap();
+
         let result = processor.process_result(&execution);
         assert!(result.is_ok());
-        
+
         let processed_result = result.unwrap();
         assert_eq!(processed_result.execution_id, execution.id);
         assert!(!processed_result.summary.is_empty());
@@ -4050,26 +4464,18 @@ mod tests {
     #[test]
     fn test_result_processor_get_processed_results() {
         let mut processor = ResultProcessor::new();
-        
+
         // Create test executions
-        let execution1 = PatternExecution::new(
-            Uuid::new_v4(),
-            None,
-            TriggerType::Manual,
-            None,
-        ).unwrap();
-        
-        let execution2 = PatternExecution::new(
-            Uuid::new_v4(),
-            None,
-            TriggerType::Automatic,
-            None,
-        ).unwrap();
-        
+        let execution1 =
+            PatternExecution::new(Uuid::new_v4(), None, TriggerType::Manual, None).unwrap();
+
+        let execution2 =
+            PatternExecution::new(Uuid::new_v4(), None, TriggerType::Automatic, None).unwrap();
+
         // Process results
         processor.process_result(&execution1).unwrap();
         processor.process_result(&execution2).unwrap();
-        
+
         let results = processor.get_processed_results();
         assert_eq!(results.len(), 2);
     }
@@ -4077,26 +4483,18 @@ mod tests {
     #[test]
     fn test_result_processor_get_results_for_pattern() {
         let mut processor = ResultProcessor::new();
-        
+
         // Create test executions
-        let execution1 = PatternExecution::new(
-            Uuid::new_v4(),
-            None,
-            TriggerType::Manual,
-            None,
-        ).unwrap();
-        
-        let execution2 = PatternExecution::new(
-            Uuid::new_v4(),
-            None,
-            TriggerType::Automatic,
-            None,
-        ).unwrap();
-        
+        let execution1 =
+            PatternExecution::new(Uuid::new_v4(), None, TriggerType::Manual, None).unwrap();
+
+        let execution2 =
+            PatternExecution::new(Uuid::new_v4(), None, TriggerType::Automatic, None).unwrap();
+
         // Process results
         processor.process_result(&execution1).unwrap();
         processor.process_result(&execution2).unwrap();
-        
+
         // Get results for a specific pattern (using pattern_id as pattern_name)
         let results = processor.get_results_for_pattern(&execution1.pattern_id.to_string());
         assert_eq!(results.len(), 1);
@@ -4105,18 +4503,14 @@ mod tests {
     #[test]
     fn test_result_processor_clear_results() {
         let mut processor = ResultProcessor::new();
-        
+
         // Create and process a test execution
-        let execution = PatternExecution::new(
-            Uuid::new_v4(),
-            None,
-            TriggerType::Manual,
-            None,
-        ).unwrap();
-        
+        let execution =
+            PatternExecution::new(Uuid::new_v4(), None, TriggerType::Manual, None).unwrap();
+
         processor.process_result(&execution).unwrap();
         assert_eq!(processor.get_processed_results().len(), 1);
-        
+
         processor.clear_results();
         assert_eq!(processor.get_processed_results().len(), 0);
     }
@@ -4138,8 +4532,9 @@ mod tests {
             }),
             Some(json!({"session_duration_minutes": 30})),
             Some(json!({"summary_length": ">100"})),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         assert_eq!(pattern.name, "Test Session Summary");
         assert_eq!(pattern.category, PatternCategory::SessionManagement);
         assert_eq!(pattern.meta_level, MetaLevel::System);
@@ -4166,7 +4561,7 @@ mod tests {
             None,
             None,
         );
-        
+
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4185,8 +4580,9 @@ mod tests {
             Some(session_id),
             TriggerType::Automatic,
             Some(json!({"session_duration": 3600})),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         assert_eq!(execution.pattern_id, pattern_id);
         assert_eq!(execution.session_id, Some(session_id));
         assert_eq!(execution.trigger_type, TriggerType::Automatic);
@@ -4199,13 +4595,8 @@ mod tests {
 
     #[test]
     fn test_pattern_execution_creation_with_null_pattern_id() {
-        let result = PatternExecution::new(
-            Uuid::nil(),
-            None,
-            TriggerType::Manual,
-            None,
-        );
-        
+        let result = PatternExecution::new(Uuid::nil(), None, TriggerType::Manual, None);
+
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4225,8 +4616,9 @@ mod tests {
             RelationshipType::DependsOn,
             "Test relationship description".to_string(),
             0.8,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         assert_eq!(relationship.source_pattern_id, source_id);
         assert_eq!(relationship.target_pattern_id, target_id);
         assert_eq!(relationship.relationship_type, RelationshipType::DependsOn);
@@ -4244,7 +4636,7 @@ mod tests {
             "Self-dependency is not allowed".to_string(),
             0.5,
         );
-        
+
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4265,7 +4657,7 @@ mod tests {
             "Invalid strength".to_string(),
             1.5,
         );
-        
+
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4286,7 +4678,7 @@ mod tests {
             "".to_string(),
             0.7,
         );
-        
+
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4302,10 +4694,14 @@ mod tests {
             "Test Template".to_string(),
             "This is a test template for pattern execution".to_string(),
             "{{ pattern_name }} - {{ session_id }}".to_string(),
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(template.name, "Test Template");
-        assert_eq!(template.description, "This is a test template for pattern execution");
+        assert_eq!(
+            template.description,
+            "This is a test template for pattern execution"
+        );
         assert!(!template.template_content.is_empty());
     }
 
@@ -4328,11 +4724,8 @@ mod tests {
 
     #[test]
     fn test_pattern_template_creation_with_empty_description() {
-        let result = PatternTemplate::new(
-            "Name".to_string(),
-            "".to_string(),
-            "Content".to_string(),
-        );
+        let result =
+            PatternTemplate::new("Name".to_string(), "".to_string(), "Content".to_string());
 
         assert!(result.is_err());
         match result {
@@ -4366,7 +4759,8 @@ mod tests {
             "Test Template".to_string(),
             "This is a test template for pattern execution".to_string(),
             "{{ pattern_name }} - {{ session_id }}".to_string(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let context = json!({
             "pattern_name": "My Pattern",
@@ -4374,7 +4768,10 @@ mod tests {
         });
 
         let rendered_output = template.render(&context).unwrap();
-        assert_eq!(rendered_output, "My Pattern - 123e4567-e89b-12d3-a456-426614174000");
+        assert_eq!(
+            rendered_output,
+            "My Pattern - 123e4567-e89b-12d3-a456-426614174000"
+        );
     }
 
     #[test]
@@ -4383,7 +4780,8 @@ mod tests {
             "Test Template".to_string(),
             "This is a test template for pattern execution".to_string(),
             "{{ pattern_name }} - {{ session_id }}".to_string(),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create an invalid context with a non-serializable value
         let context = json!({
@@ -4404,7 +4802,8 @@ mod tests {
             "Test Template".to_string(),
             "This is a test template with invalid syntax".to_string(),
             "{{ pattern_name } - {{ session_id }}".to_string(), // Missing closing brace
-        ).unwrap();
+        )
+        .unwrap();
 
         let context = json!({
             "pattern_name": "My Pattern",
@@ -4427,7 +4826,8 @@ mod tests {
             "Valid Template".to_string(),
             "This template has valid syntax".to_string(),
             "{{ pattern_name }} - {{ session_id }}".to_string(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = template.validate_syntax();
         assert!(result.is_ok());
@@ -4439,7 +4839,8 @@ mod tests {
             "Invalid Template".to_string(),
             "This template has invalid syntax".to_string(),
             "{{ pattern_name } - {{ session_id }}".to_string(), // Missing closing brace
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = template.validate_syntax();
         assert!(result.is_err());
@@ -4458,7 +4859,8 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = execution.start_execution();
         assert!(result.is_ok());
@@ -4472,11 +4874,12 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start execution first time
         execution.start_execution().unwrap();
-        
+
         // Try to start again
         let result = execution.start_execution();
         assert!(result.is_err());
@@ -4495,11 +4898,12 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Mark as completed
         execution.success = true;
-        
+
         // Try to start execution
         let result = execution.start_execution();
         assert!(result.is_err());
@@ -4518,7 +4922,8 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start execution
         execution.start_execution().unwrap();
@@ -4528,7 +4933,10 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(execution.success, true);
         assert!(execution.output_result.is_some());
-        assert_eq!(execution.output_result.unwrap(), json!({"result": "success"}));
+        assert_eq!(
+            execution.output_result.unwrap(),
+            json!({"result": "success"})
+        );
         assert!(execution.execution_duration_ms.is_some());
         assert_eq!(execution.execution_duration_ms.unwrap(), 100);
         assert!(execution.error_message.is_none());
@@ -4541,21 +4949,32 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start execution
         execution.start_execution().unwrap();
 
         // Complete execution with failure
-        let result = execution.complete_execution(false, Some(json!({"result": "failure"})), Some("Error message".to_string()));
+        let result = execution.complete_execution(
+            false,
+            Some(json!({"result": "failure"})),
+            Some("Error message".to_string()),
+        );
         assert!(result.is_ok());
         assert_eq!(execution.success, false);
         assert!(execution.output_result.is_some());
-        assert_eq!(execution.output_result.unwrap(), json!({"result": "failure"}));
+        assert_eq!(
+            execution.output_result.unwrap(),
+            json!({"result": "failure"})
+        );
         assert!(execution.execution_duration_ms.is_some());
         assert_eq!(execution.execution_duration_ms.unwrap(), 100);
         assert!(execution.error_message.is_some());
-        assert_eq!(execution.error_message.unwrap(), "Error message".to_string());
+        assert_eq!(
+            execution.error_message.unwrap(),
+            "Error message".to_string()
+        );
     }
 
     #[test]
@@ -4565,7 +4984,8 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Try to complete execution without starting it first
         let result = execution.complete_execution(true, Some(json!({"result": "success"})), None);
@@ -4585,15 +5005,22 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start execution
         execution.start_execution().unwrap();
         // Complete execution
-        execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
+        execution
+            .complete_execution(true, Some(json!({"result": "success"})), None)
+            .unwrap();
 
         // Try to complete again
-        let result = execution.complete_execution(false, Some(json!({"result": "failure"})), Some("Error message".to_string()));
+        let result = execution.complete_execution(
+            false,
+            Some(json!({"result": "failure"})),
+            Some("Error message".to_string()),
+        );
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4610,29 +5037,32 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start execution
         execution.start_execution().unwrap();
 
         // Update with intermediate results
-        let result = execution.update_execution(
-            Some(json!({"progress": "50%", "step": "processing"})),
-            None
-        );
+        let result = execution
+            .update_execution(Some(json!({"progress": "50%", "step": "processing"})), None);
         assert!(result.is_ok());
         assert!(execution.output_result.is_some());
-        assert_eq!(execution.output_result.as_ref().unwrap(), &json!({"progress": "50%", "step": "processing"}));
+        assert_eq!(
+            execution.output_result.as_ref().unwrap(),
+            &json!({"progress": "50%", "step": "processing"})
+        );
         assert!(execution.error_message.is_none());
 
         // Update with error message
-        let result = execution.update_execution(
-            None,
-            Some("Warning: Slow processing detected".to_string())
-        );
+        let result =
+            execution.update_execution(None, Some("Warning: Slow processing detected".to_string()));
         assert!(result.is_ok());
         assert!(execution.error_message.is_some());
-        assert_eq!(execution.error_message.as_ref().unwrap(), "Warning: Slow processing detected");
+        assert_eq!(
+            execution.error_message.as_ref().unwrap(),
+            "Warning: Slow processing detected"
+        );
     }
 
     #[test]
@@ -4642,13 +5072,11 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Try to update execution without starting it first
-        let result = execution.update_execution(
-            Some(json!({"progress": "50%"})),
-            None
-        );
+        let result = execution.update_execution(Some(json!({"progress": "50%"})), None);
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4665,18 +5093,18 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start execution
         execution.start_execution().unwrap();
         // Complete execution
-        execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
+        execution
+            .complete_execution(true, Some(json!({"result": "success"})), None)
+            .unwrap();
 
         // Try to update completed execution
-        let result = execution.update_execution(
-            Some(json!({"progress": "100%"})),
-            None
-        );
+        let result = execution.update_execution(Some(json!({"progress": "100%"})), None);
         assert!(result.is_err());
         match result {
             Err(ParagonicError::InvalidInput(msg)) => {
@@ -4693,21 +5121,30 @@ mod tests {
             Some(Uuid::new_v4()),
             TriggerType::Manual,
             Some(json!({"test": "data"})),
-        ).unwrap();
+        )
+        .unwrap();
 
-        assert_eq!(execution.get_execution_status(), ExecutionStatus::NotStarted);
+        assert_eq!(
+            execution.get_execution_status(),
+            ExecutionStatus::NotStarted
+        );
 
         execution.start_execution().unwrap();
-        assert_eq!(execution.get_execution_status(), ExecutionStatus::InProgress);
+        assert_eq!(
+            execution.get_execution_status(),
+            ExecutionStatus::InProgress
+        );
 
-        execution.complete_execution(true, Some(json!({"result": "success"})), None).unwrap();
+        execution
+            .complete_execution(true, Some(json!({"result": "success"})), None)
+            .unwrap();
         assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
     }
 
     #[test]
     fn test_pattern_registry_execute_pattern() {
         let mut registry = PatternRegistry::new();
-        
+
         // Create and register a pattern
         let pattern = SystemPattern::new(
             "Test Pattern".to_string(),
@@ -4718,24 +5155,25 @@ mod tests {
             json!({"result": "string", "status": "boolean"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Execute the pattern
         let context = json!({
             "user_id": "123",
             "session_data": {"key": "value"}
         });
-        
+
         let result = registry.execute_pattern("Test Pattern", Some(context));
         assert!(result.is_ok());
-        
+
         let execution = result.unwrap();
         assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
         assert!(execution.success);
         assert!(execution.output_result.is_some());
-        
+
         let output = execution.output_result.as_ref().unwrap();
         assert_eq!(output["pattern_name"], "Test Pattern");
         assert_eq!(output["status"], "completed");
@@ -4744,7 +5182,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_execute_nonexistent_pattern() {
         let mut registry = PatternRegistry::new();
-        
+
         let result = registry.execute_pattern("Nonexistent Pattern", None);
         assert!(result.is_err());
         match result {
@@ -4758,7 +5196,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_add_relationship() {
         let mut registry = PatternRegistry::new();
-        
+
         // Create two patterns first
         let pattern1 = SystemPattern::new(
             "Source Pattern".to_string(),
@@ -4769,8 +5207,9 @@ mod tests {
             json!({"summary": "source_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern2 = SystemPattern::new(
             "Target Pattern".to_string(),
             PatternCategory::SelfReflection,
@@ -4780,11 +5219,12 @@ mod tests {
             json!({"summary": "target_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1.clone()).unwrap();
         registry.register_pattern(pattern2.clone()).unwrap();
-        
+
         // Create and add relationship
         let relationship = PatternRelationship::new(
             pattern1.id,
@@ -4792,8 +5232,9 @@ mod tests {
             RelationshipType::DependsOn,
             "Source depends on target".to_string(),
             0.8,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let result = registry.add_relationship(relationship);
         assert!(result.is_ok());
         assert_eq!(registry.relationships.len(), 1);
@@ -4802,7 +5243,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_add_relationship_with_nonexistent_pattern() {
         let mut registry = PatternRegistry::new();
-        
+
         // Create only one pattern
         let pattern1 = SystemPattern::new(
             "Source Pattern".to_string(),
@@ -4813,10 +5254,11 @@ mod tests {
             json!({"summary": "source_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1.clone()).unwrap();
-        
+
         // Try to create relationship with non-existent target pattern
         let nonexistent_id = Uuid::new_v4();
         let relationship = PatternRelationship::new(
@@ -4825,8 +5267,9 @@ mod tests {
             RelationshipType::DependsOn,
             "Source depends on non-existent target".to_string(),
             0.8,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let result = registry.add_relationship(relationship);
         assert!(result.is_err());
         match result {
@@ -4840,7 +5283,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_remove_relationship() {
         let mut registry = PatternRegistry::new();
-        
+
         // Create two patterns first
         let pattern1 = SystemPattern::new(
             "Source Pattern".to_string(),
@@ -4851,8 +5294,9 @@ mod tests {
             json!({"summary": "source_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern2 = SystemPattern::new(
             "Target Pattern".to_string(),
             PatternCategory::SelfReflection,
@@ -4862,11 +5306,12 @@ mod tests {
             json!({"summary": "target_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1.clone()).unwrap();
         registry.register_pattern(pattern2.clone()).unwrap();
-        
+
         // Create and add relationship
         let relationship = PatternRelationship::new(
             pattern1.id,
@@ -4874,11 +5319,12 @@ mod tests {
             RelationshipType::DependsOn,
             "Source depends on target".to_string(),
             0.8,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.add_relationship(relationship.clone()).unwrap();
         assert_eq!(registry.relationships.len(), 1);
-        
+
         // Remove the relationship
         let result = registry.remove_relationship(relationship.id);
         assert!(result.is_ok());
@@ -4889,7 +5335,7 @@ mod tests {
     fn test_pattern_registry_remove_nonexistent_relationship() {
         let mut registry = PatternRegistry::new();
         let nonexistent_id = Uuid::new_v4();
-        
+
         let result = registry.remove_relationship(nonexistent_id);
         assert!(result.is_err());
         match result {
@@ -4922,12 +5368,13 @@ mod tests {
             }),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let result = registry.register_pattern(pattern.clone());
         assert!(result.is_ok());
         assert_eq!(registry.patterns.len(), 1);
-        
+
         let retrieved = registry.get_pattern(pattern.id);
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().name, pattern.name);
@@ -4945,7 +5392,8 @@ mod tests {
             json!({"summary": "sum1"}),
             None,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         let pattern2 = SystemPattern::new(
             "Duplicate Pattern".to_string(),
             PatternCategory::SessionManagement,
@@ -4955,7 +5403,8 @@ mod tests {
             json!({"summary": "sum2"}),
             None,
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         let result1 = registry.register_pattern(pattern1);
         assert!(result1.is_ok());
@@ -4982,15 +5431,16 @@ mod tests {
             json!({"summary": "test_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern.clone()).unwrap();
-        
+
         let retrieved = registry.get_pattern_by_name("Test Pattern Name");
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().name, "Test Pattern Name");
         assert_eq!(retrieved.unwrap().description, "Test pattern description");
-        
+
         let not_found = registry.get_pattern_by_name("Non-existent Pattern");
         assert!(not_found.is_none());
     }
@@ -4998,7 +5448,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_list_patterns() {
         let mut registry = PatternRegistry::new();
-        
+
         let pattern1 = SystemPattern::new(
             "Session Summary".to_string(),
             PatternCategory::SessionManagement,
@@ -5008,8 +5458,9 @@ mod tests {
             json!({"summary": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern2 = SystemPattern::new(
             "Activity Label".to_string(),
             PatternCategory::ActivityLabeling,
@@ -5019,8 +5470,9 @@ mod tests {
             json!({"label": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern3 = SystemPattern::new(
             "User Reflection".to_string(),
             PatternCategory::SelfReflection,
@@ -5030,27 +5482,30 @@ mod tests {
             json!({"reflection": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1).unwrap();
         registry.register_pattern(pattern2).unwrap();
         registry.register_pattern(pattern3).unwrap();
-        
+
         // Test listing all patterns
         let all_patterns = registry.list_patterns(None, None);
         assert_eq!(all_patterns.len(), 3);
-        
+
         // Test filtering by category
-        let session_patterns = registry.list_patterns(Some(PatternCategory::SessionManagement), None);
+        let session_patterns =
+            registry.list_patterns(Some(PatternCategory::SessionManagement), None);
         assert_eq!(session_patterns.len(), 1);
         assert_eq!(session_patterns[0].name, "Session Summary");
-        
+
         // Test filtering by meta_level
         let system_patterns = registry.list_patterns(None, Some(MetaLevel::System));
         assert_eq!(system_patterns.len(), 2);
-        
+
         // Test filtering by both category and meta_level
-        let user_reflection_patterns = registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
+        let user_reflection_patterns =
+            registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
         assert_eq!(user_reflection_patterns.len(), 1);
         assert_eq!(user_reflection_patterns[0].name, "User Reflection");
     }
@@ -5058,7 +5513,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_list_patterns_with_filtering() {
         let mut registry = PatternRegistry::new();
-        
+
         let pattern1 = SystemPattern::new(
             "Session Pattern".to_string(),
             PatternCategory::SessionManagement,
@@ -5068,8 +5523,9 @@ mod tests {
             json!({"summary": "session_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern2 = SystemPattern::new(
             "Reflection Pattern".to_string(),
             PatternCategory::SelfReflection,
@@ -5079,26 +5535,29 @@ mod tests {
             json!({"summary": "reflection_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern1.clone()).unwrap();
         registry.register_pattern(pattern2.clone()).unwrap();
-        
+
         // Test filtering by category
-        let session_patterns = registry.list_patterns(Some(PatternCategory::SessionManagement), None);
+        let session_patterns =
+            registry.list_patterns(Some(PatternCategory::SessionManagement), None);
         assert_eq!(session_patterns.len(), 1);
         assert_eq!(session_patterns[0].name, "Session Pattern");
-        
+
         // Test filtering by meta level
         let system_patterns = registry.list_patterns(None, Some(MetaLevel::System));
         assert_eq!(system_patterns.len(), 1);
         assert_eq!(system_patterns[0].name, "Session Pattern");
-        
+
         // Test filtering by both
-        let filtered_patterns = registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
+        let filtered_patterns =
+            registry.list_patterns(Some(PatternCategory::SelfReflection), Some(MetaLevel::User));
         assert_eq!(filtered_patterns.len(), 1);
         assert_eq!(filtered_patterns[0].name, "Reflection Pattern");
-        
+
         // Test no filtering
         let all_patterns = registry.list_patterns(None, None);
         assert_eq!(all_patterns.len(), 2);
@@ -5116,12 +5575,13 @@ mod tests {
             json!({"summary": "remove_summary"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let pattern_id = pattern.id;
         registry.register_pattern(pattern).unwrap();
         assert_eq!(registry.patterns.len(), 1);
-        
+
         let result = registry.remove_pattern(pattern_id);
         assert!(result.is_ok());
         assert_eq!(registry.patterns.len(), 0);
@@ -5131,7 +5591,7 @@ mod tests {
     fn test_pattern_registry_remove_nonexistent_pattern() {
         let mut registry = PatternRegistry::new();
         let nonexistent_id = Uuid::new_v4();
-        
+
         let result = registry.remove_pattern(nonexistent_id);
         assert!(result.is_err());
         match result {
@@ -5145,7 +5605,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_get_execution_history() {
         let mut registry = PatternRegistry::new();
-        
+
         // Create and register a pattern
         let pattern = SystemPattern::new(
             "Test Pattern".to_string(),
@@ -5156,14 +5616,15 @@ mod tests {
             json!({"result": "string", "status": "boolean"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Get execution history
         let result = registry.get_execution_history("Test Pattern");
         assert!(result.is_ok());
-        
+
         let history = result.unwrap();
         assert_eq!(history.len(), 0); // Empty for now since we don't store executions yet
     }
@@ -5171,7 +5632,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_get_execution_history_nonexistent_pattern() {
         let registry = PatternRegistry::new();
-        
+
         let result = registry.get_execution_history("Nonexistent Pattern");
         assert!(result.is_err());
         match result {
@@ -5185,7 +5646,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_get_pattern_statistics() {
         let mut registry = PatternRegistry::new();
-        
+
         // Create and register a pattern
         let pattern = SystemPattern::new(
             "Test Pattern".to_string(),
@@ -5196,14 +5657,15 @@ mod tests {
             json!({"result": "string", "status": "boolean"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(pattern).unwrap();
-        
+
         // Get statistics for the pattern
         let result = registry.get_pattern_statistics("Test Pattern");
         assert!(result.is_ok());
-        
+
         let stats = result.unwrap();
         assert_eq!(stats.total_executions, 0);
         assert_eq!(stats.successful_executions, 0);
@@ -5216,7 +5678,7 @@ mod tests {
     #[test]
     fn test_pattern_registry_get_pattern_statistics_nonexistent_pattern() {
         let registry = PatternRegistry::new();
-        
+
         let result = registry.get_pattern_statistics("Nonexistent Pattern");
         assert!(result.is_err());
         match result {
@@ -5231,7 +5693,7 @@ mod tests {
     fn test_pattern_bootstrap_new() {
         let patterns_dir = PathBuf::from("patterns");
         let bootstrap = PatternBootstrap::new(patterns_dir.clone());
-        
+
         assert_eq!(bootstrap.patterns_dir, patterns_dir);
     }
 
@@ -5239,23 +5701,28 @@ mod tests {
     fn test_pattern_bootstrap_load_core_patterns() {
         let patterns_dir = PathBuf::from("patterns");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.load_core_patterns();
         assert!(result.is_ok());
-        
+
         let patterns = result.unwrap();
         assert_eq!(patterns.len(), 6);
-        
+
         // Check that all expected patterns are present
-        assert!(patterns.iter().any(|p| p.name == "Session Summary Generation"));
+        assert!(patterns
+            .iter()
+            .any(|p| p.name == "Session Summary Generation"));
         assert!(patterns.iter().any(|p| p.name == "Activity Labeling"));
         assert!(patterns.iter().any(|p| p.name == "Self-Reflection"));
         assert!(patterns.iter().any(|p| p.name == "Context Summarization"));
         assert!(patterns.iter().any(|p| p.name == "Progress Tracking"));
         assert!(patterns.iter().any(|p| p.name == "Knowledge Extraction"));
-        
+
         // Get the Session Summary Generation pattern for detailed testing
-        let pattern = patterns.iter().find(|p| p.name == "Session Summary Generation").unwrap();
+        let pattern = patterns
+            .iter()
+            .find(|p| p.name == "Session Summary Generation")
+            .unwrap();
         assert_eq!(pattern.category, PatternCategory::SessionManagement);
         assert_eq!(pattern.meta_level, MetaLevel::System);
         assert!(pattern.description.contains("comprehensive summary"));
@@ -5265,7 +5732,7 @@ mod tests {
     fn test_pattern_bootstrap_load_core_patterns_missing_file() {
         let patterns_dir = PathBuf::from("nonexistent");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.load_core_patterns();
         assert!(result.is_err());
         match result {
@@ -5280,16 +5747,18 @@ mod tests {
     fn test_pattern_bootstrap_load_templates() {
         let patterns_dir = PathBuf::from("patterns");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.load_templates();
         assert!(result.is_ok());
-        
+
         let templates = result.unwrap();
         assert_eq!(templates.len(), 1);
-        
+
         let template = &templates[0];
         assert_eq!(template.name, "Session Summary Template");
-        assert!(template.description.contains("generating session summaries"));
+        assert!(template
+            .description
+            .contains("generating session summaries"));
         assert!(template.template_content.contains("Session Summary"));
         assert!(template.template_content.contains("{{ session_duration }}"));
     }
@@ -5298,7 +5767,7 @@ mod tests {
     fn test_pattern_bootstrap_load_templates_missing_file() {
         let patterns_dir = PathBuf::from("nonexistent");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.load_templates();
         assert!(result.is_err());
         match result {
@@ -5313,16 +5782,18 @@ mod tests {
     fn test_pattern_bootstrap_load_relationships() {
         let patterns_dir = PathBuf::from("patterns");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.load_relationships();
         assert!(result.is_ok());
-        
+
         let relationships = result.unwrap();
         assert_eq!(relationships.len(), 1);
-        
+
         let relationship = &relationships[0];
         assert_eq!(relationship.relationship_type, RelationshipType::DependsOn);
-        assert!(relationship.description.contains("depends on session analysis"));
+        assert!(relationship
+            .description
+            .contains("depends on session analysis"));
         assert_eq!(relationship.strength, 0.8);
     }
 
@@ -5330,7 +5801,7 @@ mod tests {
     fn test_pattern_bootstrap_load_relationships_missing_file() {
         let patterns_dir = PathBuf::from("nonexistent");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.load_relationships();
         assert!(result.is_err());
         match result {
@@ -5345,35 +5816,39 @@ mod tests {
     fn test_pattern_bootstrap_bootstrap_pattern_system() {
         let patterns_dir = PathBuf::from("patterns");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.bootstrap_pattern_system();
         if let Err(e) = &result {
             println!("Bootstrap error: {:?}", e);
         }
         assert!(result.is_ok());
-        
+
         let registry = result.unwrap();
-        
+
         // Verify patterns were loaded
         let patterns = registry.list_patterns(None, None);
         assert_eq!(patterns.len(), 6);
-        assert!(patterns.iter().any(|p| p.name == "Session Summary Generation"));
+        assert!(patterns
+            .iter()
+            .any(|p| p.name == "Session Summary Generation"));
         assert!(patterns.iter().any(|p| p.name == "Activity Labeling"));
         assert!(patterns.iter().any(|p| p.name == "Self-Reflection"));
         assert!(patterns.iter().any(|p| p.name == "Context Summarization"));
         assert!(patterns.iter().any(|p| p.name == "Progress Tracking"));
         assert!(patterns.iter().any(|p| p.name == "Knowledge Extraction"));
-        
+
         // Verify relationships were loaded (we can't directly access them yet)
         // The registry should have relationships internally
-        assert!(registry.get_pattern_by_name("Session Summary Generation").is_some());
+        assert!(registry
+            .get_pattern_by_name("Session Summary Generation")
+            .is_some());
     }
 
     #[test]
     fn test_pattern_bootstrap_bootstrap_pattern_system_missing_files() {
         let patterns_dir = PathBuf::from("nonexistent");
         let bootstrap = PatternBootstrap::new(patterns_dir);
-        
+
         let result = bootstrap.bootstrap_pattern_system();
         assert!(result.is_err());
         match result {
@@ -5522,10 +5997,10 @@ mod tests {
             vec!["code_quality_improved".to_string(), "security_issues_identified".to_string()],
             Some(json!({"review_depth": "comprehensive", "focus_areas": ["performance", "security"]})),
         ).unwrap();
-        
+
         let result = registry.register_skill(skill.clone());
         assert!(result.is_ok());
-        
+
         let retrieved = registry.get_skill(skill.id);
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().name, skill.name);
@@ -5539,21 +6014,32 @@ mod tests {
             "Comprehensive testing for Python applications".to_string(),
             SkillCategory::QualityAssurance,
             ExpertiseLevel::Advanced,
-            vec!["Python".to_string(), "Testing".to_string(), "Pytest".to_string()],
-            vec!["python_code_present".to_string(), "test_requested".to_string()],
+            vec![
+                "Python".to_string(),
+                "Testing".to_string(),
+                "Pytest".to_string(),
+            ],
+            vec![
+                "python_code_present".to_string(),
+                "test_requested".to_string(),
+            ],
             vec!["pytest".to_string(), "coverage".to_string()],
             45,
-            vec!["test_coverage_improved".to_string(), "bugs_found".to_string()],
+            vec![
+                "test_coverage_improved".to_string(),
+                "bugs_found".to_string(),
+            ],
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_skill(skill.clone()).unwrap();
-        
+
         let retrieved = registry.get_skill_by_name("Python Testing");
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().name, "Python Testing");
         assert_eq!(retrieved.unwrap().category, SkillCategory::QualityAssurance);
-        
+
         let not_found = registry.get_skill_by_name("Non-existent Skill");
         assert!(not_found.is_none());
     }
@@ -5561,7 +6047,7 @@ mod tests {
     #[test]
     fn test_skill_registry_list_skills() {
         let mut registry = SkillRegistry::new();
-        
+
         let skill1 = Skill::new(
             "Rust Code Review".to_string(),
             "Expert-level code review for Rust applications".to_string(),
@@ -5573,8 +6059,9 @@ mod tests {
             30,
             vec!["code_quality_improved".to_string()],
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let skill2 = Skill::new(
             "Creative Writing".to_string(),
             "Creative writing and storytelling".to_string(),
@@ -5586,8 +6073,9 @@ mod tests {
             60,
             vec!["story_completed".to_string()],
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let skill3 = Skill::new(
             "Data Analysis".to_string(),
             "Advanced data analysis and visualization".to_string(),
@@ -5599,28 +6087,32 @@ mod tests {
             90,
             vec!["insights_generated".to_string()],
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_skill(skill1).unwrap();
         registry.register_skill(skill2).unwrap();
         registry.register_skill(skill3).unwrap();
-        
+
         // Test listing all skills
         let all_skills = registry.list_skills(None, None);
         assert_eq!(all_skills.len(), 3);
-        
+
         // Test filtering by category
         let technical_skills = registry.list_skills(Some(SkillCategory::Technical), None);
         assert_eq!(technical_skills.len(), 1);
         assert_eq!(technical_skills[0].name, "Rust Code Review");
-        
+
         // Test filtering by expertise level
         let advanced_skills = registry.list_skills(None, Some(ExpertiseLevel::Advanced));
         assert_eq!(advanced_skills.len(), 1);
         assert_eq!(advanced_skills[0].name, "Data Analysis");
-        
+
         // Test filtering by both category and expertise level
-        let creative_intermediate = registry.list_skills(Some(SkillCategory::Creative), Some(ExpertiseLevel::Intermediate));
+        let creative_intermediate = registry.list_skills(
+            Some(SkillCategory::Creative),
+            Some(ExpertiseLevel::Intermediate),
+        );
         assert_eq!(creative_intermediate.len(), 1);
         assert_eq!(creative_intermediate[0].name, "Creative Writing");
     }
@@ -5639,16 +6131,17 @@ mod tests {
             15,
             vec![],
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let skill_id = skill.id;
         registry.register_skill(skill).unwrap();
         assert_eq!(registry.list_skills(None, None).len(), 1);
-        
+
         let result = registry.remove_skill(skill_id);
         assert!(result.is_ok());
         assert_eq!(registry.list_skills(None, None).len(), 0);
-        
+
         // Verify skill is no longer accessible by name
         let retrieved = registry.get_skill_by_name("Skill to Remove");
         assert!(retrieved.is_none());
@@ -5658,7 +6151,7 @@ mod tests {
     fn test_skill_registry_remove_nonexistent_skill() {
         let mut registry = SkillRegistry::new();
         let nonexistent_id = Uuid::new_v4();
-        
+
         let result = registry.remove_skill(nonexistent_id);
         assert!(result.is_err());
         match result {
@@ -5673,7 +6166,7 @@ mod tests {
     fn test_pattern_execution_engine_timeout_handling() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern that would normally take too long to execute
         let slow_pattern = SystemPattern::new(
             "SlowPattern".to_string(),
@@ -5686,16 +6179,17 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(slow_pattern).unwrap();
-        
+
         // Set a short timeout
         engine.set_execution_timeout_ms(100);
-        
+
         // Attempt to execute the pattern - should timeout
         let result = engine.execute_pattern(&mut registry, "SlowPattern", None);
-        
+
         assert!(result.is_err());
         match result {
             Err(ParagonicError::Timeout(msg)) => {
@@ -5709,7 +6203,7 @@ mod tests {
     fn test_pattern_execution_engine_retry_mechanism() {
         let mut engine = PatternExecutionEngine::new();
         let mut registry = PatternRegistry::new();
-        
+
         // Create a pattern that fails initially but succeeds on retry
         let flaky_pattern = SystemPattern::new(
             "FlakyPattern".to_string(),
@@ -5722,28 +6216,29 @@ mod tests {
             json!({"result": "string"}),
             None,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         registry.register_pattern(flaky_pattern).unwrap();
-        
+
         // Set retry configuration
         engine.set_max_retries(3);
         engine.set_retry_delay_ms(10);
-        
+
         // Attempt to execute the pattern - should succeed after retries
         let result = engine.execute_pattern(&mut registry, "FlakyPattern", None);
-        
+
         assert!(result.is_ok());
         let execution = result.unwrap();
         assert!(execution.success);
-        
+
         // Verify retry information is recorded
         if let Some(output) = execution.output_result {
             assert!(output.get("retry_count").is_some());
             let retry_count = output.get("retry_count").unwrap().as_u64().unwrap();
             // The retry count should be >= 0 (it might be 0 if it succeeded on first try)
             assert!(retry_count >= 0);
-            
+
             // Verify attempts information is recorded
             assert!(output.get("attempts").is_some());
             let attempts = output.get("attempts").unwrap().as_u64().unwrap();
@@ -5838,7 +6333,8 @@ mod tests {
                 "files_modified": ["src/patterns.rs", "tests/patterns.rs"],
                 "activities": ["code_review", "testing", "documentation"]
             })),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Start the execution first
         execution.start_execution().unwrap();
@@ -5874,8 +6370,13 @@ mod tests {
         assert_eq!(execution.trigger_type, TriggerType::Automatic);
         assert!(execution.success);
         assert!(execution.output_result.is_some());
-        
-        let result = execution.output_result.as_ref().unwrap().as_object().unwrap();
+
+        let result = execution
+            .output_result
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap();
         assert!(result.contains_key("summary"));
         assert!(result.contains_key("key_decisions"));
         assert!(result.contains_key("files_modified"));
@@ -5916,10 +6417,36 @@ mod tests {
         ).unwrap();
 
         // Test trigger conditions evaluation
-        let conditions = pattern.trigger_conditions.as_ref().unwrap().as_object().unwrap();
-        assert_eq!(conditions.get("session_duration_minutes").unwrap().as_u64().unwrap(), 30);
-        assert_eq!(conditions.get("message_count_threshold").unwrap().as_u64().unwrap(), 10);
-        assert_eq!(conditions.get("activity_changes").unwrap().as_u64().unwrap(), 3);
+        let conditions = pattern
+            .trigger_conditions
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap();
+        assert_eq!(
+            conditions
+                .get("session_duration_minutes")
+                .unwrap()
+                .as_u64()
+                .unwrap(),
+            30
+        );
+        assert_eq!(
+            conditions
+                .get("message_count_threshold")
+                .unwrap()
+                .as_u64()
+                .unwrap(),
+            10
+        );
+        assert_eq!(
+            conditions
+                .get("activity_changes")
+                .unwrap()
+                .as_u64()
+                .unwrap(),
+            3
+        );
 
         // Test that conditions are met
         let session_context = serde_json::json!({
@@ -5929,12 +6456,28 @@ mod tests {
         });
 
         let context = session_context.as_object().unwrap();
-        let duration_met = context.get("session_duration_minutes").unwrap().as_u64().unwrap() >= 
-                          conditions.get("session_duration_minutes").unwrap().as_u64().unwrap();
-        let message_met = context.get("message_count").unwrap().as_u64().unwrap() >= 
-                         conditions.get("message_count_threshold").unwrap().as_u64().unwrap();
-        let activity_met = context.get("activity_changes").unwrap().as_u64().unwrap() >= 
-                          conditions.get("activity_changes").unwrap().as_u64().unwrap();
+        let duration_met = context
+            .get("session_duration_minutes")
+            .unwrap()
+            .as_u64()
+            .unwrap()
+            >= conditions
+                .get("session_duration_minutes")
+                .unwrap()
+                .as_u64()
+                .unwrap();
+        let message_met = context.get("message_count").unwrap().as_u64().unwrap()
+            >= conditions
+                .get("message_count_threshold")
+                .unwrap()
+                .as_u64()
+                .unwrap();
+        let activity_met = context.get("activity_changes").unwrap().as_u64().unwrap()
+            >= conditions
+                .get("activity_changes")
+                .unwrap()
+                .as_u64()
+                .unwrap();
 
         assert!(duration_met);
         assert!(message_met);
@@ -5982,18 +6525,33 @@ mod tests {
             assert!(step_obj.contains_key("step"));
             assert!(step_obj.contains_key("action"));
             assert!(step_obj.contains_key("description"));
-            
-            assert_eq!(step_obj.get("step").unwrap().as_u64().unwrap(), (i + 1) as u64);
+
+            assert_eq!(
+                step_obj.get("step").unwrap().as_u64().unwrap(),
+                (i + 1) as u64
+            );
         }
 
         // Verify specific steps
         let step1 = steps[0].as_object().unwrap();
-        assert_eq!(step1.get("action").unwrap().as_str().unwrap(), "analyze_session_data");
-        assert_eq!(step1.get("description").unwrap().as_str().unwrap(), "Analyze session messages and activities");
+        assert_eq!(
+            step1.get("action").unwrap().as_str().unwrap(),
+            "analyze_session_data"
+        );
+        assert_eq!(
+            step1.get("description").unwrap().as_str().unwrap(),
+            "Analyze session messages and activities"
+        );
 
         let step4 = steps[3].as_object().unwrap();
-        assert_eq!(step4.get("action").unwrap().as_str().unwrap(), "generate_summary");
-        assert_eq!(step4.get("description").unwrap().as_str().unwrap(), "Create comprehensive session summary");
+        assert_eq!(
+            step4.get("action").unwrap().as_str().unwrap(),
+            "generate_summary"
+        );
+        assert_eq!(
+            step4.get("description").unwrap().as_str().unwrap(),
+            "Create comprehensive session summary"
+        );
     }
 
     #[test]
@@ -6029,7 +6587,7 @@ mod tests {
         ).unwrap();
 
         let output_format = pattern.output_format.as_object().unwrap();
-        
+
         // Verify all required output fields
         assert!(output_format.contains_key("summary"));
         assert!(output_format.contains_key("key_decisions"));
@@ -6086,20 +6644,20 @@ mod tests {
         assert_eq!(pattern.category, PatternCategory::ActivityLabeling);
         assert_eq!(pattern.meta_level, MetaLevel::System);
         assert!(pattern.description.contains("descriptive labels"));
-        
+
         let workflow_steps = pattern.workflow_steps.as_array().unwrap();
         assert_eq!(workflow_steps.len(), 5);
         assert_eq!(workflow_steps[0]["action"], "analyze_context");
         assert_eq!(workflow_steps[4]["action"], "generate_label");
-        
+
         let output_format = pattern.output_format.as_object().unwrap();
         assert!(output_format.contains_key("activity_label"));
         assert!(output_format.contains_key("technologies"));
-        
+
         let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap();
         assert_eq!(trigger_conditions["session_duration_minutes"], 5);
         assert_eq!(trigger_conditions["message_count"], 3);
-        
+
         let success_criteria = pattern.success_criteria.as_ref().unwrap();
         assert_eq!(success_criteria["label_length_min"], 10);
         assert_eq!(success_criteria["technologies_count_min"], 1);
@@ -6145,28 +6703,28 @@ mod tests {
 
         let result_value = result.unwrap();
         assert!(result_value.is_object());
-        
+
         let result_obj = result_value.as_object().unwrap();
         assert!(result_obj.contains_key("activity_label"));
         assert!(result_obj.contains_key("activity_type"));
         assert!(result_obj.contains_key("technologies"));
         assert!(result_obj.contains_key("scope"));
         assert!(result_obj.contains_key("complexity"));
-        
+
         let activity_label = result_obj["activity_label"].as_str().unwrap();
         assert!(!activity_label.is_empty());
         assert!(activity_label.len() >= 10);
-        
+
         let technologies = result_obj["technologies"].as_array().unwrap();
         assert!(!technologies.is_empty());
         assert!(technologies.iter().any(|t| t.as_str() == Some("rust")));
-        
+
         let activity_type = result_obj["activity_type"].as_str().unwrap();
         assert!(!activity_type.is_empty());
-        
+
         let scope = result_obj["scope"].as_str().unwrap();
         assert!(!scope.is_empty());
-        
+
         let complexity = result_obj["complexity"].as_str().unwrap();
         assert!(!complexity.is_empty());
     }
@@ -6234,27 +6792,42 @@ mod tests {
 
         let workflow_steps = pattern.workflow_steps.as_array().unwrap();
         assert_eq!(workflow_steps.len(), 5);
-        
+
         // Verify each step
         assert_eq!(workflow_steps[0]["step"], 1);
         assert_eq!(workflow_steps[0]["action"], "analyze_context");
-        assert_eq!(workflow_steps[0]["description"], "Analyze current session context");
-        
+        assert_eq!(
+            workflow_steps[0]["description"],
+            "Analyze current session context"
+        );
+
         assert_eq!(workflow_steps[1]["step"], 2);
         assert_eq!(workflow_steps[1]["action"], "identify_activity_type");
-        assert_eq!(workflow_steps[1]["description"], "Identify primary activity type");
-        
+        assert_eq!(
+            workflow_steps[1]["description"],
+            "Identify primary activity type"
+        );
+
         assert_eq!(workflow_steps[2]["step"], 3);
         assert_eq!(workflow_steps[2]["action"], "extract_technologies");
-        assert_eq!(workflow_steps[2]["description"], "Extract key technologies or concepts");
-        
+        assert_eq!(
+            workflow_steps[2]["description"],
+            "Extract key technologies or concepts"
+        );
+
         assert_eq!(workflow_steps[3]["step"], 4);
         assert_eq!(workflow_steps[3]["action"], "determine_scope");
-        assert_eq!(workflow_steps[3]["description"], "Determine scope and complexity");
-        
+        assert_eq!(
+            workflow_steps[3]["description"],
+            "Determine scope and complexity"
+        );
+
         assert_eq!(workflow_steps[4]["step"], 5);
         assert_eq!(workflow_steps[4]["action"], "generate_label");
-        assert_eq!(workflow_steps[4]["description"], "Generate descriptive label");
+        assert_eq!(
+            workflow_steps[4]["description"],
+            "Generate descriptive label"
+        );
     }
 
     #[test]
@@ -6283,20 +6856,20 @@ mod tests {
         ).unwrap();
 
         let output_format = pattern.output_format.as_object().unwrap();
-        
+
         // Verify all required fields are present
         assert!(output_format.contains_key("activity_label"));
         assert_eq!(output_format["activity_label"], "string");
-        
+
         assert!(output_format.contains_key("activity_type"));
         assert_eq!(output_format["activity_type"], "enum");
-        
+
         assert!(output_format.contains_key("technologies"));
         assert_eq!(output_format["technologies"], json!(["string"]));
-        
+
         assert!(output_format.contains_key("scope"));
         assert_eq!(output_format["scope"], "enum");
-        
+
         assert!(output_format.contains_key("complexity"));
         assert_eq!(output_format["complexity"], "enum");
     }
@@ -6365,7 +6938,7 @@ mod tests {
 
         let workflow = pattern.workflow_steps.as_array().unwrap();
         assert_eq!(workflow.len(), 5);
-        
+
         assert_eq!(workflow[0]["action"], "analyze_performance");
         assert_eq!(workflow[1]["action"], "identify_strengths");
         assert_eq!(workflow[2]["action"], "identify_weaknesses");
@@ -6401,8 +6974,13 @@ mod tests {
             None
         ).unwrap();
 
-        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap().as_array().unwrap();
-        
+        let trigger_conditions = pattern
+            .trigger_conditions
+            .as_ref()
+            .unwrap()
+            .as_array()
+            .unwrap();
+
         assert!(trigger_conditions.contains(&json!("session_end")));
         assert!(trigger_conditions.contains(&json!("performance_threshold")));
         assert!(trigger_conditions.contains(&json!("manual_trigger")));
@@ -6438,7 +7016,7 @@ mod tests {
 
         let output_format = pattern.output_format.as_object().unwrap();
         assert_eq!(output_format["output_format"], "reflection_report");
-        
+
         let schema = output_format["metadata_schema"].as_object().unwrap();
         assert!(schema.contains_key("performance_metrics"));
         assert!(schema.contains_key("strengths"));
@@ -6489,12 +7067,14 @@ mod tests {
 
         let mut registry = PatternRegistry::new();
         registry.register_pattern(pattern).unwrap();
-        let result = registry.execute_pattern("Self-Reflection", context).unwrap();
-        
+        let result = registry
+            .execute_pattern("Self-Reflection", context)
+            .unwrap();
+
         assert!(result.output_result.is_some());
         let output_result = result.output_result.unwrap();
         let result_obj = output_result.as_object().unwrap();
-        
+
         assert!(result_obj.contains_key("performance_analysis"));
         assert!(result_obj.contains_key("strengths"));
         assert!(result_obj.contains_key("weaknesses"));
@@ -6591,7 +7171,7 @@ mod tests {
 
         let workflow_steps = pattern.workflow_steps.as_array().unwrap();
         assert_eq!(workflow_steps.len(), 5);
-        
+
         assert_eq!(workflow_steps[0]["action"], "extract_context");
         assert_eq!(workflow_steps[1]["action"], "identify_key_points");
         assert_eq!(workflow_steps[2]["action"], "categorize_information");
@@ -6747,12 +7327,14 @@ mod tests {
 
         let mut registry = PatternRegistry::new();
         registry.register_pattern(pattern).unwrap();
-        let result = registry.execute_pattern("Context Summarization", context).unwrap();
-        
+        let result = registry
+            .execute_pattern("Context Summarization", context)
+            .unwrap();
+
         assert!(result.output_result.is_some());
         let output_result = result.output_result.unwrap();
         let result_obj = output_result.as_object().unwrap();
-        
+
         assert!(result_obj.contains_key("summary"));
         assert!(result_obj.contains_key("key_points"));
         assert!(result_obj.contains_key("categories"));
@@ -6790,7 +7372,10 @@ mod tests {
         assert_eq!(pattern.name, "Progress Tracking");
         assert_eq!(pattern.category, PatternCategory::ProgressTracking);
         assert_eq!(pattern.meta_level, MetaLevel::System);
-        assert_eq!(pattern.description, "Track and analyze progress across development sessions");
+        assert_eq!(
+            pattern.description,
+            "Track and analyze progress across development sessions"
+        );
     }
 
     #[test]
@@ -6823,7 +7408,7 @@ mod tests {
 
         let workflow = pattern.workflow_steps.as_array().unwrap();
         assert_eq!(workflow.len(), 5);
-        
+
         assert_eq!(workflow[0]["action"], "collect_metrics");
         assert_eq!(workflow[1]["action"], "analyze_trends");
         assert_eq!(workflow[2]["action"], "identify_milestones");
@@ -6859,8 +7444,13 @@ mod tests {
             None
         ).unwrap();
 
-        let trigger_conditions = pattern.trigger_conditions.as_ref().unwrap().as_array().unwrap();
-        
+        let trigger_conditions = pattern
+            .trigger_conditions
+            .as_ref()
+            .unwrap()
+            .as_array()
+            .unwrap();
+
         assert_eq!(trigger_conditions.len(), 3);
         assert!(trigger_conditions.contains(&json!("session_end")));
         assert!(trigger_conditions.contains(&json!("milestone_reached")));
@@ -6897,7 +7487,7 @@ mod tests {
 
         let output_format = pattern.output_format.as_object().unwrap();
         let format_spec = output_format["output_format"].as_object().unwrap();
-        
+
         assert_eq!(format_spec["metrics"], "object");
         assert_eq!(format_spec["trends"], "array");
         assert_eq!(format_spec["milestones"], "array");
@@ -6908,7 +7498,7 @@ mod tests {
     #[test]
     fn test_progress_tracking_pattern_execution() {
         let mut registry = PatternRegistry::new();
-        
+
         let pattern = SystemPattern::new(
             "Progress Tracking".to_string(),
             PatternCategory::ProgressTracking,
@@ -6951,12 +7541,14 @@ mod tests {
             }
         });
 
-        let result = registry.execute_pattern("Progress Tracking", Some(session_data)).unwrap();
+        let result = registry
+            .execute_pattern("Progress Tracking", Some(session_data))
+            .unwrap();
         assert!(result.success);
 
         let output_result = result.output_result.unwrap();
         let result_obj = output_result.as_object().unwrap();
-        
+
         assert!(result_obj.contains_key("metrics"));
         assert!(result_obj.contains_key("trends"));
         assert!(result_obj.contains_key("milestones"));
@@ -6985,15 +7577,16 @@ impl SkillRegistry {
     pub fn register_skill(&mut self, skill: Skill) -> ParagonicResult<()> {
         // Validate skill name uniqueness
         if self.skill_names.contains_key(&skill.name) {
-            return Err(ParagonicError::InvalidInput(
-                format!("Skill with name '{}' already exists", skill.name)
-            ));
+            return Err(ParagonicError::InvalidInput(format!(
+                "Skill with name '{}' already exists",
+                skill.name
+            )));
         }
-        
+
         // Store the skill and its name mapping
         self.skills.insert(skill.id, skill.clone());
         self.skill_names.insert(skill.name.clone(), skill.id);
-        
+
         Ok(())
     }
 
@@ -7004,12 +7597,19 @@ impl SkillRegistry {
 
     /// Retrieves a skill by its name
     pub fn get_skill_by_name(&self, name: &str) -> Option<&Skill> {
-        self.skill_names.get(name).and_then(|id| self.skills.get(id))
+        self.skill_names
+            .get(name)
+            .and_then(|id| self.skills.get(id))
     }
 
     /// Lists all skills with optional filtering
-    pub fn list_skills(&self, category: Option<SkillCategory>, expertise_level: Option<ExpertiseLevel>) -> Vec<&Skill> {
-        self.skills.values()
+    pub fn list_skills(
+        &self,
+        category: Option<SkillCategory>,
+        expertise_level: Option<ExpertiseLevel>,
+    ) -> Vec<&Skill> {
+        self.skills
+            .values()
             .filter(|skill| {
                 if let Some(ref cat) = category {
                     if skill.category != *cat {
@@ -7041,60 +7641,66 @@ impl SkillRegistry {
 /// Database operations for pattern management
 pub mod database {
     use super::*;
-    use diesel::prelude::*;
     use diesel::pg::PgConnection;
-    use diesel::r2d2::{self, ConnectionManager, Pool};
-    use diesel::result::Error as DieselError;
-    use rust_decimal::prelude::ToPrimitive;
+    use diesel::prelude::*;
+    use diesel::r2d2::{self, ConnectionManager};
+
     use crate::database;
-    use crate::schema::{
-        system_patterns, pattern_executions, pattern_relationships, 
-        tool_pattern_mappings, pattern_learning_metrics, ai_agent_sessions
-    };
     use crate::models::{
-        SystemPattern as DbSystemPattern, PatternExecution as DbPatternExecution,
-        PatternRelationship as DbPatternRelationship, ToolPatternMapping as DbToolPatternMapping,
-        PatternLearningMetrics as DbPatternLearningMetrics, AiAgentSession as DbAiAgentSession
+        PatternExecution as DbPatternExecution, PatternRelationship as DbPatternRelationship,
+        SystemPattern as DbSystemPattern,
     };
+    use crate::schema::{pattern_executions, pattern_relationships, system_patterns};
 
     /// Repository trait for pattern database operations
     pub trait PatternRepository {
         /// Create a new system pattern
         fn create_pattern(&self, pattern: &SystemPattern) -> ParagonicResult<Uuid>;
-        
+
         /// Retrieve a pattern by ID
         fn get_pattern(&self, id: Uuid) -> ParagonicResult<Option<SystemPattern>>;
-        
+
         /// Retrieve a pattern by name
         fn get_pattern_by_name(&self, name: &str) -> ParagonicResult<Option<SystemPattern>>;
-        
+
         /// List all patterns with optional filtering
-        fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> ParagonicResult<Vec<SystemPattern>>;
-        
+        fn list_patterns(
+            &self,
+            category: Option<PatternCategory>,
+            meta_level: Option<MetaLevel>,
+        ) -> ParagonicResult<Vec<SystemPattern>>;
+
         /// Update a pattern
         fn update_pattern(&self, id: Uuid, pattern: &SystemPattern) -> ParagonicResult<()>;
-        
+
         /// Delete a pattern
         fn delete_pattern(&self, id: Uuid) -> ParagonicResult<()>;
-        
+
         /// Create a pattern execution
         fn create_execution(&self, execution: &PatternExecution) -> ParagonicResult<Uuid>;
-        
+
         /// Update a pattern execution
         fn update_execution(&self, id: Uuid, execution: &PatternExecution) -> ParagonicResult<()>;
-        
+
         /// Get execution history for a pattern
-        fn get_execution_history(&self, pattern_id: Uuid, limit: Option<i64>) -> ParagonicResult<Vec<PatternExecution>>;
-        
+        fn get_execution_history(
+            &self,
+            pattern_id: Uuid,
+            limit: Option<i64>,
+        ) -> ParagonicResult<Vec<PatternExecution>>;
+
         /// Create a pattern relationship
         fn create_relationship(&self, relationship: &PatternRelationship) -> ParagonicResult<Uuid>;
-        
+
         /// Get relationships for a pattern
-        fn get_pattern_relationships(&self, pattern_id: Uuid) -> ParagonicResult<Vec<PatternRelationship>>;
-        
+        fn get_pattern_relationships(
+            &self,
+            pattern_id: Uuid,
+        ) -> ParagonicResult<Vec<PatternRelationship>>;
+
         /// Delete a pattern relationship
         fn delete_relationship(&self, id: Uuid) -> ParagonicResult<()>;
-        
+
         /// Get pattern statistics
         fn get_pattern_statistics(&self, pattern_id: Uuid) -> ParagonicResult<PatternStatistics>;
     }
@@ -7109,12 +7715,17 @@ pub mod database {
         }
 
         /// Get a database connection
-        fn get_connection(&self) -> ParagonicResult<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
+        fn get_connection(
+            &self,
+        ) -> ParagonicResult<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
             database::get_connection()
         }
 
         /// Convert database model to domain model
-        fn db_pattern_to_domain(&self, db_pattern: &DbSystemPattern) -> ParagonicResult<SystemPattern> {
+        fn db_pattern_to_domain(
+            &self,
+            db_pattern: &DbSystemPattern,
+        ) -> ParagonicResult<SystemPattern> {
             let category = match db_pattern.pattern_type.as_str() {
                 "SessionManagement" => PatternCategory::SessionManagement,
                 "SelfReflection" => PatternCategory::SelfReflection,
@@ -7122,9 +7733,12 @@ pub mod database {
                 "ActivityLabeling" => PatternCategory::ActivityLabeling,
                 "ProgressTracking" => PatternCategory::ProgressTracking,
                 "KnowledgeExtraction" => PatternCategory::KnowledgeExtraction,
-                _ => return Err(ParagonicError::InvalidInput(
-                    format!("Unknown pattern type: {}", db_pattern.pattern_type)
-                )),
+                _ => {
+                    return Err(ParagonicError::InvalidInput(format!(
+                        "Unknown pattern type: {}",
+                        db_pattern.pattern_type
+                    )))
+                }
             };
 
             let meta_level = MetaLevel::System; // Default for now, could be stored in metadata
@@ -7145,7 +7759,10 @@ pub mod database {
         }
 
         /// Convert domain model to database model
-        fn domain_pattern_to_db(&self, pattern: &SystemPattern) -> ParagonicResult<DbSystemPattern> {
+        fn domain_pattern_to_db(
+            &self,
+            pattern: &SystemPattern,
+        ) -> ParagonicResult<DbSystemPattern> {
             let pattern_type = match pattern.category {
                 PatternCategory::SessionManagement => "SessionManagement",
                 PatternCategory::SelfReflection => "SelfReflection",
@@ -7178,7 +7795,10 @@ pub mod database {
         }
 
         /// Convert database execution to domain execution
-        fn db_execution_to_domain(&self, db_execution: &DbPatternExecution) -> ParagonicResult<PatternExecution> {
+        fn db_execution_to_domain(
+            &self,
+            db_execution: &DbPatternExecution,
+        ) -> ParagonicResult<PatternExecution> {
             let trigger_type = match db_execution.execution_status.as_str() {
                 "automatic" => TriggerType::Automatic,
                 "manual" => TriggerType::Manual,
@@ -7204,14 +7824,21 @@ pub mod database {
         }
 
         /// Convert domain execution to database execution
-        fn domain_execution_to_db(&self, execution: &PatternExecution) -> ParagonicResult<DbPatternExecution> {
+        fn domain_execution_to_db(
+            &self,
+            execution: &PatternExecution,
+        ) -> ParagonicResult<DbPatternExecution> {
             let execution_status = match execution.trigger_type {
                 TriggerType::Automatic => "automatic",
                 TriggerType::Manual => "manual",
                 TriggerType::Scheduled => "scheduled",
             };
 
-            let status = if execution.success { "completed" } else { "running" };
+            let status = if execution.success {
+                "completed"
+            } else {
+                "running"
+            };
 
             Ok(DbPatternExecution {
                 id: execution.id,
@@ -7223,7 +7850,11 @@ pub mod database {
                 error_message: execution.error_message.clone(),
                 execution_time_ms: execution.execution_duration_ms.map(|t| t as i32),
                 started_at: Some(execution.created_at),
-                completed_at: if execution.success { Some(Utc::now()) } else { None },
+                completed_at: if execution.success {
+                    Some(Utc::now())
+                } else {
+                    None
+                },
                 created_at: Some(execution.created_at),
                 updated_at: Some(Utc::now()),
             })
@@ -7238,10 +7869,14 @@ pub mod database {
             let result = diesel::insert_into(system_patterns::table)
                 .values(&db_pattern)
                 .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to create pattern: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to create pattern: {}", e))
+                })?;
 
             if result == 0 {
-                return Err(ParagonicError::Database("No rows were inserted".to_string()));
+                return Err(ParagonicError::Database(
+                    "No rows were inserted".to_string(),
+                ));
             }
 
             Ok(pattern.id)
@@ -7272,7 +7907,9 @@ pub mod database {
                 .filter(system_patterns::name.eq(name))
                 .first::<DbSystemPattern>(conn)
                 .optional()
-                .map_err(|e| ParagonicError::Database(format!("Failed to get pattern by name: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to get pattern by name: {}", e))
+                })?;
 
             match db_pattern {
                 Some(db_pattern) => {
@@ -7283,7 +7920,11 @@ pub mod database {
             }
         }
 
-        fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> ParagonicResult<Vec<SystemPattern>> {
+        fn list_patterns(
+            &self,
+            category: Option<PatternCategory>,
+            meta_level: Option<MetaLevel>,
+        ) -> ParagonicResult<Vec<SystemPattern>> {
             let conn = &mut self.get_connection()?;
 
             let mut query = system_patterns::table.into_boxed();
@@ -7332,10 +7973,14 @@ pub mod database {
                     system_patterns::updated_at.eq(Utc::now()),
                 ))
                 .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to update pattern: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to update pattern: {}", e))
+                })?;
 
             if result == 0 {
-                return Err(ParagonicError::InvalidInput("Pattern not found".to_string()));
+                return Err(ParagonicError::InvalidInput(
+                    "Pattern not found".to_string(),
+                ));
             }
 
             Ok(())
@@ -7346,10 +7991,14 @@ pub mod database {
 
             let result = diesel::delete(system_patterns::table.filter(system_patterns::id.eq(id)))
                 .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to delete pattern: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to delete pattern: {}", e))
+                })?;
 
             if result == 0 {
-                return Err(ParagonicError::InvalidInput("Pattern not found".to_string()));
+                return Err(ParagonicError::InvalidInput(
+                    "Pattern not found".to_string(),
+                ));
             }
 
             Ok(())
@@ -7362,10 +8011,14 @@ pub mod database {
             let result = diesel::insert_into(pattern_executions::table)
                 .values(&db_execution)
                 .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to create execution: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to create execution: {}", e))
+                })?;
 
             if result == 0 {
-                return Err(ParagonicError::Database("No rows were inserted".to_string()));
+                return Err(ParagonicError::Database(
+                    "No rows were inserted".to_string(),
+                ));
             }
 
             Ok(execution.id)
@@ -7375,26 +8028,39 @@ pub mod database {
             let conn = &mut self.get_connection()?;
             let db_execution = self.domain_execution_to_db(execution)?;
 
-            let result = diesel::update(pattern_executions::table.filter(pattern_executions::id.eq(id)))
-                .set((
-                    pattern_executions::execution_status.eq(if execution.success { "completed" } else { "running" }),
-                    pattern_executions::output_data.eq(&db_execution.output_data),
-                    pattern_executions::error_message.eq(&db_execution.error_message),
-                    pattern_executions::execution_time_ms.eq(&db_execution.execution_time_ms),
-                    pattern_executions::completed_at.eq(&db_execution.completed_at),
-                    pattern_executions::updated_at.eq(Utc::now()),
-                ))
-                .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to update execution: {}", e)))?;
+            let result =
+                diesel::update(pattern_executions::table.filter(pattern_executions::id.eq(id)))
+                    .set((
+                        pattern_executions::execution_status.eq(if execution.success {
+                            "completed"
+                        } else {
+                            "running"
+                        }),
+                        pattern_executions::output_data.eq(&db_execution.output_data),
+                        pattern_executions::error_message.eq(&db_execution.error_message),
+                        pattern_executions::execution_time_ms.eq(&db_execution.execution_time_ms),
+                        pattern_executions::completed_at.eq(&db_execution.completed_at),
+                        pattern_executions::updated_at.eq(Utc::now()),
+                    ))
+                    .execute(conn)
+                    .map_err(|e| {
+                        ParagonicError::Database(format!("Failed to update execution: {}", e))
+                    })?;
 
             if result == 0 {
-                return Err(ParagonicError::InvalidInput("Execution not found".to_string()));
+                return Err(ParagonicError::InvalidInput(
+                    "Execution not found".to_string(),
+                ));
             }
 
             Ok(())
         }
 
-        fn get_execution_history(&self, pattern_id: Uuid, limit: Option<i64>) -> ParagonicResult<Vec<PatternExecution>> {
+        fn get_execution_history(
+            &self,
+            pattern_id: Uuid,
+            limit: Option<i64>,
+        ) -> ParagonicResult<Vec<PatternExecution>> {
             let conn = &mut self.get_connection()?;
 
             let mut query = pattern_executions::table
@@ -7406,9 +8072,9 @@ pub mod database {
                 query = query.limit(limit_val);
             }
 
-            let db_executions = query
-                .load::<DbPatternExecution>(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to get execution history: {}", e)))?;
+            let db_executions = query.load::<DbPatternExecution>(conn).map_err(|e| {
+                ParagonicError::Database(format!("Failed to get execution history: {}", e))
+            })?;
 
             let mut executions = Vec::new();
             for db_execution in db_executions {
@@ -7432,7 +8098,8 @@ pub mod database {
                     RelationshipType::Enhances => "Enhances",
                     RelationshipType::Conflicts => "Conflicts",
                     RelationshipType::Replaces => "Replaces",
-                }.to_string(),
+                }
+                .to_string(),
                 relationship_strength: Some(relationship.strength),
                 metadata: Some(serde_json::json!({
                     "description": relationship.description,
@@ -7444,25 +8111,35 @@ pub mod database {
             let result = diesel::insert_into(pattern_relationships::table)
                 .values(&db_relationship)
                 .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to create relationship: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to create relationship: {}", e))
+                })?;
 
             if result == 0 {
-                return Err(ParagonicError::Database("No rows were inserted".to_string()));
+                return Err(ParagonicError::Database(
+                    "No rows were inserted".to_string(),
+                ));
             }
 
             Ok(relationship.id)
         }
 
-        fn get_pattern_relationships(&self, pattern_id: Uuid) -> ParagonicResult<Vec<PatternRelationship>> {
+        fn get_pattern_relationships(
+            &self,
+            pattern_id: Uuid,
+        ) -> ParagonicResult<Vec<PatternRelationship>> {
             let conn = &mut self.get_connection()?;
 
             let db_relationships = pattern_relationships::table
                 .filter(
-                    pattern_relationships::source_pattern_id.eq(pattern_id)
-                        .or(pattern_relationships::target_pattern_id.eq(pattern_id))
+                    pattern_relationships::source_pattern_id
+                        .eq(pattern_id)
+                        .or(pattern_relationships::target_pattern_id.eq(pattern_id)),
                 )
                 .load::<DbPatternRelationship>(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to get relationships: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to get relationships: {}", e))
+                })?;
 
             let mut relationships = Vec::new();
             for db_rel in db_relationships {
@@ -7475,7 +8152,8 @@ pub mod database {
                     _ => continue, // Skip unknown relationship types
                 };
 
-                let description = db_rel.metadata
+                let description = db_rel
+                    .metadata
                     .as_ref()
                     .and_then(|m| m.get("description"))
                     .and_then(|d| d.as_str())
@@ -7501,12 +8179,18 @@ pub mod database {
         fn delete_relationship(&self, id: Uuid) -> ParagonicResult<()> {
             let conn = &mut self.get_connection()?;
 
-            let result = diesel::delete(pattern_relationships::table.filter(pattern_relationships::id.eq(id)))
-                .execute(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to delete relationship: {}", e)))?;
+            let result = diesel::delete(
+                pattern_relationships::table.filter(pattern_relationships::id.eq(id)),
+            )
+            .execute(conn)
+            .map_err(|e| {
+                ParagonicError::Database(format!("Failed to delete relationship: {}", e))
+            })?;
 
             if result == 0 {
-                return Err(ParagonicError::InvalidInput("Relationship not found".to_string()));
+                return Err(ParagonicError::InvalidInput(
+                    "Relationship not found".to_string(),
+                ));
             }
 
             Ok(())
@@ -7520,7 +8204,9 @@ pub mod database {
                 .filter(pattern_executions::pattern_id.eq(pattern_id))
                 .count()
                 .get_result(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to count executions: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to count executions: {}", e))
+                })?;
 
             // Get successful executions
             let successful_executions: i64 = pattern_executions::table
@@ -7528,7 +8214,12 @@ pub mod database {
                 .filter(pattern_executions::execution_status.eq("completed"))
                 .count()
                 .get_result(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to count successful executions: {}", e)))?;
+                .map_err(|e| {
+                    ParagonicError::Database(format!(
+                        "Failed to count successful executions: {}",
+                        e
+                    ))
+                })?;
 
             // Get average execution time - calculate manually to avoid type issues
             let executions_with_time = pattern_executions::table
@@ -7536,10 +8227,13 @@ pub mod database {
                 .filter(pattern_executions::execution_time_ms.is_not_null())
                 .select(pattern_executions::execution_time_ms)
                 .load::<Option<i32>>(conn)
-                .map_err(|e| ParagonicError::Database(format!("Failed to get execution times: {}", e)))?;
-            
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to get execution times: {}", e))
+                })?;
+
             let avg_time = if !executions_with_time.is_empty() {
-                let total_time: i64 = executions_with_time.iter()
+                let total_time: i64 = executions_with_time
+                    .iter()
                     .filter_map(|&t| t.map(|t| t as i64))
                     .sum();
                 Some((total_time as f64) / (executions_with_time.len() as f64))
@@ -7554,7 +8248,9 @@ pub mod database {
                 .select(pattern_executions::created_at)
                 .first(conn)
                 .optional()
-                .map_err(|e| ParagonicError::Database(format!("Failed to get last execution: {}", e)))?
+                .map_err(|e| {
+                    ParagonicError::Database(format!("Failed to get last execution: {}", e))
+                })?
                 .flatten();
 
             let failed_executions = total_executions - successful_executions;
@@ -7617,7 +8313,11 @@ pub mod database {
         }
 
         /// List patterns with filtering
-        pub fn list_patterns(&self, category: Option<PatternCategory>, meta_level: Option<MetaLevel>) -> ParagonicResult<Vec<SystemPattern>> {
+        pub fn list_patterns(
+            &self,
+            category: Option<PatternCategory>,
+            meta_level: Option<MetaLevel>,
+        ) -> ParagonicResult<Vec<SystemPattern>> {
             self.repository.list_patterns(category, meta_level)
         }
 
@@ -7625,10 +8325,10 @@ pub mod database {
         pub fn register_pattern(&mut self, pattern: SystemPattern) -> ParagonicResult<()> {
             // Save to database
             self.repository.create_pattern(&pattern)?;
-            
+
             // Add to cache
             self.cache.insert(pattern.id, pattern);
-            
+
             Ok(())
         }
 
@@ -7636,20 +8336,26 @@ pub mod database {
         pub fn remove_pattern(&mut self, id: Uuid) -> ParagonicResult<()> {
             // Remove from database
             self.repository.delete_pattern(id)?;
-            
+
             // Remove from cache
             self.cache.remove(&id);
-            
+
             Ok(())
         }
 
         /// Execute a pattern and store the execution
-        pub fn execute_pattern(&mut self, pattern_name: &str, context: Option<Value>) -> ParagonicResult<PatternExecution> {
+        pub fn execute_pattern(
+            &mut self,
+            pattern_name: &str,
+            context: Option<Value>,
+        ) -> ParagonicResult<PatternExecution> {
             // Get pattern from database
-            let pattern = self.repository.get_pattern_by_name(pattern_name)?
-                .ok_or_else(|| ParagonicError::InvalidInput(
-                    format!("Pattern '{}' not found", pattern_name)
-                ))?;
+            let pattern = self
+                .repository
+                .get_pattern_by_name(pattern_name)?
+                .ok_or_else(|| {
+                    ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+                })?;
 
             // Create execution
             let mut execution = PatternExecution::new(
@@ -7674,7 +8380,7 @@ pub mod database {
                     "executed_at": chrono::Utc::now().to_rfc3339(),
                     "status": "completed"
                 })),
-                None
+                None,
             )?;
 
             // Update execution in database
@@ -7684,24 +8390,34 @@ pub mod database {
         }
 
         /// Get execution history for a pattern
-        pub fn get_execution_history(&self, pattern_name: &str) -> ParagonicResult<Vec<PatternExecution>> {
+        pub fn get_execution_history(
+            &self,
+            pattern_name: &str,
+        ) -> ParagonicResult<Vec<PatternExecution>> {
             // Get pattern from database
-            let pattern = self.repository.get_pattern_by_name(pattern_name)?
-                .ok_or_else(|| ParagonicError::InvalidInput(
-                    format!("Pattern '{}' not found", pattern_name)
-                ))?;
+            let pattern = self
+                .repository
+                .get_pattern_by_name(pattern_name)?
+                .ok_or_else(|| {
+                    ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+                })?;
 
             // Get execution history
             self.repository.get_execution_history(pattern.id, Some(100))
         }
 
         /// Get pattern statistics
-        pub fn get_pattern_statistics(&self, pattern_name: &str) -> ParagonicResult<PatternStatistics> {
+        pub fn get_pattern_statistics(
+            &self,
+            pattern_name: &str,
+        ) -> ParagonicResult<PatternStatistics> {
             // Get pattern from database
-            let pattern = self.repository.get_pattern_by_name(pattern_name)?
-                .ok_or_else(|| ParagonicError::InvalidInput(
-                    format!("Pattern '{}' not found", pattern_name)
-                ))?;
+            let pattern = self
+                .repository
+                .get_pattern_by_name(pattern_name)?
+                .ok_or_else(|| {
+                    ParagonicError::InvalidInput(format!("Pattern '{}' not found", pattern_name))
+                })?;
 
             // Get statistics
             self.repository.get_pattern_statistics(pattern.id)
@@ -7717,8 +8433,8 @@ pub mod database {
 
 #[cfg(test)]
 mod database_tests {
-    use super::*;
     use super::database::*;
+    use super::*;
     use crate::database;
 
     #[tokio::test]
@@ -7737,10 +8453,10 @@ mod database_tests {
         }
 
         let repository = DieselPatternRepository::new();
-        
+
         // Test that repository was created successfully
         assert!(true); // Repository was created
-        
+
         Ok(())
     }
 
@@ -7811,7 +8527,10 @@ mod database_tests {
 
         let retrieved_updated = repository.get_pattern(pattern.id)?;
         assert!(retrieved_updated.is_some());
-        assert_eq!(retrieved_updated.unwrap().description, "Updated description");
+        assert_eq!(
+            retrieved_updated.unwrap().description,
+            "Updated description"
+        );
 
         // Test delete
         repository.delete_pattern(pattern.id)?;
@@ -7877,11 +8596,7 @@ mod database_tests {
         // Test update execution
         let mut updated_execution = execution.clone();
         updated_execution.start_execution()?;
-        updated_execution.complete_execution(
-            true,
-            Some(json!({"result": "success"})),
-            None
-        )?;
+        updated_execution.complete_execution(true, Some(json!({"result": "success"})), None)?;
 
         repository.update_execution(execution.id, &updated_execution)?;
 
@@ -7949,7 +8664,8 @@ mod database_tests {
         assert_eq!(retrieved.unwrap().name, pattern.name);
 
         // Test execute pattern
-        let execution = registry.execute_pattern("Test Registry Pattern", Some(json!({"test": "data"})))?;
+        let execution =
+            registry.execute_pattern("Test Registry Pattern", Some(json!({"test": "data"})))?;
         assert_eq!(execution.get_execution_status(), ExecutionStatus::Completed);
         assert!(execution.success);
 

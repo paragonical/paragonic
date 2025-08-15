@@ -1,12 +1,12 @@
 //! Ollama integration for Paragonic
-//! 
+//!
 //! This module handles communication with the local Ollama server
 //! for AI model interactions.
 
+use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{info, error};
-use futures_util::StreamExt;
+use tracing::{error, info};
 
 use crate::error::{ParagonicError, ParagonicResult};
 
@@ -152,40 +152,43 @@ impl OllamaClient {
     }
 
     /// Create a new Ollama client from config manager
-    /// 
+    ///
     /// Creates an Ollama client using the configuration from the config module.
-    pub fn from_config_manager(config_manager: &crate::config::ConfigManager) -> ParagonicResult<Self> {
+    pub fn from_config_manager(
+        config_manager: &crate::config::ConfigManager,
+    ) -> ParagonicResult<Self> {
         let config = config_manager.get_config();
-        
+
         let ollama_config = OllamaConfig {
             base_url: config.ollama.base_url.clone(),
             timeout_seconds: config.ollama.timeout_seconds,
             progress_timeout_seconds: config.ollama.progress_timeout_seconds,
         };
-        
+
         Self::new(ollama_config)
     }
 
     /// List available models from Ollama
-    /// 
+    ///
     /// Returns a list of all models currently available on the Ollama server.
     pub async fn list_models(&self) -> ParagonicResult<Vec<OllamaModel>> {
         let url = format!("{}/api/tags", self.config.base_url);
-        
-        let response = self.client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| {
-                error!("Failed to list models from Ollama: {}", e);
-                ParagonicError::Ollama(format!("Model listing failed: {e}"))
-            })?;
+
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            error!("Failed to list models from Ollama: {}", e);
+            ParagonicError::Ollama(format!("Model listing failed: {e}"))
+        })?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "API error {status}: {error_text}"
+            )));
         }
 
         let list_response: ListModelsResponse = response.json().await.map_err(|e| {
@@ -193,12 +196,15 @@ impl OllamaClient {
             ParagonicError::Ollama(format!("Response parsing failed: {e}"))
         })?;
 
-        info!("Successfully listed {} models from Ollama", list_response.models.len());
+        info!(
+            "Successfully listed {} models from Ollama",
+            list_response.models.len()
+        );
         Ok(list_response.models)
     }
 
     /// Send a chat completion request to Ollama
-    /// 
+    ///
     /// Sends a list of messages to the specified model and returns the response.
     pub async fn chat_completion(
         &self,
@@ -207,7 +213,7 @@ impl OllamaClient {
         stream: bool,
     ) -> ParagonicResult<ChatCompletionResponse> {
         let url = format!("{}/api/chat", self.config.base_url);
-        
+
         let request_body = ChatCompletionRequest {
             model: model.to_string(),
             messages,
@@ -215,7 +221,8 @@ impl OllamaClient {
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -227,9 +234,14 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama chat API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "Chat API error {status}: {error_text}"
+            )));
         }
 
         if stream {
@@ -238,45 +250,59 @@ impl OllamaClient {
                 error!("Failed to read streaming response: {}", e);
                 ParagonicError::Ollama(format!("Streaming response reading failed: {e}"))
             })?;
-            
+
             info!("🔍 Raw streaming response from Ollama:");
             info!("   Response length: {} characters", response_text.len());
-            info!("   Response preview: {}", response_text.chars().take(200).collect::<String>());
-            
+            info!(
+                "   Response preview: {}",
+                response_text.chars().take(200).collect::<String>()
+            );
+
             // Parse all non-empty lines and accumulate content
-            let lines: Vec<&str> = response_text.lines().filter(|line| !line.trim().is_empty()).collect();
+            let lines: Vec<&str> = response_text
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .collect();
             info!("   Number of non-empty lines: {}", lines.len());
-            
+
             let mut accumulated_content = String::new();
             let mut final_model = String::new();
             let mut final_created_at = String::new();
             let mut final_done = false;
-            
+
             for (i, line) in lines.iter().enumerate() {
                 info!("   Line {}: {}", i, line);
-                let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).map_err(|e| {
-                    error!("Failed to parse streaming response line {}: {}", i, e);
-                    ParagonicError::Ollama(format!("Streaming response parsing failed: {e}"))
-                })?;
-                
+                let stream_response: StreamChatCompletionResponse = serde_json::from_str(line)
+                    .map_err(|e| {
+                        error!("Failed to parse streaming response line {}: {}", i, e);
+                        ParagonicError::Ollama(format!("Streaming response parsing failed: {e}"))
+                    })?;
+
                 // Accumulate content from message field
                 if let Some(message) = &stream_response.message {
                     accumulated_content.push_str(&message.content);
                 }
-                
+
                 // Update final values
                 final_model = stream_response.model.clone();
                 final_created_at = stream_response.created_at.clone();
                 final_done = stream_response.done;
-                
-                info!("   Line {} - model: {}, done: {}, content: {:?}", 
-                      i, stream_response.model, stream_response.done, 
-                      stream_response.message.as_ref().map(|m| &m.content));
+
+                info!(
+                    "   Line {} - model: {}, done: {}, content: {:?}",
+                    i,
+                    stream_response.model,
+                    stream_response.done,
+                    stream_response.message.as_ref().map(|m| &m.content)
+                );
             }
-            
-            info!("   Accumulated content length: {}", accumulated_content.len());
+
+            info!(
+                "   Accumulated content length: {}",
+                accumulated_content.len()
+            );
             info!("   Final done: {}", final_done);
-            
+
             // Convert to ChatCompletionResponse format
             let chat_response = ChatCompletionResponse {
                 model: final_model,
@@ -287,9 +313,15 @@ impl OllamaClient {
                 },
                 done: final_done,
             };
-            
-            info!("   Final chat response content length: {}", chat_response.message.content.len());
-            info!("Successfully received streaming chat completion from Ollama model: {}", model);
+
+            info!(
+                "   Final chat response content length: {}",
+                chat_response.message.content.len()
+            );
+            info!(
+                "Successfully received streaming chat completion from Ollama model: {}",
+                model
+            );
             return Ok(chat_response);
         } else {
             // Non-streaming response
@@ -298,23 +330,31 @@ impl OllamaClient {
                 ParagonicError::Ollama(format!("Chat response parsing failed: {e}"))
             })?;
 
-            info!("Successfully received chat completion from Ollama model: {}", model);
+            info!(
+                "Successfully received chat completion from Ollama model: {}",
+                model
+            );
             Ok(chat_response)
         }
     }
 
     /// Pull a model from Ollama
-    /// 
+    ///
     /// Downloads the specified model to the local Ollama server.
-    pub async fn pull_model(&self, model_name: &str, insecure: bool) -> ParagonicResult<PullModelResponse> {
+    pub async fn pull_model(
+        &self,
+        model_name: &str,
+        insecure: bool,
+    ) -> ParagonicResult<PullModelResponse> {
         let url = format!("{}/api/pull", self.config.base_url);
-        
+
         let request_body = PullModelRequest {
             name: model_name.to_string(),
             insecure: Some(insecure),
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -326,9 +366,14 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama pull API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Pull API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "Pull API error {status}: {error_text}"
+            )));
         }
 
         let pull_response: PullModelResponse = response.json().await.map_err(|e| {
@@ -341,17 +386,18 @@ impl OllamaClient {
     }
 
     /// Get detailed information about a model
-    /// 
+    ///
     /// Returns detailed information about the specified model including
     /// license, modelfile, parameters, template, system prompt, and more.
     pub async fn model_info(&self, model_name: &str) -> ParagonicResult<ModelInfoResponse> {
         let url = format!("{}/api/show", self.config.base_url);
-        
+
         let request_body = serde_json::json!({
             "name": model_name
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -363,9 +409,14 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama model info API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Model info API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "Model info API error {status}: {error_text}"
+            )));
         }
 
         let model_info: ModelInfoResponse = response.json().await.map_err(|e| {
@@ -373,21 +424,25 @@ impl OllamaClient {
             ParagonicError::Ollama(format!("Model info response parsing failed: {e}"))
         })?;
 
-        info!("Successfully retrieved model info from Ollama: {}", model_name);
+        info!(
+            "Successfully retrieved model info from Ollama: {}",
+            model_name
+        );
         Ok(model_info)
     }
 
     /// Delete a model from Ollama
-    /// 
+    ///
     /// Removes the specified model from the local Ollama server.
     pub async fn delete_model(&self, model_name: &str) -> ParagonicResult<DeleteModelResponse> {
         let url = format!("{}/api/delete", self.config.base_url);
-        
+
         let request_body = DeleteModelRequest {
             name: model_name.to_string(),
         };
 
-        let response = self.client
+        let response = self
+            .client
             .delete(&url)
             .json(&request_body)
             .send()
@@ -399,9 +454,14 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama delete API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Delete API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "Delete API error {status}: {error_text}"
+            )));
         }
 
         let delete_response: DeleteModelResponse = response.json().await.map_err(|e| {
@@ -414,18 +474,23 @@ impl OllamaClient {
     }
 
     /// Generate embeddings for text using Ollama
-    /// 
+    ///
     /// Converts text into vector representations for semantic search and similarity.
-    pub async fn generate_embedding(&self, model: &str, prompt: &str) -> ParagonicResult<EmbeddingResponse> {
+    pub async fn generate_embedding(
+        &self,
+        model: &str,
+        prompt: &str,
+    ) -> ParagonicResult<EmbeddingResponse> {
         let url = format!("{}/api/embeddings", self.config.base_url);
-        
+
         let request_body = EmbeddingRequest {
             model: model.to_string(),
             prompt: prompt.to_string(),
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -437,9 +502,14 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama embedding API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Embedding API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "Embedding API error {status}: {error_text}"
+            )));
         }
 
         let embedding_response: EmbeddingResponse = response.json().await.map_err(|e| {
@@ -447,21 +517,27 @@ impl OllamaClient {
             ParagonicError::Ollama(format!("Embedding response parsing failed: {e}"))
         })?;
 
-        info!("Successfully generated embedding from Ollama model: {} (dimensions: {})", model, embedding_response.embedding.len());
+        info!(
+            "Successfully generated embedding from Ollama model: {} (dimensions: {})",
+            model,
+            embedding_response.embedding.len()
+        );
         Ok(embedding_response)
     }
 
     /// Stream chat completion from Ollama
-    /// 
+    ///
     /// Sends a list of messages to the specified model and returns a stream
     /// of responses for real-time interaction.
     pub async fn stream_chat_completion(
         &self,
         model: &str,
         messages: Vec<ChatMessage>,
-    ) -> ParagonicResult<impl futures_util::Stream<Item = ParagonicResult<StreamChatCompletionResponse>>> {
+    ) -> ParagonicResult<
+        impl futures_util::Stream<Item = ParagonicResult<StreamChatCompletionResponse>>,
+    > {
         let url = format!("{}/api/chat", self.config.base_url);
-        
+
         let request_body = ChatCompletionRequest {
             model: model.to_string(),
             messages,
@@ -469,7 +545,8 @@ impl OllamaClient {
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -481,49 +558,62 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Ollama streaming chat API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Streaming chat API error {status}: {error_text}")));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            error!(
+                "Ollama streaming chat API error ({}): {}",
+                status, error_text
+            );
+            return Err(ParagonicError::Ollama(format!(
+                "Streaming chat API error {status}: {error_text}"
+            )));
         }
 
         let stream = response
             .bytes_stream()
-            .flat_map(|chunk_result| {
-                match chunk_result {
-                    Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk);
-                        let lines: Vec<&str> = chunk_str.lines().collect();
-                        
-                        let mut responses = Vec::new();
-                        for line in lines {
-                            if line.trim().is_empty() {
-                                continue;
-                            }
-                            
-                            match serde_json::from_str::<StreamChatCompletionResponse>(line) {
-                                Ok(stream_response) => responses.push(Ok(stream_response)),
-                                Err(e) => {
-                                    error!("Failed to parse streaming response: {}", e);
-                                    responses.push(Err(ParagonicError::Ollama(format!("Response parsing failed: {e}"))));
-                                }
+            .flat_map(|chunk_result| match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    let lines: Vec<&str> = chunk_str.lines().collect();
+
+                    let mut responses = Vec::new();
+                    for line in lines {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+
+                        match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                            Ok(stream_response) => responses.push(Ok(stream_response)),
+                            Err(e) => {
+                                error!("Failed to parse streaming response: {}", e);
+                                responses.push(Err(ParagonicError::Ollama(format!(
+                                    "Response parsing failed: {e}"
+                                ))));
                             }
                         }
-                        
-                        futures_util::stream::iter(responses)
                     }
-                    Err(e) => {
-                        error!("Failed to read streaming chunk: {}", e);
-                        futures_util::stream::iter(vec![Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")))])
-                    }
+
+                    futures_util::stream::iter(responses)
+                }
+                Err(e) => {
+                    error!("Failed to read streaming chunk: {}", e);
+                    futures_util::stream::iter(vec![Err(ParagonicError::Ollama(format!(
+                        "Stream chunk error: {e}"
+                    )))])
                 }
             });
 
-        info!("Successfully started streaming chat completion from Ollama model: {}", model);
+        info!(
+            "Successfully started streaming chat completion from Ollama model: {}",
+            model
+        );
         Ok(stream)
     }
 
     /// Stream chat completion with progress detection and adaptive timeouts
-    /// 
+    ///
     /// This method uses streaming to detect when Ollama is making progress
     /// and only times out if there's no progress for a specified duration.
     pub async fn stream_chat_completion_with_progress(
@@ -533,7 +623,7 @@ impl OllamaClient {
         progress_timeout_seconds: u64,
     ) -> ParagonicResult<ChatCompletionResponse> {
         let url = format!("{}/api/chat", self.config.base_url);
-        
+
         let request_body = ChatCompletionRequest {
             model: model.to_string(),
             messages,
@@ -541,7 +631,8 @@ impl OllamaClient {
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -553,9 +644,17 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Ollama streaming chat API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            error!(
+                "Ollama streaming chat API error ({}): {}",
+                status, error_text
+            );
+            return Err(ParagonicError::Ollama(format!(
+                "Chat API error {status}: {error_text}"
+            )));
         }
 
         let mut stream = response.bytes_stream();
@@ -564,7 +663,7 @@ impl OllamaClient {
         let mut last_progress_time = std::time::Instant::now();
         let progress_timeout = std::time::Duration::from_secs(progress_timeout_seconds);
         let chunk_threshold = 50; // Send chunks when we have at least 50 characters
-        
+
         info!("Starting streaming chat completion with progress detection for model: {} (progress_timeout: {}s)", model, progress_timeout_seconds);
 
         while let Some(chunk_result) = stream.next().await {
@@ -572,45 +671,65 @@ impl OllamaClient {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
                     let lines: Vec<&str> = chunk_str.lines().collect();
-                    
+
                     // Debug: log raw chunk info
                     if !chunk_str.trim().is_empty() {
-                        info!("Received chunk from {}: {} bytes, {} lines", model, chunk.len(), lines.len());
+                        info!(
+                            "Received chunk from {}: {} bytes, {} lines",
+                            model,
+                            chunk.len(),
+                            lines.len()
+                        );
                     }
-                    
+
                     for line in lines {
                         if line.trim().is_empty() {
                             continue;
                         }
-                        
+
                         // Debug: log the raw JSON line
                         info!("Raw JSON line from {}: {}", model, line);
-                        
+
                         match serde_json::from_str::<StreamChatCompletionResponse>(line) {
                             Ok(stream_response) => {
                                 // Debug: log the raw response structure
                                 info!("Raw stream response: {:?}", stream_response);
-                                
+
                                 // Check both response and message fields for content
-                                let has_content = stream_response.response.as_ref()
+                                let has_content = stream_response
+                                    .response
+                                    .as_ref()
                                     .map(|text| !text.trim().is_empty())
-                                    .unwrap_or(false) || 
-                                    stream_response.message.as_ref()
-                                    .map(|msg| !msg.content.trim().is_empty())
-                                    .unwrap_or(false);
-                                
+                                    .unwrap_or(false)
+                                    || stream_response
+                                        .message
+                                        .as_ref()
+                                        .map(|msg| !msg.content.trim().is_empty())
+                                        .unwrap_or(false);
+
                                 if has_content {
                                     last_progress_time = std::time::Instant::now();
                                     if let Some(text) = &stream_response.response {
-                                        info!("Progress update from {}: {} chars (response field)", model, text.len());
+                                        info!(
+                                            "Progress update from {}: {} chars (response field)",
+                                            model,
+                                            text.len()
+                                        );
                                     }
                                     if let Some(msg) = &stream_response.message {
-                                        info!("Progress update from {}: {} chars (message field)", model, msg.content.len());
+                                        info!(
+                                            "Progress update from {}: {} chars (message field)",
+                                            model,
+                                            msg.content.len()
+                                        );
                                     }
                                 } else {
-                                    info!("Received empty chunk from {} (not counting as progress)", model);
+                                    info!(
+                                        "Received empty chunk from {} (not counting as progress)",
+                                        model
+                                    );
                                 }
-                                
+
                                 // Accumulate the response from both possible fields
                                 if let Some(response_text) = stream_response.response {
                                     full_response.push_str(&response_text);
@@ -622,26 +741,36 @@ impl OllamaClient {
                                     full_response.push_str(&message.content);
                                     accumulated_chunk.push_str(&message.content);
                                 }
-                                
+
                                 // Log when we have accumulated enough content for a meaningful chunk
                                 if accumulated_chunk.len() >= chunk_threshold {
-                                    info!("Accumulated chunk ready: {} chars - '{}'", accumulated_chunk.len(), accumulated_chunk);
+                                    info!(
+                                        "Accumulated chunk ready: {} chars - '{}'",
+                                        accumulated_chunk.len(),
+                                        accumulated_chunk
+                                    );
                                     // Reset accumulated chunk for next batch
                                     accumulated_chunk.clear();
                                 }
-                                
+
                                 // Check if we're done
                                 if stream_response.done {
-                                    info!("Streaming chat completion completed for model: {}", model);
-                                    info!("Final accumulated response length: {} chars", full_response.len());
+                                    info!(
+                                        "Streaming chat completion completed for model: {}",
+                                        model
+                                    );
+                                    info!(
+                                        "Final accumulated response length: {} chars",
+                                        full_response.len()
+                                    );
                                     info!("Final accumulated response: '{}'", full_response);
-                                    
+
                                     // Construct the final response
                                     let final_message = ChatMessage {
                                         role: "assistant".to_string(),
                                         content: full_response,
                                     };
-                                    
+
                                     return Ok(ChatCompletionResponse {
                                         model: stream_response.model,
                                         created_at: stream_response.created_at,
@@ -652,7 +781,9 @@ impl OllamaClient {
                             }
                             Err(e) => {
                                 error!("Failed to parse streaming response: {}", e);
-                                return Err(ParagonicError::Ollama(format!("Response parsing failed: {e}")));
+                                return Err(ParagonicError::Ollama(format!(
+                                    "Response parsing failed: {e}"
+                                )));
                             }
                         }
                     }
@@ -662,29 +793,39 @@ impl OllamaClient {
                     return Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")));
                 }
             }
-            
+
             // Check for progress timeout
             if last_progress_time.elapsed() > progress_timeout {
-                error!("No progress detected for {} seconds, timing out", progress_timeout_seconds);
-                return Err(ParagonicError::Ollama(format!("No progress detected for {} seconds", progress_timeout_seconds)));
+                error!(
+                    "No progress detected for {} seconds, timing out",
+                    progress_timeout_seconds
+                );
+                return Err(ParagonicError::Ollama(format!(
+                    "No progress detected for {} seconds",
+                    progress_timeout_seconds
+                )));
             }
         }
-        
+
         // If we get here, the stream ended without a done signal
-        Err(ParagonicError::Ollama("Stream ended unexpectedly without completion signal".to_string()))
+        Err(ParagonicError::Ollama(
+            "Stream ended unexpectedly without completion signal".to_string(),
+        ))
     }
 
     /// Stream chat completion chunks for real-time updates
-    /// 
+    ///
     /// This method returns a stream of individual chunks that can be sent
     /// to the client as they arrive from Ollama.
     pub async fn stream_chat_completion_chunks(
         &self,
         model: &str,
         messages: Vec<ChatMessage>,
-    ) -> ParagonicResult<impl futures_util::Stream<Item = ParagonicResult<StreamChatCompletionResponse>>> {
+    ) -> ParagonicResult<
+        impl futures_util::Stream<Item = ParagonicResult<StreamChatCompletionResponse>>,
+    > {
         let url = format!("{}/api/chat", self.config.base_url);
-        
+
         let request_body = ChatCompletionRequest {
             model: model.to_string(),
             messages,
@@ -692,7 +833,8 @@ impl OllamaClient {
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -704,49 +846,62 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Ollama streaming chat API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            error!(
+                "Ollama streaming chat API error ({}): {}",
+                status, error_text
+            );
+            return Err(ParagonicError::Ollama(format!(
+                "Chat API error {status}: {error_text}"
+            )));
         }
 
         let stream = response
             .bytes_stream()
-            .flat_map(|chunk_result| {
-                match chunk_result {
-                    Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk);
-                        let lines: Vec<&str> = chunk_str.lines().collect();
-                        
-                        let mut responses = Vec::new();
-                        for line in lines {
-                            if line.trim().is_empty() {
-                                continue;
-                            }
-                            
-                            match serde_json::from_str::<StreamChatCompletionResponse>(line) {
-                                Ok(stream_response) => responses.push(Ok(stream_response)),
-                                Err(e) => {
-                                    error!("Failed to parse streaming response: {}", e);
-                                    responses.push(Err(ParagonicError::Ollama(format!("Response parsing failed: {e}"))));
-                                }
+            .flat_map(|chunk_result| match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    let lines: Vec<&str> = chunk_str.lines().collect();
+
+                    let mut responses = Vec::new();
+                    for line in lines {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+
+                        match serde_json::from_str::<StreamChatCompletionResponse>(line) {
+                            Ok(stream_response) => responses.push(Ok(stream_response)),
+                            Err(e) => {
+                                error!("Failed to parse streaming response: {}", e);
+                                responses.push(Err(ParagonicError::Ollama(format!(
+                                    "Response parsing failed: {e}"
+                                ))));
                             }
                         }
-                        
-                        futures_util::stream::iter(responses)
                     }
-                    Err(e) => {
-                        error!("Failed to read streaming chunk: {}", e);
-                        futures_util::stream::iter(vec![Err(ParagonicError::Ollama(format!("Stream chunk error: {e}")))])
-                    }
+
+                    futures_util::stream::iter(responses)
+                }
+                Err(e) => {
+                    error!("Failed to read streaming chunk: {}", e);
+                    futures_util::stream::iter(vec![Err(ParagonicError::Ollama(format!(
+                        "Stream chunk error: {e}"
+                    )))])
                 }
             });
 
-        info!("Successfully started streaming chat completion chunks from Ollama model: {}", model);
+        info!(
+            "Successfully started streaming chat completion chunks from Ollama model: {}",
+            model
+        );
         Ok(stream)
     }
 
     /// Stream accumulated chunks for client consumption
-    /// 
+    ///
     /// This method accumulates small pieces from Ollama and sends larger,
     /// more meaningful chunks to the client for better user experience.
     pub async fn stream_accumulated_chunks(
@@ -756,7 +911,7 @@ impl OllamaClient {
         chunk_threshold: usize,
     ) -> ParagonicResult<impl futures_util::Stream<Item = ParagonicResult<String>>> {
         let url = format!("{}/api/chat", self.config.base_url);
-        
+
         let request_body = ChatCompletionRequest {
             model: model.to_string(),
             messages,
@@ -764,7 +919,8 @@ impl OllamaClient {
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -776,67 +932,85 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Ollama streaming chat API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Chat API error {status}: {error_text}")));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            error!(
+                "Ollama streaming chat API error ({}): {}",
+                status, error_text
+            );
+            return Err(ParagonicError::Ollama(format!(
+                "Chat API error {status}: {error_text}"
+            )));
         }
 
-        let stream = response
-            .bytes_stream()
-            .scan(String::new(), move |accumulated_chunk, chunk_result| {
-                let mut accumulated_chunk = accumulated_chunk.clone();
-                Box::pin(async move {
-                    match chunk_result {
-                        Ok(chunk) => {
-                            let chunk_str = String::from_utf8_lossy(&chunk);
-                            let lines: Vec<&str> = chunk_str.lines().collect();
-                            
-                            for line in lines {
-                                if line.trim().is_empty() {
-                                    continue;
-                                }
-                                
-                                match serde_json::from_str::<StreamChatCompletionResponse>(line) {
-                                    Ok(stream_response) => {
-                                        // Accumulate content from both possible fields
-                                        if let Some(response_text) = stream_response.response {
-                                            accumulated_chunk.push_str(&response_text);
-                                        }
-                                        if let Some(message) = stream_response.message {
-                                            accumulated_chunk.push_str(&message.content);
-                                        }
-                                        
-                                        // Check if we have enough content to send a chunk
-                                        if accumulated_chunk.len() >= chunk_threshold {
-                                            let chunk_to_send = accumulated_chunk.clone();
-                                            accumulated_chunk.clear();
-                                            return Some(Ok(chunk_to_send));
-                                        }
-                                        
-                                        // If done, send any remaining content
-                                        if stream_response.done && !accumulated_chunk.is_empty() {
-                                            let final_chunk = accumulated_chunk.clone();
-                                            accumulated_chunk.clear();
-                                            return Some(Ok(final_chunk));
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to parse streaming response: {}", e);
-                                        return Some(Err(ParagonicError::Ollama(format!("Response parsing failed: {e}"))));
-                                    }
-                                }
-                            }
-                            None
-                        }
-                        Err(e) => {
-                            error!("Failed to read streaming chunk: {}", e);
-                            Some(Err(ParagonicError::Ollama(format!("Stream chunk error: {e}"))))
-                        }
-                    }
-                })
-            });
+        let stream =
+            response
+                .bytes_stream()
+                .scan(String::new(), move |accumulated_chunk, chunk_result| {
+                    let mut accumulated_chunk = accumulated_chunk.clone();
+                    Box::pin(async move {
+                        match chunk_result {
+                            Ok(chunk) => {
+                                let chunk_str = String::from_utf8_lossy(&chunk);
+                                let lines: Vec<&str> = chunk_str.lines().collect();
 
-        info!("Successfully started streaming accumulated chunks from Ollama model: {}", model);
+                                for line in lines {
+                                    if line.trim().is_empty() {
+                                        continue;
+                                    }
+
+                                    match serde_json::from_str::<StreamChatCompletionResponse>(line)
+                                    {
+                                        Ok(stream_response) => {
+                                            // Accumulate content from both possible fields
+                                            if let Some(response_text) = stream_response.response {
+                                                accumulated_chunk.push_str(&response_text);
+                                            }
+                                            if let Some(message) = stream_response.message {
+                                                accumulated_chunk.push_str(&message.content);
+                                            }
+
+                                            // Check if we have enough content to send a chunk
+                                            if accumulated_chunk.len() >= chunk_threshold {
+                                                let chunk_to_send = accumulated_chunk.clone();
+                                                accumulated_chunk.clear();
+                                                return Some(Ok(chunk_to_send));
+                                            }
+
+                                            // If done, send any remaining content
+                                            if stream_response.done && !accumulated_chunk.is_empty()
+                                            {
+                                                let final_chunk = accumulated_chunk.clone();
+                                                accumulated_chunk.clear();
+                                                return Some(Ok(final_chunk));
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse streaming response: {}", e);
+                                            return Some(Err(ParagonicError::Ollama(format!(
+                                                "Response parsing failed: {e}"
+                                            ))));
+                                        }
+                                    }
+                                }
+                                None
+                            }
+                            Err(e) => {
+                                error!("Failed to read streaming chunk: {}", e);
+                                Some(Err(ParagonicError::Ollama(format!(
+                                    "Stream chunk error: {e}"
+                                ))))
+                            }
+                        }
+                    })
+                });
+
+        info!(
+            "Successfully started streaming accumulated chunks from Ollama model: {}",
+            model
+        );
         Ok(stream)
     }
 
@@ -848,7 +1022,7 @@ impl OllamaClient {
     /// Test function to manually check Ollama streaming response format
     pub async fn test_streaming_format(&self, model: &str) -> ParagonicResult<()> {
         let url = format!("{}/api/chat", self.config.base_url);
-        
+
         let request_body = ChatCompletionRequest {
             model: model.to_string(),
             messages: vec![ChatMessage {
@@ -859,7 +1033,8 @@ impl OllamaClient {
             options: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
@@ -871,45 +1046,50 @@ impl OllamaClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama test API error ({}): {}", status, error_text);
-            return Err(ParagonicError::Ollama(format!("Test API error {status}: {error_text}")));
+            return Err(ParagonicError::Ollama(format!(
+                "Test API error {status}: {error_text}"
+            )));
         }
 
         let mut stream = response.bytes_stream();
         let mut line_count = 0;
-        
+
         info!("Testing streaming response format for model: {}", model);
-        
+
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
                     let lines: Vec<&str> = chunk_str.lines().collect();
-                    
+
                     for line in lines {
                         if line.trim().is_empty() {
                             continue;
                         }
-                        
+
                         line_count += 1;
                         info!("Line {}: {}", line_count, line);
-                        
+
                         // Try to parse as JSON and see what we get
                         match serde_json::from_str::<serde_json::Value>(line) {
                             Ok(json_value) => {
                                 info!("Parsed JSON: {:?}", json_value);
-                                
+
                                 // Check if it has a 'message' field
                                 if let Some(message) = json_value.get("message") {
                                     info!("Found 'message' field: {:?}", message);
                                 }
-                                
+
                                 // Check if it has a 'response' field
                                 if let Some(response) = json_value.get("response") {
                                     info!("Found 'response' field: {:?}", response);
                                 }
-                                
+
                                 // Check if it has a 'done' field
                                 if let Some(done) = json_value.get("done") {
                                     info!("Found 'done' field: {:?}", done);
@@ -931,13 +1111,11 @@ impl OllamaClient {
                 }
             }
         }
-        
+
         info!("Stream ended after {} lines", line_count);
         Ok(())
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -948,12 +1126,16 @@ mod tests {
     #[test]
     fn test_streaming_response_parsing_single_chunk() {
         let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello, world!"},"done":true}"#;
-        
-        let stream_response: StreamChatCompletionResponse = serde_json::from_str(mock_response).unwrap();
-        
+
+        let stream_response: StreamChatCompletionResponse =
+            serde_json::from_str(mock_response).unwrap();
+
         assert_eq!(stream_response.model, "deepseek-r1:1.5b");
         assert_eq!(stream_response.done, true);
-        assert_eq!(stream_response.message.as_ref().unwrap().content, "Hello, world!");
+        assert_eq!(
+            stream_response.message.as_ref().unwrap().content,
+            "Hello, world!"
+        );
     }
 
     #[test]
@@ -963,13 +1145,16 @@ mod tests {
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":", "},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":"world"},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.475237Z","message":{"role":"assistant","content":"!"},"done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 4);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -977,7 +1162,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert_eq!(accumulated_content, "Hello, world!");
         assert_eq!(final_done, true);
     }
@@ -989,13 +1174,16 @@ mod tests {
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"\nLet me think about this step by step."},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":"\n</think>\n\nHere is the answer:"},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.475237Z","message":{"role":"assistant","content":" The answer is 42."},"done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 4);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -1003,7 +1191,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert!(accumulated_content.contains("<think>"));
         assert!(accumulated_content.contains("</think>"));
         assert!(accumulated_content.contains("Let me think about this step by step."));
@@ -1017,13 +1205,16 @@ mod tests {
         let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":""},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"Hello"},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":""},"done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 3);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -1031,7 +1222,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert_eq!(accumulated_content, "Hello");
         assert_eq!(final_done, true);
     }
@@ -1042,13 +1233,16 @@ mod tests {
         let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"Hello"},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 3);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -1056,7 +1250,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert_eq!(accumulated_content, "Hello");
         assert_eq!(final_done, true);
     }
@@ -1066,13 +1260,16 @@ mod tests {
         // Test handling of responses with both message and response fields
         let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello"},"response":"Hello","done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":", world"},"response":", world","done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 2);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -1080,7 +1277,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert_eq!(accumulated_content, "Hello, world");
         assert_eq!(final_done, true);
     }
@@ -1089,9 +1286,10 @@ mod tests {
     fn test_streaming_response_parsing_large_content() {
         // Test handling of large content that might be split across many chunks
         let mut mock_response = String::new();
-        let content = "This is a very long response that should be split across multiple chunks. ".repeat(10);
+        let content =
+            "This is a very long response that should be split across multiple chunks. ".repeat(10);
         let chunk_size = 50;
-        
+
         for (i, chunk) in content.as_bytes().chunks(chunk_size).enumerate() {
             let chunk_str = String::from_utf8_lossy(chunk);
             let done = i == content.as_bytes().chunks(chunk_size).count() - 1;
@@ -1101,13 +1299,16 @@ mod tests {
             ));
             mock_response.push('\n');
         }
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert!(lines.len() > 1); // Should have multiple chunks
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -1115,7 +1316,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert_eq!(accumulated_content, content);
         assert_eq!(final_done, true);
     }
@@ -1126,14 +1327,17 @@ mod tests {
         let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Hello"},"done":false}
 {"invalid":"json","missing":"fields"}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":", world"},"done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 3);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
         let mut error_count = 0;
-        
+
         for line in lines {
             match serde_json::from_str::<StreamChatCompletionResponse>(line) {
                 Ok(stream_response) => {
@@ -1147,7 +1351,7 @@ mod tests {
                 }
             }
         }
-        
+
         assert_eq!(error_count, 1); // One malformed line
         assert_eq!(accumulated_content, "Hello, world");
         assert_eq!(final_done, true);
@@ -1159,13 +1363,16 @@ mod tests {
         let mock_response = r#"{"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.428756Z","message":{"role":"assistant","content":"Line 1\n"},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.443379Z","message":{"role":"assistant","content":"Line 2\n"},"done":false}
 {"model":"deepseek-r1:1.5b","created_at":"2025-08-13T18:17:32.459184Z","message":{"role":"assistant","content":"Line 3"},"done":true}"#;
-        
-        let lines: Vec<&str> = mock_response.lines().filter(|line| !line.trim().is_empty()).collect();
+
+        let lines: Vec<&str> = mock_response
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
         assert_eq!(lines.len(), 3);
-        
+
         let mut accumulated_content = String::new();
         let mut final_done = false;
-        
+
         for line in lines {
             let stream_response: StreamChatCompletionResponse = serde_json::from_str(line).unwrap();
             if let Some(message) = &stream_response.message {
@@ -1173,7 +1380,7 @@ mod tests {
             }
             final_done = stream_response.done;
         }
-        
+
         assert_eq!(accumulated_content, "Line 1\nLine 2\nLine 3");
         assert_eq!(final_done, true);
     }
@@ -1183,15 +1390,15 @@ mod tests {
         // Test the actual chat_completion method with streaming
         // This test requires a mock HTTP client or a real Ollama server
         // For now, we'll test the logic without making actual HTTP requests
-        
+
         let config = OllamaConfig {
             base_url: "http://localhost:11434".to_string(),
             timeout_seconds: 30,
             progress_timeout_seconds: 60,
         };
-        
+
         let client = OllamaClient::new(config).unwrap();
-        
+
         // Test that the client is created correctly
         assert_eq!(client.config.base_url, "http://localhost:11434");
         assert_eq!(client.config.timeout_seconds, 30);
@@ -1200,23 +1407,21 @@ mod tests {
     #[test]
     fn test_chat_completion_request_serialization() {
         // Test that ChatCompletionRequest serializes correctly for streaming
-        let messages = vec![
-            ChatMessage {
-                role: "user".to_string(),
-                content: "Hello, world!".to_string(),
-            }
-        ];
-        
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hello, world!".to_string(),
+        }];
+
         let request = ChatCompletionRequest {
             model: "deepseek-r1:1.5b".to_string(),
             messages,
             stream: Some(true),
             options: None,
         };
-        
+
         let serialized = serde_json::to_string(&request).unwrap();
         let deserialized: ChatCompletionRequest = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.model, "deepseek-r1:1.5b");
         assert_eq!(deserialized.stream, Some(true));
         assert_eq!(deserialized.messages.len(), 1);
@@ -1235,9 +1440,9 @@ mod tests {
             },
             "done": true
         }"#;
-        
+
         let response: ChatCompletionResponse = serde_json::from_str(response_json).unwrap();
-        
+
         assert_eq!(response.model, "deepseek-r1:1.5b");
         assert_eq!(response.done, true);
         assert_eq!(response.message.content, "Hello, world!");
@@ -1256,9 +1461,9 @@ mod tests {
             },
             "done": false
         }"#;
-        
+
         let response: StreamChatCompletionResponse = serde_json::from_str(response_json).unwrap();
-        
+
         assert_eq!(response.model, "deepseek-r1:1.5b");
         assert_eq!(response.done, false);
         assert_eq!(response.message.as_ref().unwrap().content, "Hello");
@@ -1269,7 +1474,7 @@ mod tests {
     fn test_thinking_model_prompt_generation() {
         // Test that thinking models get the correct prompt format
         let thinking_prompt = "You are a helpful AI assistant. When solving complex problems, use <think> tags to show your reasoning process step by step. Think through the problem carefully before providing your final answer.\n\nUser: Create a parts list for a pencil\n\nAssistant:";
-        
+
         // Verify the prompt contains the key elements
         assert!(thinking_prompt.contains("use <think> tags"));
         assert!(thinking_prompt.contains("reasoning process"));
@@ -1280,18 +1485,13 @@ mod tests {
     #[test]
     fn test_content_accumulation_logic() {
         // Test the content accumulation logic that's used in the streaming response parsing
-        let chunks = vec![
-            "Hello",
-            ", ",
-            "world",
-            "!"
-        ];
-        
+        let chunks = vec!["Hello", ", ", "world", "!"];
+
         let mut accumulated_content = String::new();
         for chunk in chunks {
             accumulated_content.push_str(chunk);
         }
-        
+
         assert_eq!(accumulated_content, "Hello, world!");
     }
 
@@ -1299,15 +1499,15 @@ mod tests {
     fn test_thinking_content_detection() {
         // Test detection of thinking content in accumulated responses
         let thinking_content = "<think>\nLet me think about this step by step.\n</think>\n\nHere is the answer: The answer is 42.";
-        
+
         // Verify thinking tags are present
         assert!(thinking_content.contains("<think>"));
         assert!(thinking_content.contains("</think>"));
-        
+
         // Verify content structure
         let before_think = thinking_content.split("<think>").next().unwrap();
         let after_think = thinking_content.split("</think>").nth(1).unwrap();
-        
+
         assert_eq!(before_think, "");
         assert!(after_think.contains("Here is the answer:"));
     }
@@ -1329,7 +1529,7 @@ mod tests {
             modified_at: "2024-01-01T00:00:00Z".to_string(),
             size: 4096,
         };
-        
+
         assert_eq!(model.name, "llama2:7b");
         assert_eq!(model.size, 4096);
     }
@@ -1351,7 +1551,7 @@ mod tests {
                 },
             ],
         };
-        
+
         assert_eq!(response.models.len(), 2);
         assert_eq!(response.models[0].name, "llama2:7b");
         assert_eq!(response.models[1].name, "codellama:7b");
@@ -1370,7 +1570,7 @@ mod tests {
     fn test_ollama_config_from_config_module() {
         let config_manager = ConfigManager::new();
         let config = config_manager.get_config();
-        
+
         // Verify that the Ollama config from the config module matches our expectations
         assert_eq!(config.ollama.base_url, "http://localhost:11434");
         assert_eq!(config.ollama.timeout_seconds, 30);
@@ -1381,11 +1581,11 @@ mod tests {
     #[test]
     fn test_ollama_client_from_config_module() {
         let config_manager = ConfigManager::new();
-        
+
         // Test that we can create an Ollama client from the config module
         let client = OllamaClient::from_config_manager(&config_manager);
         assert!(client.is_ok());
-        
+
         let client = client.unwrap();
         assert_eq!(client.config.base_url, "http://localhost:11434");
         assert_eq!(client.config.timeout_seconds, 30);
@@ -1396,16 +1596,19 @@ mod tests {
     #[test]
     fn test_ollama_client_with_custom_config() {
         let mut config_manager = ConfigManager::new();
-        
+
         // Set custom Ollama configuration
         config_manager.get_config_mut().ollama.base_url = "http://custom-ollama:11435".to_string();
         config_manager.get_config_mut().ollama.timeout_seconds = 60;
-        config_manager.get_config_mut().ollama.progress_timeout_seconds = 60;
-        
+        config_manager
+            .get_config_mut()
+            .ollama
+            .progress_timeout_seconds = 60;
+
         // Test that the custom config is used
         let client = OllamaClient::from_config_manager(&config_manager);
         assert!(client.is_ok());
-        
+
         let client = client.unwrap();
         assert_eq!(client.config.base_url, "http://custom-ollama:11435");
         assert_eq!(client.config.timeout_seconds, 60);
@@ -1419,7 +1622,7 @@ mod tests {
         // For now, we'll test the client creation and configuration
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
+
         // The actual API call would be tested with a mock server
         // or when Ollama is available in the test environment
         assert_eq!(client.config.base_url, "http://localhost:11434");
@@ -1430,16 +1633,14 @@ mod tests {
     fn test_chat_completion_request_structure() {
         let request = ChatCompletionRequest {
             model: "llama2:7b".to_string(),
-            messages: vec![
-                ChatMessage {
-                    role: "user".to_string(),
-                    content: "Hello, how are you?".to_string(),
-                },
-            ],
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: "Hello, how are you?".to_string(),
+            }],
             stream: Some(false),
             options: None,
         };
-        
+
         assert_eq!(request.model, "llama2:7b");
         assert_eq!(request.messages.len(), 1);
         assert_eq!(request.messages[0].role, "user");
@@ -1458,7 +1659,7 @@ mod tests {
             },
             done: true,
         };
-        
+
         assert_eq!(response.model, "llama2:7b");
         assert_eq!(response.message.role, "assistant");
         assert_eq!(response.message.content, "I'm doing well, thank you!");
@@ -1470,18 +1671,16 @@ mod tests {
     async fn test_chat_completion_function() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
-        let messages = vec![
-            ChatMessage {
-                role: "user".to_string(),
-                content: "Say hello".to_string(),
-            },
-        ];
-        
+
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Say hello".to_string(),
+        }];
+
         // This test requires a running Ollama server
         // If Ollama is not running, we expect a connection error
         let result = client.chat_completion("llama2:7b", messages, false).await;
-        
+
         match result {
             Ok(response) => {
                 // Ollama is running and responded successfully
@@ -1507,7 +1706,7 @@ mod tests {
             name: "llama2:7b".to_string(),
             insecure: Some(false),
         };
-        
+
         assert_eq!(request.name, "llama2:7b");
         assert_eq!(request.insecure, Some(false));
     }
@@ -1521,7 +1720,7 @@ mod tests {
             total: Some(4096),
             completed: Some(2048),
         };
-        
+
         assert_eq!(response.status, "downloading");
         assert_eq!(response.digest, Some("sha256:abc123".to_string()));
         assert_eq!(response.total, Some(4096));
@@ -1533,11 +1732,11 @@ mod tests {
     async fn test_pull_model_function() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
+
         // This test requires a running Ollama server
         // If Ollama is not running, we expect a connection error
         let result = client.pull_model("llama2:7b", false).await;
-        
+
         match result {
             Ok(response) => {
                 // Ollama is running and responded successfully
@@ -1570,10 +1769,13 @@ mod tests {
                 "family": "llama"
             })),
         };
-        
+
         assert_eq!(response.license, Some("MIT".to_string()));
         assert_eq!(response.parameters, Some("7B".to_string()));
-        assert_eq!(response.system, Some("You are a helpful assistant.".to_string()));
+        assert_eq!(
+            response.system,
+            Some("You are a helpful assistant.".to_string())
+        );
         assert!(response.details.is_some());
     }
 
@@ -1582,16 +1784,20 @@ mod tests {
     async fn test_model_info_function() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
+
         // This test requires a running Ollama server
         // If Ollama is not running, we expect a connection error
         let result = client.model_info("llama2:7b").await;
-        
+
         match result {
             Ok(response) => {
                 // Ollama is running and responded successfully
                 // The response should have some fields populated
-                assert!(response.license.is_some() || response.modelfile.is_some() || response.parameters.is_some());
+                assert!(
+                    response.license.is_some()
+                        || response.modelfile.is_some()
+                        || response.parameters.is_some()
+                );
             }
             Err(ParagonicError::Ollama(_)) => {
                 // Expected when Ollama is not running
@@ -1610,7 +1816,7 @@ mod tests {
         let request = DeleteModelRequest {
             name: "llama2:7b".to_string(),
         };
-        
+
         assert_eq!(request.name, "llama2:7b");
     }
 
@@ -1620,7 +1826,7 @@ mod tests {
         let response = DeleteModelResponse {
             status: "success".to_string(),
         };
-        
+
         assert_eq!(response.status, "success");
     }
 
@@ -1629,11 +1835,11 @@ mod tests {
     async fn test_delete_model_function() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
+
         // This test requires a running Ollama server
         // If Ollama is not running, we expect a connection error
         let result = client.delete_model("llama2:7b").await;
-        
+
         match result {
             Ok(response) => {
                 // Ollama is running and responded successfully
@@ -1659,7 +1865,7 @@ mod tests {
             prompt: "Hello, world!".to_string(),
             options: None,
         };
-        
+
         assert_eq!(request.model, "nomic-embed-text");
         assert_eq!(request.prompt, "Hello, world!");
         assert!(request.options.is_none());
@@ -1671,7 +1877,7 @@ mod tests {
         let response = EmbeddingResponse {
             embedding: vec![0.1, 0.2, 0.3, 0.4, 0.5],
         };
-        
+
         assert_eq!(response.embedding.len(), 5);
         assert_eq!(response.embedding[0], 0.1);
         assert_eq!(response.embedding[4], 0.5);
@@ -1682,11 +1888,13 @@ mod tests {
     async fn test_generate_embedding_function() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
+
         // This test requires a running Ollama server with embedding model
         // If Ollama is not running, we expect a connection error
-        let result = client.generate_embedding("nomic-embed-text", "Hello, world!").await;
-        
+        let result = client
+            .generate_embedding("nomic-embed-text", "Hello, world!")
+            .await;
+
         match result {
             Ok(response) => {
                 // Ollama is running and responded successfully
@@ -1719,7 +1927,7 @@ mod tests {
             }),
             response: Some("Hello".to_string()),
         };
-        
+
         assert_eq!(response.model, "llama2:7b");
         assert!(!response.done);
         assert!(response.message.is_some());
@@ -1733,31 +1941,29 @@ mod tests {
     async fn test_stream_chat_completion_function() {
         let config = OllamaConfig::default();
         let client = OllamaClient::new(config).unwrap();
-        
-        let messages = vec![
-            ChatMessage {
-                role: "user".to_string(),
-                content: "Say hello".to_string(),
-            },
-        ];
-        
+
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Say hello".to_string(),
+        }];
+
         // This test requires a running Ollama server
         // If Ollama is not running, we expect a connection error
         let result = client.stream_chat_completion("llama2:7b", messages).await;
-        
+
         match result {
             Ok(mut stream) => {
                 // Ollama is running and responded successfully
                 // Collect a few responses from the stream
                 let mut responses = Vec::new();
                 let mut count = 0;
-                
+
                 while let Some(response_result) = stream.next().await {
                     match response_result {
                         Ok(response) => {
                             responses.push(response);
                             count += 1;
-                            
+
                             // Limit to first few responses to avoid infinite loop
                             if count >= 5 {
                                 break;
@@ -1769,10 +1975,10 @@ mod tests {
                         }
                     }
                 }
-                
+
                 // Should have received some responses
                 assert!(!responses.is_empty());
-                
+
                 // Check that responses have expected structure
                 for response in responses {
                     assert_eq!(response.model, "llama2:7b");
@@ -1789,4 +1995,4 @@ mod tests {
             }
         }
     }
-} 
+}

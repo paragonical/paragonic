@@ -1,5 +1,5 @@
 //! Error handling for the Paragonic project
-//! 
+//!
 //! This module defines custom error types and provides a unified error handling
 //! approach across the entire application.
 
@@ -10,49 +10,49 @@ use std::time::SystemTimeError;
 pub enum ParagonicError {
     #[error("Database error: {0}")]
     Database(String),
-    
+
     #[error("Configuration error: {0}")]
     Config(String),
-    
+
     #[error("Invalid input: {0}")]
     InvalidInput(String),
-    
+
     #[error("Internal error: {0}")]
     Internal(String),
-    
+
     #[error("Network error: {0}")]
     Network(String),
-    
+
     #[error("Serialization error: {0}")]
     Serialization(String),
-    
+
     #[error("Embedding error: {0}")]
     Embedding(String),
-    
+
     #[error("Search error: {0}")]
     Search(String),
-    
+
     #[error("RPC error: {0}")]
     Rpc(String),
-    
+
     #[error("File error: {0}")]
     File(String),
-    
+
     #[error("System time error: {0}")]
     SystemTime(#[from] SystemTimeError),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Ollama API error: {0}")]
     Ollama(String),
-    
+
     #[error("Not found: {0}")]
     NotFound(String),
-    
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
-    
+
     #[error("Timeout: {0}")]
     Timeout(String),
 }
@@ -145,4 +145,4 @@ impl std::fmt::Display for TantivyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Tantivy error")
     }
-} 
+}

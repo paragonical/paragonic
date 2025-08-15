@@ -1,5 +1,5 @@
 //! Session management for MCP HTTP transport
-//! 
+//!
 //! This module provides session management functionality for the MCP
 //! Streamable HTTP transport, including session creation, validation,
 //! and cleanup.
@@ -74,9 +74,12 @@ impl SessionManager {
     }
 
     /// Create a new session
-    pub async fn create_session(&self, client_info: Option<ClientInfo>) -> Result<String, SessionError> {
+    pub async fn create_session(
+        &self,
+        client_info: Option<ClientInfo>,
+    ) -> Result<String, SessionError> {
         let mut sessions = self.sessions.write().await;
-        
+
         // Check if we've reached the maximum number of sessions
         if sessions.len() >= self.max_sessions {
             return Err(SessionError::MaxSessionsReached);
@@ -84,7 +87,7 @@ impl SessionManager {
 
         // Generate a unique session ID
         let session_id = self.generate_session_id();
-        
+
         // Create the session
         let session = Session {
             id: session_id.clone(),
@@ -95,7 +98,7 @@ impl SessionManager {
         };
 
         sessions.insert(session_id.clone(), session);
-        
+
         info!("Created new MCP session: {}", session_id);
         Ok(session_id)
     }
@@ -109,7 +112,7 @@ impl SessionManager {
     /// Update session activity
     pub async fn update_activity(&self, session_id: &str) -> Result<(), SessionError> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             session.last_activity = Instant::now();
             Ok(())
@@ -119,9 +122,13 @@ impl SessionManager {
     }
 
     /// Update session state
-    pub async fn update_state(&self, session_id: &str, state: SessionState) -> Result<(), SessionError> {
+    pub async fn update_state(
+        &self,
+        session_id: &str,
+        state: SessionState,
+    ) -> Result<(), SessionError> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             session.state = state.clone();
             session.last_activity = Instant::now();
@@ -135,7 +142,7 @@ impl SessionManager {
     /// Close a session
     pub async fn close_session(&self, session_id: &str) -> Result<(), SessionError> {
         let mut sessions = self.sessions.write().await;
-        
+
         if sessions.remove(session_id).is_some() {
             info!("Closed MCP session: {}", session_id);
             Ok(())
@@ -149,7 +156,7 @@ impl SessionManager {
         let mut sessions = self.sessions.write().await;
         let now = Instant::now();
         let initial_count = sessions.len();
-        
+
         sessions.retain(|_, session| {
             let is_expired = now.duration_since(session.last_activity) > self.timeout;
             if is_expired {
@@ -157,12 +164,12 @@ impl SessionManager {
             }
             !is_expired
         });
-        
+
         let removed_count = initial_count - sessions.len();
         if removed_count > 0 {
             info!("Cleaned up {} expired sessions", removed_count);
         }
-        
+
         removed_count
     }
 
@@ -204,11 +211,11 @@ mod tests {
     #[tokio::test]
     async fn test_create_session() {
         let manager = SessionManager::new(Duration::from_secs(300), 10);
-        
+
         let session_id = manager.create_session(None).await.unwrap();
         assert!(!session_id.is_empty());
         assert!(SessionManager::validate_session_id(&session_id));
-        
+
         let session = manager.get_session(&session_id).await.unwrap();
         assert_eq!(session.id, session_id);
         assert_eq!(session.state, SessionState::Initializing);
@@ -218,16 +225,19 @@ mod tests {
     #[tokio::test]
     async fn test_create_session_with_client_info() {
         let manager = SessionManager::new(Duration::from_secs(300), 10);
-        
+
         let client_info = ClientInfo {
             name: "test-client".to_string(),
             version: "1.0.0".to_string(),
             capabilities: serde_json::json!({}),
         };
-        
-        let session_id = manager.create_session(Some(client_info.clone())).await.unwrap();
+
+        let session_id = manager
+            .create_session(Some(client_info.clone()))
+            .await
+            .unwrap();
         let session = manager.get_session(&session_id).await.unwrap();
-        
+
         assert_eq!(session.client_info.as_ref().unwrap().name, "test-client");
         assert_eq!(session.client_info.as_ref().unwrap().version, "1.0.0");
     }
@@ -236,15 +246,15 @@ mod tests {
     async fn test_update_activity() {
         let manager = SessionManager::new(Duration::from_secs(300), 10);
         let session_id = manager.create_session(None).await.unwrap();
-        
+
         // Get initial activity time
         let initial_session = manager.get_session(&session_id).await.unwrap();
         let initial_activity = initial_session.last_activity;
-        
+
         // Wait a bit and update activity
         tokio::time::sleep(Duration::from_millis(10)).await;
         manager.update_activity(&session_id).await.unwrap();
-        
+
         // Check that activity was updated
         let updated_session = manager.get_session(&session_id).await.unwrap();
         assert!(updated_session.last_activity > initial_activity);
@@ -254,14 +264,20 @@ mod tests {
     async fn test_update_state() {
         let manager = SessionManager::new(Duration::from_secs(300), 10);
         let session_id = manager.create_session(None).await.unwrap();
-        
+
         // Update state to Active
-        manager.update_state(&session_id, SessionState::Active).await.unwrap();
+        manager
+            .update_state(&session_id, SessionState::Active)
+            .await
+            .unwrap();
         let session = manager.get_session(&session_id).await.unwrap();
         assert_eq!(session.state, SessionState::Active);
-        
+
         // Update state to ShuttingDown
-        manager.update_state(&session_id, SessionState::ShuttingDown).await.unwrap();
+        manager
+            .update_state(&session_id, SessionState::ShuttingDown)
+            .await
+            .unwrap();
         let session = manager.get_session(&session_id).await.unwrap();
         assert_eq!(session.state, SessionState::ShuttingDown);
     }
@@ -270,11 +286,11 @@ mod tests {
     async fn test_close_session() {
         let manager = SessionManager::new(Duration::from_secs(300), 10);
         let session_id = manager.create_session(None).await.unwrap();
-        
+
         assert_eq!(manager.session_count().await, 1);
-        
+
         manager.close_session(&session_id).await.unwrap();
-        
+
         assert_eq!(manager.session_count().await, 0);
         assert!(manager.get_session(&session_id).await.is_none());
     }
@@ -282,14 +298,14 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_expired() {
         let manager = SessionManager::new(Duration::from_millis(50), 10);
-        
+
         // Create a session
         let session_id = manager.create_session(None).await.unwrap();
         assert_eq!(manager.session_count().await, 1);
-        
+
         // Wait for session to expire
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Clean up expired sessions
         let removed_count = manager.cleanup_expired().await;
         assert_eq!(removed_count, 1);
@@ -299,15 +315,15 @@ mod tests {
     #[tokio::test]
     async fn test_max_sessions_reached() {
         let manager = SessionManager::new(Duration::from_secs(300), 2);
-        
+
         // Create two sessions (max allowed)
         let session1 = manager.create_session(None).await.unwrap();
         let session2 = manager.create_session(None).await.unwrap();
-        
+
         // Try to create a third session
         let result = manager.create_session(None).await;
         assert!(matches!(result, Err(SessionError::MaxSessionsReached)));
-        
+
         // Clean up
         manager.close_session(&session1).await.unwrap();
         manager.close_session(&session2).await.unwrap();
@@ -316,15 +332,17 @@ mod tests {
     #[tokio::test]
     async fn test_session_not_found_errors() {
         let manager = SessionManager::new(Duration::from_secs(300), 10);
-        
+
         // Try to update activity for non-existent session
         let result = manager.update_activity("non-existent").await;
         assert!(matches!(result, Err(SessionError::SessionNotFound)));
-        
+
         // Try to update state for non-existent session
-        let result = manager.update_state("non-existent", SessionState::Active).await;
+        let result = manager
+            .update_state("non-existent", SessionState::Active)
+            .await;
         assert!(matches!(result, Err(SessionError::SessionNotFound)));
-        
+
         // Try to close non-existent session
         let result = manager.close_session("non-existent").await;
         assert!(matches!(result, Err(SessionError::SessionNotFound)));
@@ -333,8 +351,10 @@ mod tests {
     #[test]
     fn test_validate_session_id() {
         // Valid UUID
-        assert!(SessionManager::validate_session_id("550e8400-e29b-41d4-a716-446655440000"));
-        
+        assert!(SessionManager::validate_session_id(
+            "550e8400-e29b-41d4-a716-446655440000"
+        ));
+
         // Invalid UUIDs
         assert!(!SessionManager::validate_session_id("invalid-uuid"));
         assert!(!SessionManager::validate_session_id(""));

@@ -1,18 +1,18 @@
 //! Pattern Database Operations Tests
-//! 
+//!
 //! This module contains tests for database operations on pattern-related tables.
 //! These tests ensure that all CRUD operations work correctly for the pattern system.
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::{execute_test_db_operation, initialize_for_testing};
+    use crate::error::ParagonicResult;
+    use diesel::deserialize::QueryableByName;
     use diesel::prelude::*;
     use diesel::sql_query;
-    use diesel::deserialize::QueryableByName;
-    use crate::database::{initialize_for_testing, execute_test_db_operation};
-    use crate::error::ParagonicResult;
-    use uuid::Uuid;
     use serde_json::json;
+    use uuid::Uuid;
 
     /// Test creating a system pattern
     #[tokio::test]
@@ -83,7 +83,8 @@ mod tests {
         // Test retrieving a system pattern
         let result = execute_test_db_operation(|conn| {
             // First ensure the table exists
-            sql_query(r#"
+            sql_query(
+                r#"
                 CREATE TABLE IF NOT EXISTS system_patterns (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     name VARCHAR(255) NOT NULL,
@@ -96,14 +97,18 @@ mod tests {
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
-            "#).execute(conn)?;
+            "#,
+            )
+            .execute(conn)?;
 
             // Insert a test pattern
             let pattern_id = Uuid::new_v4();
-            sql_query(r#"
+            sql_query(
+                r#"
                 INSERT INTO system_patterns (id, name, description, pattern_type, template_content)
                 VALUES ($1, $2, $3, $4, $5)
-            "#)
+            "#,
+            )
             .bind::<diesel::sql_types::Uuid, _>(pattern_id)
             .bind::<diesel::sql_types::Varchar, _>("retrieve_test_pattern")
             .bind::<diesel::sql_types::Text, _>("A test pattern for retrieval")
@@ -118,13 +123,16 @@ mod tests {
                 count: i64,
             }
 
-            let count: CountRow = sql_query(r#"
+            let count: CountRow = sql_query(
+                r#"
                 SELECT COUNT(*) as count FROM system_patterns WHERE name = 'retrieve_test_pattern'
-            "#)
+            "#,
+            )
             .get_result(conn)?;
 
             Ok(count.count)
-        }).await?;
+        })
+        .await?;
 
         // If database is not available, skip the test
         if result.is_none() {
@@ -228,7 +236,8 @@ mod tests {
         // Test deleting a system pattern
         let result = execute_test_db_operation(|conn| {
             // First ensure the table exists
-            sql_query(r#"
+            sql_query(
+                r#"
                 CREATE TABLE IF NOT EXISTS system_patterns (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     name VARCHAR(255) NOT NULL,
@@ -241,14 +250,18 @@ mod tests {
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
-            "#).execute(conn)?;
+            "#,
+            )
+            .execute(conn)?;
 
             // Insert a test pattern
             let pattern_id = Uuid::new_v4();
-            sql_query(r#"
+            sql_query(
+                r#"
                 INSERT INTO system_patterns (id, name, description, pattern_type, template_content)
                 VALUES ($1, $2, $3, $4, $5)
-            "#)
+            "#,
+            )
             .bind::<diesel::sql_types::Uuid, _>(pattern_id)
             .bind::<diesel::sql_types::Varchar, _>("delete_test_pattern")
             .bind::<diesel::sql_types::Text, _>("A test pattern for deletion")
@@ -257,9 +270,11 @@ mod tests {
             .execute(conn)?;
 
             // Delete the pattern
-            sql_query(r#"
+            sql_query(
+                r#"
                 DELETE FROM system_patterns WHERE id = $1
-            "#)
+            "#,
+            )
             .bind::<diesel::sql_types::Uuid, _>(pattern_id)
             .execute(conn)?;
 
@@ -270,14 +285,17 @@ mod tests {
                 count: i64,
             }
 
-            let count: CountRow = sql_query(r#"
+            let count: CountRow = sql_query(
+                r#"
                 SELECT COUNT(*) as count FROM system_patterns WHERE id = $1
-            "#)
+            "#,
+            )
             .bind::<diesel::sql_types::Uuid, _>(pattern_id)
             .get_result(conn)?;
 
             Ok(count.count)
-        }).await?;
+        })
+        .await?;
 
         // If database is not available, skip the test
         if result.is_none() {

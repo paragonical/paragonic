@@ -1,16 +1,23 @@
-use paragonic::{initialize, start_http_server, iragl::{demonstrate_iragl_capabilities, index_file_for_iragl, IndexFileRequest, search_iragl_index, IraglSearchQuery, SearchType, SearchFilters}};
-use std::process;
+use paragonic::{
+    initialize,
+    iragl::{
+        demonstrate_iragl_capabilities, index_file_for_iragl, search_iragl_index, IndexFileRequest,
+        IraglSearchQuery, SearchFilters, SearchType,
+    },
+    start_http_server,
+};
 use std::env;
+use std::process;
+use tracing_subscriber::{fmt, EnvFilter};
 use uuid::Uuid;
-use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() {
     // Initialize logging
     let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(log_level.clone()));
-    
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level.clone()));
+
     fmt()
         .with_env_filter(env_filter)
         .with_target(false)
@@ -19,12 +26,12 @@ async fn main() {
         .with_file(true)
         .with_line_number(true)
         .init();
-    
+
     tracing::info!("Paragonic server starting up...");
-    
+
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
-    
+
     // Check for special commands
     if args.len() > 1 {
         match args[1].as_str() {
@@ -37,7 +44,9 @@ async fn main() {
                     }
                     Err(e) => {
                         eprintln!("❌ IRAGL demonstration failed: {e}");
-                        eprintln!("Note: This requires a PostgreSQL database with pgvector extension");
+                        eprintln!(
+                            "Note: This requires a PostgreSQL database with pgvector extension"
+                        );
                         process::exit(1);
                     }
                 }
@@ -48,13 +57,13 @@ async fn main() {
                     eprintln!("Example: paragonic index-file README.md");
                     process::exit(1);
                 }
-                
+
                 // Set demo mode for file indexing (no database required)
                 std::env::set_var("PARAGONIC_DEMO_MODE", "1");
-                
+
                 let file_path = &args[2];
                 println!("Indexing file: {file_path}");
-                
+
                 let request = IndexFileRequest {
                     file_path: file_path.to_string(),
                     content_type: None, // Auto-detect
@@ -68,7 +77,7 @@ async fn main() {
                     chunk_size: None, // Use default
                     include_metadata: true,
                 };
-                
+
                 match index_file_for_iragl(request).await {
                     Ok(response) => {
                         println!("✅ File indexed successfully!");
@@ -90,15 +99,17 @@ async fn main() {
                     eprintln!("Usage: paragonic search <query> [options]");
                     eprintln!("Example: paragonic search 'IRAGL knowledge management'");
                     eprintln!("Example: paragonic search 'neovim ollama' --type keyword");
-                    eprintln!("Example: paragonic search 'agent collaboration' --type hybrid --limit 5");
+                    eprintln!(
+                        "Example: paragonic search 'agent collaboration' --type hybrid --limit 5"
+                    );
                     process::exit(1);
                 }
-                
+
                 let query_text = &args[2];
                 let mut search_type = SearchType::Semantic;
                 let mut limit = Some(10);
                 let mut filters = None;
-                
+
                 // Parse optional arguments
                 let mut i = 3;
                 while i < args.len() {
@@ -151,11 +162,11 @@ async fn main() {
                         }
                     }
                 }
-                
+
                 println!("🔍 Searching IRAGL index for: '{query_text}'");
                 println!("   Search type: {search_type:?}");
                 println!("   Limit: {limit:?}");
-                
+
                 let search_query = IraglSearchQuery {
                     query: query_text.to_string(),
                     search_type,
@@ -163,18 +174,35 @@ async fn main() {
                     filters,
                     include_metadata: true,
                 };
-                
+
                 match search_iragl_index(search_query).await {
                     Ok(results) => {
                         println!("✅ Found {} results:", results.len());
                         println!();
-                        
+
                         for (i, result) in results.iter().enumerate() {
                             println!("Result {} (Score: {:.2}):", i + 1, result.similarity_score);
-                            println!("  File: {}", result.source_info.file_path.as_ref().unwrap_or(&"Unknown".to_string()));
-                            println!("  Section: {}", result.source_info.section.as_ref().unwrap_or(&"Unknown".to_string()));
-                            println!("  Content: {}", result.content_text.chars().take(120).collect::<String>());
-                            
+                            println!(
+                                "  File: {}",
+                                result
+                                    .source_info
+                                    .file_path
+                                    .as_ref()
+                                    .unwrap_or(&"Unknown".to_string())
+                            );
+                            println!(
+                                "  Section: {}",
+                                result
+                                    .source_info
+                                    .section
+                                    .as_ref()
+                                    .unwrap_or(&"Unknown".to_string())
+                            );
+                            println!(
+                                "  Content: {}",
+                                result.content_text.chars().take(120).collect::<String>()
+                            );
+
                             if let Some(ref context) = result.context.related_concepts {
                                 println!("  Related: {}", context.join(", "));
                             }
@@ -215,9 +243,9 @@ async fn main() {
             }
         }
     }
-    
+
     let skip_database = args.iter().any(|arg| arg == "--no-database");
-    
+
     // Parse port argument
     let mut port = 3000;
     for (i, arg) in args.iter().enumerate() {
@@ -230,7 +258,7 @@ async fn main() {
             }
         }
     }
-    
+
     if skip_database {
         println!("Starting Paragonic backend without database initialization...");
     } else {
@@ -241,7 +269,7 @@ async fn main() {
         }
         println!("Paragonic backend initialized successfully");
     }
-    
+
     let server_addr = format!("127.0.0.1:{port}");
     tracing::info!("Starting MCP HTTP server on {}...", server_addr);
 
@@ -260,4 +288,4 @@ async fn main() {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }
-} 
+}

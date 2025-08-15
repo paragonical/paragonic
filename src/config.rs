@@ -1,5 +1,5 @@
 //! Configuration management for Paragonic
-//! 
+//!
 //! This module handles configuration loading from environment variables,
 //! TOML files, and default values with proper precedence.
 
@@ -45,8 +45,6 @@ pub struct LoggingConfig {
     pub level: String,
     pub format: String,
 }
-
-
 
 impl Default for DatabaseConfig {
     fn default() -> Self {
@@ -94,12 +92,12 @@ impl ConfigManager {
     }
 
     /// Load configuration from environment variables
-    /// 
+    ///
     /// Environment variables follow the pattern: PARAGONIC_<SECTION>_<KEY>
     /// For example: PARAGONIC_DATABASE_HOST, PARAGONIC_OLLAMA_BASE_URL
     pub fn load_from_env(&mut self) -> ParagonicResult<()> {
         debug!("Loading configuration from environment variables");
-        
+
         let env_vars: HashMap<String, String> = env::vars()
             .filter(|(key, _)| key.starts_with("PARAGONIC_"))
             .collect();
@@ -113,28 +111,28 @@ impl ConfigManager {
     }
 
     /// Load configuration from a TOML file
-    /// 
+    ///
     /// This function reads a TOML configuration file and merges it with
     /// the current configuration. File values take precedence over defaults
     /// but environment variables will override file values.
     pub fn load_from_toml<P: AsRef<Path>>(&mut self, path: P) -> ParagonicResult<()> {
         debug!("Loading configuration from TOML file: {:?}", path.as_ref());
-        
+
         let content = fs::read_to_string(path.as_ref()).map_err(|e| {
             ParagonicError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Configuration file not found: {e}")
+                format!("Configuration file not found: {e}"),
             ))
         })?;
-        
+
         // Parse TOML as a generic value first to handle partial configurations
         let toml_value: toml::Value = toml::from_str(&content).map_err(|e| {
             ParagonicError::InvalidInput(format!("Invalid TOML configuration: {e}"))
         })?;
-        
+
         // Apply TOML values to current configuration
         self.apply_toml_value(&toml_value);
-        
+
         debug!("Configuration loaded from TOML file");
         Ok(())
     }
@@ -157,23 +155,30 @@ impl ConfigManager {
             if let Some(database_name) = database.get("database").and_then(|v| v.as_str()) {
                 self.config.database.database = database_name.to_string();
             }
-            if let Some(max_connections) = database.get("max_connections").and_then(|v| v.as_integer()) {
+            if let Some(max_connections) =
+                database.get("max_connections").and_then(|v| v.as_integer())
+            {
                 self.config.database.max_connections = max_connections as u32;
             }
         }
-        
+
         if let Some(ollama) = toml_value.get("ollama") {
             if let Some(base_url) = ollama.get("base_url").and_then(|v| v.as_str()) {
                 self.config.ollama.base_url = base_url.to_string();
             }
-            if let Some(timeout_seconds) = ollama.get("timeout_seconds").and_then(|v| v.as_integer()) {
+            if let Some(timeout_seconds) =
+                ollama.get("timeout_seconds").and_then(|v| v.as_integer())
+            {
                 self.config.ollama.timeout_seconds = timeout_seconds as u64;
             }
-            if let Some(progress_timeout_seconds) = ollama.get("progress_timeout_seconds").and_then(|v| v.as_integer()) {
+            if let Some(progress_timeout_seconds) = ollama
+                .get("progress_timeout_seconds")
+                .and_then(|v| v.as_integer())
+            {
                 self.config.ollama.progress_timeout_seconds = progress_timeout_seconds as u64;
             }
         }
-        
+
         if let Some(logging) = toml_value.get("logging") {
             if let Some(level) = logging.get("level").and_then(|v| v.as_str()) {
                 self.config.logging.level = level.to_string();
@@ -183,8 +188,6 @@ impl ConfigManager {
             }
         }
     }
-
-
 
     /// Apply a single environment variable to the configuration
     fn apply_env_var(&mut self, key: &str, value: &str) -> ParagonicResult<()> {
@@ -239,7 +242,9 @@ impl ConfigManager {
             }
             "progress_timeout_seconds" => {
                 self.config.ollama.progress_timeout_seconds = value.parse().map_err(|_| {
-                    ParagonicError::InvalidInput(format!("Invalid progress_timeout_seconds: {value}"))
+                    ParagonicError::InvalidInput(format!(
+                        "Invalid progress_timeout_seconds: {value}"
+                    ))
                 })?
             }
             _ => debug!("Unknown ollama field: {}", field),
@@ -268,54 +273,63 @@ impl ConfigManager {
     }
 
     /// Load configuration from all sources with proper precedence
-    /// 
+    ///
     /// This function loads configuration in the following order:
     /// 1. Default values (lowest priority)
     /// 2. TOML configuration file (if exists)
     /// 3. Environment variables (highest priority)
-    /// 
+    ///
     /// The precedence order ensures that environment variables can override
     /// file settings, and file settings can override defaults.
-    pub fn load_configuration<P: AsRef<Path>>(&mut self, config_path: Option<P>) -> ParagonicResult<()> {
+    pub fn load_configuration<P: AsRef<Path>>(
+        &mut self,
+        config_path: Option<P>,
+    ) -> ParagonicResult<()> {
         debug!("Loading configuration from all sources");
-        
+
         // Start with default values (already set in ConfigManager::new())
-        
+
         // Load from TOML file if provided
         if let Some(path) = config_path {
             if path.as_ref().exists() {
                 self.load_from_toml(path)?;
             } else {
-                debug!("Configuration file not found, skipping: {:?}", path.as_ref());
+                debug!(
+                    "Configuration file not found, skipping: {:?}",
+                    path.as_ref()
+                );
             }
         }
-        
+
         // Load from environment variables (highest priority)
         self.load_from_env()?;
-        
+
         debug!("Configuration loaded from all sources successfully");
         Ok(())
     }
 
     /// Load configuration from standard locations
-    /// 
+    ///
     /// This function looks for configuration files in standard locations:
     /// 1. Current directory: `paragonic.toml`
     /// 2. User config directory: `~/.config/paragonic/config.toml`
     /// 3. System config directory: `/etc/paragonic/config.toml`
     pub fn load_from_standard_locations(&mut self) -> ParagonicResult<()> {
         debug!("Loading configuration from standard locations");
-        
+
         // Try current directory first
         let current_dir_config = std::env::current_dir()
             .map(|dir| dir.join("paragonic.toml"))
             .unwrap_or_else(|_| std::path::PathBuf::from("paragonic.toml"));
-        
+
         if current_dir_config.exists() {
-            debug!("Loading configuration from current directory: {:?}", current_dir_config);
+            debug!(
+                "Loading configuration from current directory: {:?}",
+                current_dir_config
+            );
             self.load_from_toml(&current_dir_config)?;
         }
-        
+
         // Try user config directory
         if let Some(user_config_dir) = dirs::config_dir() {
             let user_config = user_config_dir.join("paragonic").join("config.toml");
@@ -324,20 +338,23 @@ impl ConfigManager {
                 self.load_from_toml(&user_config)?;
             }
         }
-        
+
         // Try system config directory (Unix-like systems)
         #[cfg(unix)]
         {
             let system_config = std::path::PathBuf::from("/etc/paragonic/config.toml");
             if system_config.exists() {
-                debug!("Loading configuration from system config: {:?}", system_config);
+                debug!(
+                    "Loading configuration from system config: {:?}",
+                    system_config
+                );
                 self.load_from_toml(&system_config)?;
             }
         }
-        
+
         // Load environment variables (highest priority)
         self.load_from_env()?;
-        
+
         debug!("Configuration loaded from standard locations");
         Ok(())
     }
@@ -373,7 +390,7 @@ mod tests {
     fn test_config_manager_creation() {
         let manager = ConfigManager::new();
         let config = manager.get_config();
-        
+
         assert_eq!(config.database.host, "localhost");
         assert_eq!(config.database.port, 5432);
         assert_eq!(config.ollama.base_url, "http://localhost:11434");
@@ -399,19 +416,19 @@ mod tests {
     fn test_database_host_override() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Set environment variable
         env::set_var("PARAGONIC_DATABASE_HOST", "test-host");
-        
+
         // Load from environment
         manager.load_from_env().unwrap();
-        
+
         // Verify override
         let config = manager.get_config();
         assert_eq!(config.database.host, "test-host");
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
     }
@@ -421,9 +438,9 @@ mod tests {
     fn test_multiple_database_overrides() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Set multiple environment variables
         env::set_var("PARAGONIC_DATABASE_HOST", "test-host");
         env::set_var("PARAGONIC_DATABASE_PORT", "5433");
@@ -431,10 +448,10 @@ mod tests {
         env::set_var("PARAGONIC_DATABASE_PASSWORD", "test-pass");
         env::set_var("PARAGONIC_DATABASE_DATABASE", "test-db");
         env::set_var("PARAGONIC_DATABASE_MAX_CONNECTIONS", "20");
-        
+
         // Load from environment
         manager.load_from_env().unwrap();
-        
+
         // Verify all overrides
         let config = manager.get_config();
         assert_eq!(config.database.host, "test-host");
@@ -443,7 +460,7 @@ mod tests {
         assert_eq!(config.database.password, "test-pass");
         assert_eq!(config.database.database, "test-db");
         assert_eq!(config.database.max_connections, 20);
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
     }
@@ -453,21 +470,21 @@ mod tests {
     fn test_ollama_overrides() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Set Ollama environment variables
         env::set_var("PARAGONIC_OLLAMA_BASE_URL", "http://test-ollama:11435");
         env::set_var("PARAGONIC_OLLAMA_TIMEOUT_SECONDS", "60");
-        
+
         // Load from environment
         manager.load_from_env().unwrap();
-        
+
         // Verify overrides
         let config = manager.get_config();
         assert_eq!(config.ollama.base_url, "http://test-ollama:11435");
         assert_eq!(config.ollama.timeout_seconds, 60);
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
     }
@@ -477,21 +494,21 @@ mod tests {
     fn test_logging_overrides() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Set logging environment variables
         env::set_var("PARAGONIC_LOGGING_LEVEL", "debug");
         env::set_var("PARAGONIC_LOGGING_FORMAT", "text");
-        
+
         // Load from environment
         manager.load_from_env().unwrap();
-        
+
         // Verify overrides
         let config = manager.get_config();
         assert_eq!(config.logging.level, "debug");
         assert_eq!(config.logging.format, "text");
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
     }
@@ -501,16 +518,16 @@ mod tests {
     fn test_invalid_port_number() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Set invalid port
         env::set_var("PARAGONIC_DATABASE_PORT", "invalid");
-        
+
         // Load from environment should fail
         let result = manager.load_from_env();
         assert!(result.is_err());
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
     }
@@ -521,26 +538,26 @@ mod tests {
         // Clean up any existing environment variables first
         env::remove_var("OTHER_VAR");
         cleanup_paragonic_env_vars();
-        
+
         // Create a fresh manager with default values
         let mut manager = ConfigManager::new();
-        
+
         // Verify we start with default values
         let config = manager.get_config();
         assert_eq!(config.database.host, "localhost");
         assert_eq!(config.ollama.base_url, "http://localhost:11434");
-        
+
         // Set non-Paragonic environment variable
         env::set_var("OTHER_VAR", "other-value");
-        
+
         // Load from environment
         manager.load_from_env().unwrap();
-        
+
         // Verify default values are still unchanged
         let config = manager.get_config();
         assert_eq!(config.database.host, "localhost");
         assert_eq!(config.ollama.base_url, "http://localhost:11434");
-        
+
         // Clean up
         env::remove_var("OTHER_VAR");
         cleanup_paragonic_env_vars();
@@ -550,7 +567,7 @@ mod tests {
     #[ignore]
     fn test_load_from_toml_file() {
         let mut manager = ConfigManager::new();
-        
+
         // Create a temporary TOML file
         let toml_content = r#"
 [database]
@@ -569,16 +586,16 @@ timeout_seconds = 45
 level = "debug"
 format = "text"
 "#;
-        
+
         let temp_dir = std::env::temp_dir();
         let config_path = temp_dir.join("test_config.toml");
-        
+
         // Write TOML content to file
         fs::write(&config_path, toml_content).unwrap();
-        
+
         // Load from TOML file
         manager.load_from_toml(&config_path).unwrap();
-        
+
         // Verify TOML values are loaded
         let config = manager.get_config();
         assert_eq!(config.database.host, "toml-host");
@@ -591,7 +608,7 @@ format = "text"
         assert_eq!(config.ollama.timeout_seconds, 45);
         assert_eq!(config.logging.level, "debug");
         assert_eq!(config.logging.format, "text");
-        
+
         // Clean up
         let _ = fs::remove_file(&config_path);
     }
@@ -601,41 +618,41 @@ format = "text"
     fn test_toml_and_env_precedence() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Create a TOML file with some values
         let toml_content = r#"
 [database]
 host = "toml-host"
 port = 5433
 "#;
-        
+
         let temp_dir = std::env::temp_dir();
         let config_path = temp_dir.join("test_precedence.toml");
-        
+
         // Write TOML content to file
         fs::write(&config_path, toml_content).unwrap();
-        
+
         // Load from TOML file first
         manager.load_from_toml(&config_path).unwrap();
-        
+
         // Verify TOML values are loaded
         let config = manager.get_config();
         assert_eq!(config.database.host, "toml-host");
         assert_eq!(config.database.port, 5433);
-        
+
         // Set environment variable to override TOML
         env::set_var("PARAGONIC_DATABASE_HOST", "env-host");
-        
+
         // Load from environment (should override TOML)
         manager.load_from_env().unwrap();
-        
+
         // Verify environment variable takes precedence
         let config = manager.get_config();
         assert_eq!(config.database.host, "env-host"); // Environment overrides TOML
         assert_eq!(config.database.port, 5433); // TOML value remains for non-overridden field
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
         let _ = fs::remove_file(&config_path);
@@ -646,34 +663,34 @@ port = 5433
     fn test_load_configuration_with_file_and_env() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Create a TOML file
         let toml_content = r#"
 [database]
 host = "toml-host"
 port = 5433
 "#;
-        
+
         let temp_dir = std::env::temp_dir();
         let config_path = temp_dir.join("test_comprehensive.toml");
-        
+
         // Write TOML content to file
         fs::write(&config_path, toml_content).unwrap();
-        
+
         // Set environment variable to override TOML
         env::set_var("PARAGONIC_DATABASE_HOST", "env-host");
-        
+
         // Load configuration from all sources
         manager.load_configuration(Some(&config_path)).unwrap();
-        
+
         // Verify environment variable takes precedence over TOML
         let config = manager.get_config();
         assert_eq!(config.database.host, "env-host"); // Environment overrides TOML
         assert_eq!(config.database.port, 5433); // TOML value for non-overridden field
         assert_eq!(config.database.username, "paragonic"); // Default value
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
         let _ = fs::remove_file(&config_path);
@@ -684,21 +701,23 @@ port = 5433
     fn test_load_configuration_without_file() {
         // Clean up any existing environment variables first
         cleanup_paragonic_env_vars();
-        
+
         let mut manager = ConfigManager::new();
-        
+
         // Set environment variable
         env::set_var("PARAGONIC_DATABASE_HOST", "env-only-host");
-        
+
         // Load configuration without file
-        manager.load_configuration::<std::path::PathBuf>(None).unwrap();
-        
+        manager
+            .load_configuration::<std::path::PathBuf>(None)
+            .unwrap();
+
         // Verify environment variable is applied
         let config = manager.get_config();
         assert_eq!(config.database.host, "env-only-host");
         assert_eq!(config.database.port, 5432); // Default value
-        
+
         // Clean up
         cleanup_paragonic_env_vars();
     }
-} 
+}

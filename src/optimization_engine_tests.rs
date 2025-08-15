@@ -1,19 +1,22 @@
 #[cfg(test)]
 mod optimization_engine_tests {
     use super::*;
-    use crate::iragl::{DifferentialGeometryOptimizationRequest, OptimizationResult, EmbeddingUpdateRequest, EmbeddingUpdateResponse, FunctionallyInvariantPathRequest, FunctionallyInvariantPathResult};
+    use crate::iragl::{
+        DifferentialGeometryOptimizationRequest, EmbeddingUpdateRequest, EmbeddingUpdateResponse,
+        FunctionallyInvariantPathRequest, FunctionallyInvariantPathResult, OptimizationResult,
+    };
     use crate::{ParagonicError, ParagonicResult};
-    use uuid::Uuid;
     use serde_json::json;
+    use uuid::Uuid;
 
     /// Test differential geometry optimization algorithms
     #[tokio::test]
     async fn test_differential_geometry_optimization_algorithms() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Test basic differential geometry optimization
         let request = DifferentialGeometryOptimizationRequest {
             content_filter: None,
@@ -29,10 +32,10 @@ mod optimization_engine_tests {
                 "max_iterations": 100
             })),
         };
-        
+
         let result = engine.optimize_with_differential_geometry(&request).await;
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         assert_eq!(response.optimization_type, "differential_geometry");
         assert!(response.performance_improvement > 0.0);
@@ -44,9 +47,9 @@ mod optimization_engine_tests {
     async fn test_yurts_inspired_optimization_techniques() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Test Yurts-inspired optimization
         let request = DifferentialGeometryOptimizationRequest {
             content_filter: None,
@@ -62,10 +65,10 @@ mod optimization_engine_tests {
                 "adaptation_rate": 0.02
             })),
         };
-        
+
         let result = engine.optimize_with_yurts_techniques(&request).await;
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         assert_eq!(response.optimization_type, "yurts_inspired");
         assert!(response.performance_improvement > 0.0);
@@ -77,9 +80,9 @@ mod optimization_engine_tests {
     async fn test_functionally_invariant_path_computation() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Test functionally-invariant path computation
         let request = FunctionallyInvariantPathRequest {
             source_content_filter: Some("embedding_quality:0.7".to_string()),
@@ -94,10 +97,10 @@ mod optimization_engine_tests {
                 "invariance_threshold": 0.05
             })),
         };
-        
+
         let result = engine.compute_functionally_invariant_path(&request).await;
         assert!(result.is_ok());
-        
+
         let path = result.unwrap();
         assert!(path.path_safety_score > 0.0);
         assert!(path.path_safety_score <= 1.0);
@@ -111,9 +114,9 @@ mod optimization_engine_tests {
     async fn test_embedding_update_procedures_with_performance_tracking() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Test embedding update with performance tracking
         let request = EmbeddingUpdateRequest {
             content_filter: None,
@@ -125,14 +128,16 @@ mod optimization_engine_tests {
             max_retries: 3,
             retry_delay_ms: 1000,
         };
-        
-        let result = engine.update_embeddings_with_performance_tracking(&request).await;
+
+        let result = engine
+            .update_embeddings_with_performance_tracking(&request)
+            .await;
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         assert_eq!(response.update_strategy, "incremental");
         assert!(response.success);
-        
+
         // Verify performance metrics are tracked
         if let Some(performance_metrics) = response.performance_metrics {
             assert!(performance_metrics.is_object());
@@ -144,9 +149,9 @@ mod optimization_engine_tests {
     async fn test_optimization_scheduling_and_coordination() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Test optimization scheduling
         let schedule = OptimizationSchedule {
             optimization_type: "differential_geometry".to_string(),
@@ -155,10 +160,10 @@ mod optimization_engine_tests {
             dependencies: vec!["embedding_update".to_string()],
             conflict_resolution: "sequential".to_string(),
         };
-        
+
         let result = engine.schedule_optimization(&schedule).await;
         assert!(result.is_ok());
-        
+
         let scheduled_optimization = result.unwrap();
         assert_eq!(scheduled_optimization.status, "scheduled");
         assert!(scheduled_optimization.next_run.is_some());
@@ -169,9 +174,9 @@ mod optimization_engine_tests {
     async fn test_error_recovery_and_fallback_mechanisms() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Test error recovery with fallback
         let request = DifferentialGeometryOptimizationRequest {
             content_filter: None,
@@ -187,14 +192,14 @@ mod optimization_engine_tests {
                 "max_retries": 3
             })),
         };
-        
+
         let result = engine.optimize_with_error_recovery(&request).await;
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         assert!(response.performance_improvement > 0.0);
         assert!(response.success);
-        
+
         // Verify error recovery metrics
         if let Some(metadata) = response.metadata {
             assert!(metadata.is_object());
@@ -206,15 +211,15 @@ mod optimization_engine_tests {
     async fn test_optimization_engine_statistics_and_monitoring() {
         // Initialize database for testing
         let _ = crate::database::initialize_for_testing().await;
-        
+
         let engine = OptimizationEngine::new().unwrap();
-        
+
         // Initial state
         assert_eq!(engine.optimization_count(), 0);
         assert_eq!(engine.success_count(), 0);
         assert_eq!(engine.error_count(), 0);
         assert_eq!(engine.success_rate(), 1.0);
-        
+
         // Run some optimizations
         for i in 0..3 {
             let request = DifferentialGeometryOptimizationRequest {
@@ -227,16 +232,16 @@ mod optimization_engine_tests {
                 include_metadata: true,
                 geometric_parameters: None,
             };
-            
+
             let _result = engine.optimize_with_differential_geometry(&request).await;
         }
-        
+
         // Verify statistics updated
         assert_eq!(engine.optimization_count(), 3);
         assert_eq!(engine.success_count(), 3);
         assert_eq!(engine.error_count(), 0);
         assert_eq!(engine.success_rate(), 1.0);
-        
+
         // Test reset functionality
         engine.reset_statistics();
         assert_eq!(engine.optimization_count(), 0);
@@ -248,9 +253,11 @@ mod optimization_engine_tests {
 // TODO: These structs and traits need to be implemented
 // They are defined here for the tests to compile
 
-use crate::iragl::{DifferentialGeometryOptimizationRequest, OptimizationResult, EmbeddingUpdateRequest, EmbeddingUpdateResponse, FunctionallyInvariantPathRequest, FunctionallyInvariantPathResult};
-use crate::{ParagonicError, ParagonicResult};
-use serde_json::json;
+use crate::iragl::{
+    DifferentialGeometryOptimizationRequest, EmbeddingUpdateRequest, EmbeddingUpdateResponse,
+    FunctionallyInvariantPathRequest, FunctionallyInvariantPathResult, OptimizationResult,
+};
+use crate::ParagonicResult;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -277,19 +284,21 @@ impl OptimizationEngine {
             error_count: std::sync::atomic::AtomicUsize::new(0),
         })
     }
-    
+
     pub fn optimization_count(&self) -> usize {
-        self.optimization_count.load(std::sync::atomic::Ordering::Acquire)
+        self.optimization_count
+            .load(std::sync::atomic::Ordering::Acquire)
     }
-    
+
     pub fn success_count(&self) -> usize {
-        self.success_count.load(std::sync::atomic::Ordering::Acquire)
+        self.success_count
+            .load(std::sync::atomic::Ordering::Acquire)
     }
-    
+
     pub fn error_count(&self) -> usize {
         self.error_count.load(std::sync::atomic::Ordering::Acquire)
     }
-    
+
     pub fn success_rate(&self) -> f64 {
         let total = self.optimization_count();
         if total == 0 {
@@ -299,69 +308,94 @@ impl OptimizationEngine {
             successful as f64 / total as f64
         }
     }
-    
-    pub async fn optimize_with_differential_geometry(&self, request: &DifferentialGeometryOptimizationRequest) -> ParagonicResult<OptimizationResult> {
+
+    pub async fn optimize_with_differential_geometry(
+        &self,
+        request: &DifferentialGeometryOptimizationRequest,
+    ) -> ParagonicResult<OptimizationResult> {
         // Basic differential geometry optimization implementation
-        self.optimization_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        
+        self.optimization_count
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+
         // Use the existing perform_differential_geometry_optimization function
         match crate::iragl::perform_differential_geometry_optimization(request.clone()).await {
             Ok(response) => {
-                self.success_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.success_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Ok(response)
             }
             Err(e) => {
-                self.error_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.error_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Err(e)
             }
         }
     }
-    
-    pub async fn optimize_with_yurts_techniques(&self, request: &DifferentialGeometryOptimizationRequest) -> ParagonicResult<OptimizationResult> {
+
+    pub async fn optimize_with_yurts_techniques(
+        &self,
+        request: &DifferentialGeometryOptimizationRequest,
+    ) -> ParagonicResult<OptimizationResult> {
         // Yurts-inspired optimization implementation
-        self.optimization_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        
+        self.optimization_count
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+
         // Use the existing perform_differential_geometry_optimization function with Yurts parameters
         let mut yurts_request = request.clone();
-        yurts_request.optimization_strategies = vec!["geodesic".to_string(), "riemannian".to_string()];
-        
+        yurts_request.optimization_strategies =
+            vec!["geodesic".to_string(), "riemannian".to_string()];
+
         match crate::iragl::perform_differential_geometry_optimization(yurts_request).await {
             Ok(mut response) => {
                 response.optimization_type = "yurts_inspired".to_string();
-                self.success_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.success_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Ok(response)
             }
             Err(e) => {
-                self.error_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.error_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Err(e)
             }
         }
     }
-    
-    pub async fn compute_functionally_invariant_path(&self, request: &FunctionallyInvariantPathRequest) -> ParagonicResult<FunctionallyInvariantPathResult> {
+
+    pub async fn compute_functionally_invariant_path(
+        &self,
+        request: &FunctionallyInvariantPathRequest,
+    ) -> ParagonicResult<FunctionallyInvariantPathResult> {
         // Functionally-invariant path computation
         // Use the existing perform_functionally_invariant_path_computation function
         crate::iragl::perform_functionally_invariant_path_computation(request.clone()).await
     }
-    
-    pub async fn update_embeddings_with_performance_tracking(&self, request: &EmbeddingUpdateRequest) -> ParagonicResult<EmbeddingUpdateResponse> {
+
+    pub async fn update_embeddings_with_performance_tracking(
+        &self,
+        request: &EmbeddingUpdateRequest,
+    ) -> ParagonicResult<EmbeddingUpdateResponse> {
         // Embedding update with performance tracking
-        self.optimization_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        
+        self.optimization_count
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+
         // Use the existing perform_embedding_update function
         match crate::iragl::perform_embedding_update(request.clone()).await {
             Ok(response) => {
-                self.success_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.success_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Ok(response)
             }
             Err(e) => {
-                self.error_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.error_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Err(e)
             }
         }
     }
-    
-    pub async fn schedule_optimization(&self, schedule: &OptimizationSchedule) -> ParagonicResult<ScheduledOptimization> {
+
+    pub async fn schedule_optimization(
+        &self,
+        schedule: &OptimizationSchedule,
+    ) -> ParagonicResult<ScheduledOptimization> {
         // Optimization scheduling
         let scheduled_optimization = ScheduledOptimization {
             id: Uuid::new_v4(),
@@ -370,31 +404,40 @@ impl OptimizationEngine {
             next_run: Some(chrono::Utc::now() + chrono::Duration::hours(24)),
             priority: schedule.priority.clone(),
         };
-        
+
         Ok(scheduled_optimization)
     }
-    
-    pub async fn optimize_with_error_recovery(&self, request: &DifferentialGeometryOptimizationRequest) -> ParagonicResult<OptimizationResult> {
+
+    pub async fn optimize_with_error_recovery(
+        &self,
+        request: &DifferentialGeometryOptimizationRequest,
+    ) -> ParagonicResult<OptimizationResult> {
         // Optimization with error recovery and fallback
-        self.optimization_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        
+        self.optimization_count
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+
         // Use the existing perform_differential_geometry_optimization function with error recovery
         match crate::iragl::perform_differential_geometry_optimization(request.clone()).await {
             Ok(response) => {
-                self.success_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.success_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Ok(response)
             }
             Err(e) => {
-                self.error_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                self.error_count
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Err(e)
             }
         }
     }
-    
+
     pub fn reset_statistics(&self) {
-        self.optimization_count.store(0, std::sync::atomic::Ordering::Release);
-        self.success_count.store(0, std::sync::atomic::Ordering::Release);
-        self.error_count.store(0, std::sync::atomic::Ordering::Release);
+        self.optimization_count
+            .store(0, std::sync::atomic::Ordering::Release);
+        self.success_count
+            .store(0, std::sync::atomic::Ordering::Release);
+        self.error_count
+            .store(0, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -405,4 +448,4 @@ pub struct ScheduledOptimization {
     pub status: String,
     pub next_run: Option<chrono::DateTime<chrono::Utc>>,
     pub priority: String,
-} 
+}
