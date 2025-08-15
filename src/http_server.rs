@@ -1089,9 +1089,14 @@ impl McpHttpServer {
         // Handle the result based on tool type
         match result {
             Ok(data) => {
-                // For streaming chat completion, return the data directly (it's already in MCP format)
+                // For streaming chat completion, return the chunk data directly
                 if name == "streaming_chat_completion" {
-                    Ok(data)
+                    // Extract the chunk data from the MCP response
+                    if let Some(result) = data.get("result") {
+                        Ok(result.clone())
+                    } else {
+                        Ok(data)
+                    }
                 } else {
                     // For other tools, wrap in MCP tool call response format
                     Ok(serde_json::json!({
