@@ -1218,6 +1218,8 @@ impl McpHttpServer {
                         );
 
                         // Send remaining chunks via SSE notifications
+                        // Add a small delay to ensure client has established SSE connection
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token).await;
 
                         Ok(response_json)
@@ -2734,6 +2736,15 @@ impl McpHttpServer {
 
         info!("   📤 Sending {} remaining chunks via SSE", chunks.len());
 
+        // Check if there are any active sessions first
+        let active_sessions = server.session_manager.get_active_sessions().await;
+        if active_sessions.is_empty() {
+            warn!("   ⚠️  No active sessions found for SSE notifications");
+            return;
+        }
+
+        info!("   📡 Found {} active sessions for SSE", active_sessions.len());
+
         // Send each chunk as an SSE notification
         for (index, chunk) in chunks.iter().enumerate() {
             let chunk_notification = serde_json::json!({
@@ -2748,14 +2759,31 @@ impl McpHttpServer {
                 }
             });
 
+            let mut sent_successfully = false;
+
             // Send via SSE to all active streams
-            for session_id in server.session_manager.get_active_sessions().await {
-                let streams = server.stream_manager.get_session_streams(&session_id).await;
+            for session_id in &active_sessions {
+                let streams = server.stream_manager.get_session_streams(session_id).await;
+                if streams.is_empty() {
+                    warn!("   ⚠️  No streams found for session {}", session_id);
+                    continue;
+                }
+
                 for stream_id in streams {
-                    if let Err(e) = server.stream_manager.send_event(&stream_id, &chunk_notification.to_string(), Some("notification")).await {
-                        warn!("Failed to send chunk notification: {}", e);
+                    match server.stream_manager.send_event(&stream_id, &chunk_notification.to_string(), Some("notification")).await {
+                        Ok(_) => {
+                            sent_successfully = true;
+                            debug!("   ✅ Sent chunk {} to stream {}", index + 1, stream_id);
+                        }
+                        Err(e) => {
+                            warn!("   ❌ Failed to send chunk {} to stream {}: {}", index + 1, stream_id, e);
+                        }
                     }
                 }
+            }
+
+            if !sent_successfully {
+                warn!("   ⚠️  Failed to send chunk {} to any stream", index + 1);
             }
 
             // Small delay between chunks for smooth streaming
@@ -2772,17 +2800,29 @@ impl McpHttpServer {
             }
         });
 
+        let mut completion_sent = false;
+
         // Send completion via SSE to all active streams
-        for session_id in server.session_manager.get_active_sessions().await {
-            let streams = server.stream_manager.get_session_streams(&session_id).await;
+        for session_id in &active_sessions {
+            let streams = server.stream_manager.get_session_streams(session_id).await;
             for stream_id in streams {
-                if let Err(e) = server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
-                    warn!("Failed to send completion notification: {}", e);
+                match server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
+                    Ok(_) => {
+                        completion_sent = true;
+                        debug!("   ✅ Sent completion to stream {}", stream_id);
+                    }
+                    Err(e) => {
+                        warn!("   ❌ Failed to send completion to stream {}: {}", stream_id, e);
+                    }
                 }
             }
         }
 
-        info!("   ✅ All remaining chunks sent via SSE");
+        if completion_sent {
+            info!("   ✅ All remaining chunks sent via SSE");
+        } else {
+            warn!("   ⚠️  Failed to send completion notification to any stream");
+        }
     }
 }
 
