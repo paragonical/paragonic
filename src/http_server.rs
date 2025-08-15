@@ -265,6 +265,7 @@ impl McpHttpServer {
             .get("mcp-session-id")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string())
+            .or_else(|| Some("default-session".to_string()))
     }
 
     /// Parse JSON-RPC message
