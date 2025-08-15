@@ -5,6 +5,131 @@ Handles chat interface and message sending functionality
 
 local M = {}
 
+-- Helper function to extract text backward from cursor to previous tombstone
+-- This enables multi-line input by capturing all lines from the cursor
+-- position back to the previous ∎ tombstone marker
+local function extract_backward_to_tombstone(current_buf)
+	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
+
+	-- Debug: Print cursor position
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔍 extract_backward_to_tombstone: cursor_line = " .. cursor_line, "debug")
+
+	-- Get all lines from start of buffer to cursor line
+	local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, cursor_line + 1, false)
+
+	-- Debug: Print buffer content
+	debug.debug_print("🔍 Buffer lines (0 to " .. cursor_line .. "):", "debug")
+	for i, line in ipairs(all_lines) do
+		debug.debug_print("  Line " .. (i - 1) .. ": " .. string.format("%q", line), "debug")
+	end
+
+	-- Find the last tombstone marker (∎) before the cursor
+	local tombstone_line = -1
+	for i = cursor_line, 0, -1 do
+		local line = all_lines[i + 1] -- Convert back to 1-indexed for array access
+		if line and line:match("^%s*∎%s*$") then
+			tombstone_line = i
+			debug.debug_print("🔍 Found tombstone at line " .. i, "debug")
+			break
+		end
+	end
+
+	debug.debug_print("🔍 tombstone_line = " .. tombstone_line, "debug")
+
+	-- Extract lines from after the tombstone to the cursor
+	local message_lines = {}
+	local start_line = tombstone_line + 1
+
+	debug.debug_print("🔍 Extracting from line " .. start_line .. " to " .. cursor_line, "debug")
+
+	for i = start_line, cursor_line do
+		local line = all_lines[i + 1] -- Convert to 1-indexed for array access
+		if line then
+			-- Skip empty lines at the beginning but include them in the middle/end
+			if #message_lines > 0 or line:match("%S") then
+				table.insert(message_lines, line)
+				debug.debug_print("🔍 Added line: " .. string.format("%q", line), "debug")
+			else
+				debug.debug_print("🔍 Skipped empty line: " .. string.format("%q", line), "debug")
+			end
+		end
+	end
+
+	-- Join the lines and trim leading/trailing whitespace
+	local message = table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+
+	debug.debug_print("🔍 Final extracted message: " .. string.format("%q", message), "debug")
+
+	return message, start_line
+end
+
+-- Helper function to extract text forward from cursor to next tombstone or end of buffer
+local function extract_forward_to_tombstone(current_buf)
+	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
+	local total_lines = vim.api.nvim_buf_line_count(current_buf)
+
+	-- Get all lines from cursor to end of buffer
+	local all_lines = vim.api.nvim_buf_get_lines(current_buf, cursor_line, total_lines, false)
+
+	-- Find the next tombstone marker
+	local end_line = #all_lines
+	for i = 1, #all_lines do
+		if all_lines[i]:match("^%s*∎%s*$") then
+			end_line = i - 1 -- Stop before the tombstone
+			break
+		end
+	end
+
+	-- Extract lines from cursor to next tombstone (or end of buffer)
+	local message_lines = {}
+	for i = 1, end_line do
+		table.insert(message_lines, all_lines[i])
+	end
+
+	return table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+-- Helper function to extract complete range from previous tombstone to next tombstone
+local function extract_complete_range(current_buf)
+	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
+	local total_lines = vim.api.nvim_buf_line_count(current_buf)
+
+	-- Get all lines in buffer
+	local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, total_lines, false)
+
+	-- Find previous tombstone (search backward from cursor)
+	local start_line = 1 -- Default to start of buffer (1-indexed for line extraction)
+	for i = cursor_line, 1, -1 do
+		if all_lines[i] and all_lines[i]:match("^%s*∎%s*$") then
+			start_line = i + 1 -- Start after the tombstone
+			break
+		end
+	end
+
+	-- Find next tombstone (search forward from cursor)
+	local end_line = total_lines -- Default to end of buffer
+	for i = cursor_line + 1, total_lines do
+		if all_lines[i] and all_lines[i]:match("^%s*∎%s*$") then
+			end_line = i - 1 -- Stop before the tombstone
+			break
+		end
+	end
+
+	-- Extract lines from start to end
+	local message_lines = {}
+	for i = start_line, end_line do
+		if all_lines[i] then
+			table.insert(message_lines, all_lines[i])
+		end
+	end
+
+	return table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
 -- Send a message to the AI and get response
 function M.send_message(message, model)
 	local backend = require("paragonic.backend")
@@ -1222,132 +1347,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	return true
 end
 
--- Helper function to extract text backward from cursor to previous tombstone
--- This enables multi-line input by capturing all lines from the cursor
--- position back to the previous ∎ tombstone marker
-local function extract_backward_to_tombstone(current_buf)
-	local cursor_pos = vim.api.nvim_win_get_cursor(0)
-	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
 
-	-- Debug: Print cursor position
-	local debug = require("paragonic.debug")
-	debug.debug_print("🔍 extract_backward_to_tombstone: cursor_line = " .. cursor_line, "debug")
-
-	-- Get all lines from start of buffer to cursor line
-	local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, cursor_line + 1, false)
-
-	-- Debug: Print buffer content
-	debug.debug_print("🔍 Buffer lines (0 to " .. cursor_line .. "):", "debug")
-	for i, line in ipairs(all_lines) do
-		debug.debug_print("  Line " .. (i - 1) .. ": " .. string.format("%q", line), "debug")
-	end
-
-	-- Find the last tombstone marker (∎) before the cursor
-	local tombstone_line = -1
-	for i = cursor_line, 0, -1 do
-		local line = all_lines[i + 1] -- Convert back to 1-indexed for array access
-		if line and line:match("^%s*∎%s*$") then
-			tombstone_line = i
-			debug.debug_print("🔍 Found tombstone at line " .. i, "debug")
-			break
-		end
-	end
-
-	debug.debug_print("🔍 tombstone_line = " .. tombstone_line, "debug")
-
-	-- Extract lines from after the tombstone to the cursor
-	local message_lines = {}
-	local start_line = tombstone_line + 1
-
-	debug.debug_print("🔍 Extracting from line " .. start_line .. " to " .. cursor_line, "debug")
-
-	for i = start_line, cursor_line do
-		local line = all_lines[i + 1] -- Convert to 1-indexed for array access
-		if line then
-			-- Skip empty lines at the beginning but include them in the middle/end
-			if #message_lines > 0 or line:match("%S") then
-				table.insert(message_lines, line)
-				debug.debug_print("🔍 Added line: " .. string.format("%q", line), "debug")
-			else
-				debug.debug_print("🔍 Skipped empty line: " .. string.format("%q", line), "debug")
-			end
-		end
-	end
-
-	-- Join the lines and trim leading/trailing whitespace
-	local message = table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-
-	debug.debug_print("🔍 Final extracted message: " .. string.format("%q", message), "debug")
-
-	return message, start_line
-end
-
--- Helper function to extract text forward from cursor to next tombstone or end of buffer
-local function extract_forward_to_tombstone(current_buf)
-	local cursor_pos = vim.api.nvim_win_get_cursor(0)
-	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
-	local total_lines = vim.api.nvim_buf_line_count(current_buf)
-
-	-- Get all lines from cursor to end of buffer
-	local all_lines = vim.api.nvim_buf_get_lines(current_buf, cursor_line, total_lines, false)
-
-	-- Find the next tombstone marker
-	local end_line = #all_lines
-	for i = 1, #all_lines do
-		if all_lines[i]:match("^%s*∎%s*$") then
-			end_line = i - 1 -- Stop before the tombstone
-			break
-		end
-	end
-
-	-- Extract lines from cursor to next tombstone (or end of buffer)
-	local message_lines = {}
-	for i = 1, end_line do
-		table.insert(message_lines, all_lines[i])
-	end
-
-	return table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-end
-
--- Helper function to extract complete range from previous tombstone to next tombstone
-local function extract_complete_range(current_buf)
-	local cursor_pos = vim.api.nvim_win_get_cursor(0)
-	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
-	local total_lines = vim.api.nvim_buf_line_count(current_buf)
-
-	-- Get all lines in buffer
-	local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, total_lines, false)
-
-	-- Find previous tombstone (search backward from cursor)
-	local start_line = 1 -- Default to start of buffer (1-indexed for line extraction)
-	for i = cursor_line, 1, -1 do
-		if all_lines[i] and all_lines[i]:match("^%s*∎%s*$") then
-			start_line = i + 1 -- Start after the tombstone
-			break
-		end
-	end
-
-	-- Find next tombstone (search forward from cursor)
-	local end_line = #all_lines -- Default to end of buffer
-	for i = cursor_line + 1, #all_lines do
-		if all_lines[i] and all_lines[i]:match("^%s*∎%s*$") then
-			end_line = i - 1 -- Stop before the tombstone
-			break
-		end
-	end
-
-	-- Extract lines in the range
-	local message_lines = {}
-	for i = start_line, end_line do
-		if all_lines[i] then
-			table.insert(message_lines, all_lines[i])
-		end
-	end
-
-	local result = table.concat(message_lines, "\n")
-	-- Only trim trailing whitespace, preserve leading structure and empty lines
-	return result:gsub("%s+$", "")
-end
 
 function M.send_message_command()
 	local debug = require("paragonic.debug")
