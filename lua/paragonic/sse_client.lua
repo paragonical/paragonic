@@ -39,6 +39,8 @@ local client_state = {
 	event_buffer = {},
 	callbacks = {},
 	connection_thread = nil,
+	connection_client = nil,
+	read_buffer = "",
 }
 
 -- SSE event structure
@@ -227,26 +229,102 @@ function sse_client.connect(stream_id, callbacks)
 		return true
 	else
 		-- In real Neovim environment, establish actual SSE connection
-		local success, response = pcall(function()
+		local success, client_or_err = pcall(function()
 			return sse_client._establish_connection()
 		end)
 		
-		if success and response then
+		if success and client_or_err then
+			local client = client_or_err
 			client_state.is_connected = true
+			client_state.connection_client = client
+			
 			if client_state.callbacks.on_connect then
 				client_state.callbacks.on_connect(stream_id)
 			end
 			
-			-- Start processing the SSE stream in a background task
-			vim.defer_fn(function()
-				sse_client._process_stream(response)
-			end, 0)
+			-- Set up async reading for SSE events
+			sse_client._setup_async_reading(client)
 			
 			return true
 		else
-			return false, "Failed to establish SSE connection"
+			return false, "Failed to establish SSE connection: " .. (client_or_err or "unknown error")
 		end
 	end
+end
+
+-- Set up async reading for SSE events
+function sse_client._setup_async_reading(client)
+	-- Store buffer in client state for persistence
+	client_state.read_buffer = ""
+	
+	-- Set up read callback
+	client:read_start(function(err, data)
+		if err then
+			-- Handle error
+			if client_state.callbacks.on_error then
+				client_state.callbacks.on_error("SSE read error: " .. err, 0)
+			end
+			sse_client.disconnect()
+			return
+		end
+		
+		if not data then
+			-- Connection closed
+			sse_client.disconnect()
+			return
+		end
+		
+		-- Add data to buffer
+		client_state.read_buffer = client_state.read_buffer .. data
+		
+		-- Process complete events
+		local events, remaining_buffer = sse_client._extract_events(client_state.read_buffer)
+		client_state.read_buffer = remaining_buffer
+		
+		for _, event_text in ipairs(events) do
+			local event, parse_err = sse_client.parse_event(event_text)
+			if event then
+				sse_client._handle_event(event)
+			elseif client_state.callbacks.on_parse_error then
+				client_state.callbacks.on_parse_error(parse_err, event_text)
+			end
+		end
+	end)
+end
+
+-- Extract complete SSE events from buffer
+function sse_client._extract_events(buffer)
+	local events = {}
+	local lines = {}
+	
+	-- Split buffer into lines
+	for line in buffer:gmatch("[^\r\n]*") do
+		table.insert(lines, line)
+	end
+	
+	-- Find complete events (separated by empty lines)
+	local current_event = {}
+	local last_empty = 0
+	for i, line in ipairs(lines) do
+		if line == "" then
+			-- Empty line indicates end of event
+			if #current_event > 0 then
+				table.insert(events, table.concat(current_event, "\n"))
+				current_event = {}
+			end
+			last_empty = i
+		else
+			table.insert(current_event, line)
+		end
+	end
+	
+	-- Return remaining buffer (incomplete events)
+	local remaining_buffer = ""
+	if last_empty > 0 and last_empty < #lines then
+		remaining_buffer = table.concat(lines, "\n", last_empty + 1)
+	end
+	
+	return events, remaining_buffer
 end
 
 -- Disconnect from SSE stream
@@ -256,6 +334,13 @@ function sse_client.disconnect()
 	end
 
 	client_state.is_connected = false
+	
+	-- Close TCP client if exists
+	if client_state.connection_client then
+		client_state.connection_client:close()
+		client_state.connection_client = nil
+	end
+	
 	client_state.connection_thread = nil
 
 	if client_state.callbacks.on_disconnect then
@@ -264,37 +349,72 @@ function sse_client.disconnect()
 	return true
 end
 
--- Establish SSE connection
+-- Establish SSE connection using vim.uv for proper async streaming
 function sse_client._establish_connection()
 	local endpoint = "/mcp"
 	if client_state.stream_id then
 		endpoint = endpoint .. "?stream=" .. client_state.stream_id
 	end
 
+	local url = client_state.base_url .. endpoint
+	
+	-- Build headers string for vim.uv
 	local headers = {
-		["Accept"] = "text/event-stream",
-		["Cache-Control"] = "no-cache",
-		["mcp-protocol-version"] = "2025-06-18",
-		["origin"] = "neovim://paragonic",
+		"Accept: text/event-stream",
+		"Cache-Control: no-cache",
+		"mcp-protocol-version: 2025-06-18",
+		"origin: neovim://paragonic",
 	}
 
 	-- Add session ID if available
 	if client_state.session_id then
-		headers["mcp-session-id"] = client_state.session_id
+		table.insert(headers, "mcp-session-id: " .. client_state.session_id)
 	end
 
 	-- Add Last-Event-ID header for resumption
 	if client_state.last_event_id then
-		headers["Last-Event-ID"] = client_state.last_event_id
+		table.insert(headers, "Last-Event-ID: " .. client_state.last_event_id)
 	end
 
-	local response = http_client.get(endpoint, headers)
-
-	if not response or not http_client.is_success(response) then
-		return nil
+	-- Use vim.uv for async HTTP request
+	local client = vim.uv.new_tcp()
+	
+	-- Parse URL to get host and port
+	local host, port
+	if url:match("^https://") then
+		host = url:match("^https://([^:/]+)")
+		port = url:match(":([0-9]+)") or 443
+	else
+		host = url:match("^http://([^:/]+)")
+		port = url:match(":([0-9]+)") or 80
+	end
+	
+	if not host then
+		return nil, "Invalid URL"
 	end
 
-	return response.raw_body
+	-- Connect to server
+	local success, err = client:connect(host, port)
+	if not success then
+		return nil, "Connection failed: " .. (err or "unknown error")
+	end
+
+	-- Build HTTP request
+	local request = string.format(
+		"GET %s HTTP/1.1\r\n" ..
+		"Host: %s\r\n" ..
+		"%s\r\n" ..
+		"\r\n",
+		endpoint,
+		host,
+		table.concat(headers, "\r\n")
+	)
+
+	-- Send request
+	client:write(request)
+	
+	-- Return the client for streaming
+	return client
 end
 
 -- Process SSE stream
