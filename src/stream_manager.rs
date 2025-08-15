@@ -208,14 +208,19 @@ impl StreamManager {
             // Wait for the current delay
             tokio::time::sleep(delay).await;
             
-            // Create heartbeat event
+            // Create heartbeat event using MCP notifications/message format
             let heartbeat_event = SseEvent {
                 id: format!("heartbeat_{}", chrono::Utc::now().timestamp_millis()),
-                event_type: Some("heartbeat".to_string()),
+                event_type: Some("notification".to_string()),
                 data: serde_json::json!({
-                    "type": "heartbeat",
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                    "stream_id": stream_id
+                    "jsonrpc": "2.0",
+                    "method": "notifications/message",
+                    "params": {
+                        "type": "heartbeat",
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "stream_id": stream_id,
+                        "message": "SSE connection heartbeat"
+                    }
                 }).to_string(),
                 timestamp: Instant::now(),
             };
