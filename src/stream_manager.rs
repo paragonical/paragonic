@@ -6,13 +6,14 @@
 
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::Stream;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use tokio::task::JoinHandle;
 
 /// SSE stream information
 #[derive(Debug, Clone)]
@@ -31,6 +32,8 @@ pub struct SseStream {
     pub state: StreamState,
     /// Broadcast sender for this stream
     pub sender: Arc<broadcast::Sender<SseEvent>>,
+    /// Heartbeat task handle
+    pub heartbeat_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 /// SSE event data
@@ -123,6 +126,7 @@ impl StreamManager {
             event_id: 0,
             state: StreamState::Initializing,
             sender: Arc::new(sender),
+            heartbeat_task: Arc::new(Mutex::new(None)),
         };
 
         streams.insert(stream_id.clone(), stream);
@@ -142,6 +146,9 @@ impl StreamManager {
 
         // Create the stream first
         let stream_id = self.create_stream(session_id).await?;
+        
+        // Start heartbeat for this stream
+        self.start_heartbeat(&stream_id).await?;
         
         // Get the stream to access its sender
         let stream = self.get_stream(&stream_id).await.ok_or(StreamError::StreamNotFound)?;
@@ -163,6 +170,86 @@ impl StreamManager {
             });
 
         Ok(sse_stream)
+    }
+
+    /// Start heartbeat for a stream
+    pub async fn start_heartbeat(&self, stream_id: &str) -> Result<(), StreamError> {
+        let mut streams = self.streams.write().await;
+        
+        if let Some(stream) = streams.get_mut(stream_id) {
+            // Don't start heartbeat if already running
+            let mut heartbeat_guard = stream.heartbeat_task.lock().unwrap();
+            if heartbeat_guard.is_some() {
+                return Ok(());
+            }
+            
+            let sender = stream.sender.clone();
+            let stream_id_clone = stream_id.to_string();
+            
+            // Spawn heartbeat task with exponential backoff
+            let heartbeat_task = tokio::spawn(async move {
+                Self::heartbeat_loop(sender, stream_id_clone).await;
+            });
+            
+            *heartbeat_guard = Some(heartbeat_task);
+            debug!("Started heartbeat for stream: {}", stream_id);
+            Ok(())
+        } else {
+            Err(StreamError::StreamNotFound)
+        }
+    }
+
+    /// Heartbeat loop with exponential backoff
+    async fn heartbeat_loop(sender: Arc<broadcast::Sender<SseEvent>>, stream_id: String) {
+        let mut delay = Duration::from_secs(1); // Start with 1 second
+        let max_delay = Duration::from_secs(8); // Max 8 seconds
+        
+        loop {
+            // Wait for the current delay
+            tokio::time::sleep(delay).await;
+            
+            // Create heartbeat event
+            let heartbeat_event = SseEvent {
+                id: format!("heartbeat_{}", chrono::Utc::now().timestamp_millis()),
+                event_type: Some("heartbeat".to_string()),
+                data: serde_json::json!({
+                    "type": "heartbeat",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "stream_id": stream_id
+                }).to_string(),
+                timestamp: Instant::now(),
+            };
+            
+            // Send heartbeat
+            match sender.send(heartbeat_event) {
+                Ok(_) => {
+                    debug!("Sent heartbeat for stream: {}", stream_id);
+                    // Exponential backoff: double the delay, but cap at max_delay
+                    delay = std::cmp::min(delay * 2, max_delay);
+                }
+                Err(_) => {
+                    // No receivers, stop heartbeat
+                    debug!("No receivers for heartbeat, stopping for stream: {}", stream_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Stop heartbeat for a stream
+    pub async fn stop_heartbeat(&self, stream_id: &str) -> Result<(), StreamError> {
+        let mut streams = self.streams.write().await;
+        
+        if let Some(stream) = streams.get_mut(stream_id) {
+            let mut heartbeat_guard = stream.heartbeat_task.lock().unwrap();
+            if let Some(task) = heartbeat_guard.take() {
+                task.abort();
+                debug!("Stopped heartbeat for stream: {}", stream_id);
+            }
+            Ok(())
+        } else {
+            Err(StreamError::StreamNotFound)
+        }
     }
 
     /// Get stream by ID
@@ -269,6 +356,13 @@ impl StreamManager {
         if let Some(stream) = streams.get_mut(stream_id) {
             stream.state = StreamState::Closing;
             stream.last_activity = Instant::now();
+            
+            // Stop heartbeat
+            let mut heartbeat_guard = stream.heartbeat_task.lock().unwrap();
+            if let Some(task) = heartbeat_guard.take() {
+                task.abort();
+                debug!("Stopped heartbeat for stream: {}", stream_id);
+            }
         }
 
         // Remove the stream
