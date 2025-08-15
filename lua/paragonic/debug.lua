@@ -11,7 +11,36 @@ local debug_buffer = nil
 -- Debug print function that writes to debug buffer instead of terminal
 function M.debug_print(message, level)
 	level = level or "debug"
-	M.append_debug_message(nil, message, level)
+	-- Defer to safe context to avoid fast event context errors
+	vim.defer_fn(function()
+		M.append_debug_message(nil, message, level)
+	end, 0)
+end
+
+-- Safe debug print function that can be called from fast contexts
+-- This version uses vim.notify for immediate feedback and defers buffer logging
+function M.debug_print_safe(message, level)
+	level = level or "debug"
+	
+	-- Use vim.notify for immediate feedback in fast contexts
+	local notify_level = vim.log.levels.DEBUG
+	if level == "info" then
+		notify_level = vim.log.levels.INFO
+	elseif level == "warning" then
+		notify_level = vim.log.levels.WARN
+	elseif level == "error" then
+		notify_level = vim.log.levels.ERROR
+	elseif level == "success" then
+		notify_level = vim.log.levels.INFO
+	end
+	
+	-- Show immediate notification
+	vim.notify(message, notify_level, { title = "Paragonic Debug" })
+	
+	-- Defer buffer logging to safe context
+	vim.defer_fn(function()
+		M.append_debug_message(nil, message, level)
+	end, 0)
 end
 
 function M.get_or_create_debug_buffer()
