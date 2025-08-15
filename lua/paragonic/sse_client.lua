@@ -215,12 +215,38 @@ function sse_client.connect(stream_id, callbacks)
 	client_state.stream_id = stream_id
 	client_state.callbacks = callbacks or {}
 
-	-- In Neovim headless tests, avoid uv threads; mark as connected
-	client_state.is_connected = true
-	if client_state.callbacks.on_connect then
-		client_state.callbacks.on_connect(stream_id)
+	-- Check if we're in a test environment (no real Neovim)
+	local is_test_environment = not pcall(function() return vim.api end)
+	
+	if is_test_environment then
+		-- In test environment, avoid uv threads; mark as connected
+		client_state.is_connected = true
+		if client_state.callbacks.on_connect then
+			client_state.callbacks.on_connect(stream_id)
+		end
+		return true
+	else
+		-- In real Neovim environment, establish actual SSE connection
+		local success, response = pcall(function()
+			return sse_client._establish_connection()
+		end)
+		
+		if success and response then
+			client_state.is_connected = true
+			if client_state.callbacks.on_connect then
+				client_state.callbacks.on_connect(stream_id)
+			end
+			
+			-- Start processing the SSE stream in a background task
+			vim.defer_fn(function()
+				sse_client._process_stream(response)
+			end, 0)
+			
+			return true
+		else
+			return false, "Failed to establish SSE connection"
+		end
 	end
-	return true
 end
 
 -- Disconnect from SSE stream
@@ -248,7 +274,14 @@ function sse_client._establish_connection()
 	local headers = {
 		["Accept"] = "text/event-stream",
 		["Cache-Control"] = "no-cache",
+		["mcp-protocol-version"] = "2025-06-18",
+		["origin"] = "neovim://paragonic",
 	}
+
+	-- Add session ID if available
+	if client_state.session_id then
+		headers["mcp-session-id"] = client_state.session_id
+	end
 
 	-- Add Last-Event-ID header for resumption
 	if client_state.last_event_id then
