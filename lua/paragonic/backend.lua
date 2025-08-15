@@ -91,7 +91,10 @@ local function create_mcp_client()
 			params = {
 				prompt = message,
 				model = model or "deepseek-r1:1.5b",
-				options = {}
+				options = {},
+				_meta = {
+					progressToken = "chat_" .. os.time() .. "_" .. math.random(1000, 9999)
+				}
 			}
 		})
 		return resp, err
@@ -119,7 +122,10 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "streaming_chat_completion",
-				arguments = params or {}
+				arguments = params or {},
+				_meta = {
+					progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999)
+				}
 			}
 		})
 		return resp, err

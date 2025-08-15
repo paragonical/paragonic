@@ -1140,6 +1140,14 @@ impl McpHttpServer {
             .and_then(|m| m.as_str())
             .ok_or(StatusCode::BAD_REQUEST)?;
 
+        // Extract progress token from _meta field if present
+        let progress_token = params
+            .get("_meta")
+            .and_then(|meta| meta.get("progressToken"))
+            .and_then(|token| token.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("streaming_{}", chrono::Utc::now().timestamp_millis()));
+
         info!("🔄 Streaming chat completion request:");
         info!("   Model: {}", model);
         info!("   Message: {}", message);
@@ -1191,7 +1199,7 @@ impl McpHttpServer {
                     info!("   📤 Sending {} thinking chunks to client", chunks.len());
 
                     // Send MCP progress notifications for thinking chunks
-                    Self::send_mcp_progress_notifications(server, &chunks).await;
+                    Self::send_mcp_progress_notifications(server, &chunks, &progress_token).await;
 
                     // For now, send the first chunk (the client will handle the rest via SSE)
                     if let Some(first_chunk) = chunks.first() {
@@ -2630,9 +2638,9 @@ impl McpHttpServer {
     async fn send_mcp_progress_notifications(
         server: &Self,
         chunks: &[ThinkingChunk],
+        progress_token: &str,
     ) {
         let total_chunks = chunks.len();
-        let progress_token = format!("streaming_{}", chrono::Utc::now().timestamp_millis());
 
         info!("   📊 Sending MCP progress notifications for {} chunks", total_chunks);
 
