@@ -226,7 +226,7 @@ function sse_client.connect(stream_id, callbacks)
 		-- In test environment, avoid uv threads; mark as connected
 		client_state.is_connected = true
 		if client_state.callbacks.on_connect then
-			client_state.callbacks.on_connect(stream_id)
+			client_state.callbacks.on_connect(stream_id or "default")
 		end
 		return true
 	else
@@ -242,10 +242,10 @@ function sse_client.connect(stream_id, callbacks)
 			
 			-- Log successful connection
 			local debug = require("paragonic.debug")
-			debug.debug_print_safe("✅ SSE connection established for stream: " .. stream_id, "success")
+			debug.debug_print_safe("✅ SSE connection established for stream: " .. (stream_id or "default"), "success")
 			
 			if client_state.callbacks.on_connect then
-				client_state.callbacks.on_connect(stream_id)
+				client_state.callbacks.on_connect(stream_id or "default")
 			end
 			
 			-- Set up async reading for SSE events
@@ -258,11 +258,11 @@ function sse_client.connect(stream_id, callbacks)
 			-- Use debug buffer instead of print to avoid blocking
 			local debug = require("paragonic.debug")
 			debug.debug_print_safe("⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"), "warning")
-			debug.debug_print_safe("🔧 Falling back to non-SSE mode for stream: " .. stream_id, "info")
+			debug.debug_print_safe("🔧 Falling back to non-SSE mode for stream: " .. (stream_id or "default"), "info")
 			client_state.is_connected = true
 			
 			if client_state.callbacks.on_connect then
-				client_state.callbacks.on_connect(stream_id)
+				client_state.callbacks.on_connect(stream_id or "default")
 			end
 			
 			return true
