@@ -4,6 +4,8 @@ use crate::{ParagonicError, ParagonicResult};
 #[cfg(test)]
 mod iragl_search_engine_tests {
     use super::*;
+    use serde_json::json;
+    use uuid::Uuid;
 
     /// Test IRAGLSearchEngine creation and basic configuration
     #[tokio::test]

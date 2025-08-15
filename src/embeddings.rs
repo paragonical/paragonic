@@ -3,7 +3,7 @@
 //! This module handles embedding generation, storage, and semantic search
 //! using Ollama for vector generation and PostgreSQL with pgvector for storage.
 
-use crate::error::ParagonicResult;
+use crate::error::{ParagonicError, ParagonicResult};
 use crate::models::{CreateEmbeddingRequest, Embedding};
 use crate::ollama::OllamaClient;
 use crate::vector::Vector;
