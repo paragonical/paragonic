@@ -334,21 +334,18 @@ function M.send_message_enhanced(message, model)
 	model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
 
 	-- Send chat completion request
-	local response = rpc_client:chat_completion(model, message)
+	local response, err = rpc_client:chat_completion(model, message)
+	if err then
+		return nil, "Failed to get response from AI: " .. tostring(err)
+	end
+
 	if not response then
-		return nil, "Failed to get response from AI"
+		return nil, "Failed to get response from AI: no response"
 	end
 
-	-- Parse response using enhanced parser (handles both strings and tables)
-	local utils = require("paragonic.utils")
-	local parsed_response = utils.parse_json_response_enhanced(response)
-	if not parsed_response then
-		return nil, "Failed to parse AI response"
-	end
-
-	-- Check for error in response
-	if parsed_response.error then
-		return nil, "AI error: " .. (parsed_response.error.message or "Unknown error")
+	-- Check for error in response (response is already a parsed Lua table)
+	if response.error then
+		return nil, "AI error: " .. (response.error.message or "Unknown error")
 	end
 
 	-- Extract AI message content
@@ -358,13 +355,13 @@ function M.send_message_enhanced(message, model)
 	-- 3. Direct Ollama response: {message: {content: "..."}}
 	-- 4. Direct content: {content: "..."}
 
-	if parsed_response.result then
+	if response.result then
 		-- Check if result is a JSON string (from backend)
-		if type(parsed_response.result) == "string" then
+		if type(response.result) == "string" then
 			-- Try using cjson if available
 			local cjson_ok, cjson = pcall(require, "cjson")
 			if cjson_ok then
-				local success, inner_result = pcall(cjson.decode, parsed_response.result)
+				local success, inner_result = pcall(cjson.decode, response.result)
 				if success and inner_result and inner_result.message then
 					return inner_result.message.content
 				end
@@ -372,38 +369,38 @@ function M.send_message_enhanced(message, model)
 			-- Try using dkjson if available
 			local dkjson_ok, dkjson = pcall(require, "dkjson")
 			if dkjson_ok then
-				local success, inner_result = pcall(dkjson.decode, parsed_response.result)
+				local success, inner_result = pcall(dkjson.decode, response.result)
 				if success and inner_result and inner_result.message then
 					return inner_result.message.content
 				end
 			end
 			-- Fallback to vim.json.decode
-			local success, inner_result = pcall(vim.json.decode, parsed_response.result)
+			local success, inner_result = pcall(vim.json.decode, response.result)
 			if success and inner_result and inner_result.message then
 				return inner_result.message.content
 			end
 		end
 
 		-- Check if result is a table with message
-		if type(parsed_response.result) == "table" and parsed_response.result.message then
-			return parsed_response.result.message.content
+		if type(response.result) == "table" and response.result.message then
+			return response.result.message.content
 		end
 
 		-- Check if result is a table with content
-		if type(parsed_response.result) == "table" and parsed_response.result.content then
-			return parsed_response.result.content
+		if type(response.result) == "table" and response.result.content then
+			return response.result.content
 		end
 	end
 
-	if parsed_response.message then
-		return parsed_response.message.content
+	if response.message then
+		return response.message.content
 	end
 
-	if parsed_response.content then
-		return parsed_response.content
+	if response.content then
+		return response.content
 	end
 
-	return nil, "Unexpected response format: " .. tostring(parsed_response)
+	return nil, "Unexpected response format: " .. tostring(response)
 end
 
 -- Open chat interface
