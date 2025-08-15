@@ -254,6 +254,11 @@ function mcp_http_transport.set_callbacks(callbacks)
 	transport_state.callbacks = callbacks or {}
 end
 
+-- Get current callbacks for MCP events
+function mcp_http_transport.get_callbacks()
+	return transport_state.callbacks or {}
+end
+
 -- Generate unique message ID
 function mcp_http_transport.generate_message_id()
 	transport_state.message_id_counter = transport_state.message_id_counter + 1

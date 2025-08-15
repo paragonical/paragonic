@@ -1201,21 +1201,14 @@ impl McpHttpServer {
                     // Send MCP progress notifications for thinking chunks
                     Self::send_mcp_progress_notifications(server, &chunks, &progress_token).await;
 
-                    // For now, send the first chunk (the client will handle the rest via SSE)
+                    // Send first chunk immediately
                     if let Some(first_chunk) = chunks.first() {
                         let response_json = serde_json::json!({
                             "type": "streaming_chunk",
                             "chunk": first_chunk.content,
                             "chunk_type": first_chunk.chunk_type,
                             "chunk_index": 0,
-                            "total_chunks": chunks.len(),
-                            "remaining_chunks": chunks[1..].iter().map(|c| {
-                                serde_json::json!({
-                                    "type": "streaming_chunk",
-                                    "chunk": c.content,
-                                    "chunk_type": c.chunk_type
-                                })
-                            }).collect::<Vec<_>>()
+                            "total_chunks": chunks.len()
                         });
 
                         info!("   📤 Sending first chunk to client:");
@@ -1223,6 +1216,9 @@ impl McpHttpServer {
                             "   Response JSON: {}",
                             serde_json::to_string_pretty(&response_json).unwrap()
                         );
+
+                        // Send remaining chunks via SSE notifications
+                        Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token).await;
 
                         Ok(response_json)
                     } else {
@@ -1232,8 +1228,7 @@ impl McpHttpServer {
                             "chunk": content,
                             "chunk_type": "regular_content",
                             "chunk_index": 0,
-                            "total_chunks": 1,
-                            "remaining_chunks": []
+                            "total_chunks": 1
                         });
 
                         Ok(response_json)
@@ -2725,6 +2720,69 @@ impl McpHttpServer {
         }
 
         info!("   ✅ MCP progress notifications sent for {} chunks", total_chunks);
+    }
+
+    /// Send remaining chunks via SSE notifications
+    async fn send_remaining_chunks_via_sse(
+        server: &Self,
+        chunks: &[ThinkingChunk],
+        progress_token: &str,
+    ) {
+        if chunks.is_empty() {
+            return;
+        }
+
+        info!("   📤 Sending {} remaining chunks via SSE", chunks.len());
+
+        // Send each chunk as an SSE notification
+        for (index, chunk) in chunks.iter().enumerate() {
+            let chunk_notification = serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": {
+                    "type": "streaming_chunk",
+                    "chunk": chunk.content,
+                    "chunk_type": chunk.chunk_type,
+                    "chunk_index": index + 1, // +1 because this is after the first chunk
+                    "progressToken": progress_token
+                }
+            });
+
+            // Send via SSE to all active streams
+            for session_id in server.session_manager.get_active_sessions().await {
+                let streams = server.stream_manager.get_session_streams(&session_id).await;
+                for stream_id in streams {
+                    if let Err(e) = server.stream_manager.send_event(&stream_id, &chunk_notification.to_string(), Some("notification")).await {
+                        warn!("Failed to send chunk notification: {}", e);
+                    }
+                }
+            }
+
+            // Small delay between chunks for smooth streaming
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        // Send completion notification
+        let completion_notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/message",
+            "params": {
+                "type": "streaming_complete",
+                "progressToken": progress_token
+            }
+        });
+
+        // Send completion via SSE to all active streams
+        for session_id in server.session_manager.get_active_sessions().await {
+            let streams = server.stream_manager.get_session_streams(&session_id).await;
+            for stream_id in streams {
+                if let Err(e) = server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
+                    warn!("Failed to send completion notification: {}", e);
+                }
+            }
+        }
+
+        info!("   ✅ All remaining chunks sent via SSE");
     }
 }
 

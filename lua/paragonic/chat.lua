@@ -963,91 +963,62 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 		on_chunk(result.chunk, result.chunk_index, result.total_chunks, chunk_type)
 	end
 
-	-- Process remaining chunks
-	local remaining_chunks = result.remaining_chunks or {}
-	local current_chunk_index = result.chunk_index or 0
+	-- Set up SSE notification handler for streaming chunks
+	local streaming_complete = false
 	local total_chunks = result.total_chunks or 1
+	local chunks_received = 1 -- We already have the first chunk
 
-	-- Function to process next chunk
-	local function process_next_chunk()
-		if #remaining_chunks == 0 then
-			-- All chunks processed, call completion
-			if on_complete then
-				on_complete()
-			end
-			return
-		end
-
-		-- Get next chunk
-		local next_response = rpc_client:get_next_chunk({
-			chunk_index = current_chunk_index,
-			remaining_chunks = remaining_chunks,
-			total_chunks = total_chunks,
-		})
-
-		if not next_response then
-			if on_complete then
-				on_complete()
-			end
-			return
-		end
-
-		-- Parse next chunk response
-		local next_parsed = utils.parse_json_response_enhanced(next_response)
-		if not next_parsed or not next_parsed.result then
-			if on_complete then
-				on_complete()
-			end
-			return
-		end
-
-		local next_result = next_parsed.result
-		if type(next_result) == "string" then
-			local success, parsed = pcall(vim.json.decode, next_result)
-			if success then
-				next_result = parsed
-			else
+	-- Create a notification handler for streaming chunks
+	local original_on_notification = mcp_http_transport.get_callbacks().on_notification
+	local streaming_handler = function(notification)
+		if notification.method == "notifications/message" and notification.params then
+			local params = notification.params
+			
+			if params.type == "streaming_chunk" then
+				chunks_received = chunks_received + 1
+				
+				-- Process the chunk
+				if on_chunk then
+					local chunk_type = params.chunk_type or "regular_content"
+					on_chunk(params.chunk, params.chunk_index, total_chunks, chunk_type)
+				end
+				
+			elseif params.type == "streaming_complete" then
+				streaming_complete = true
 				if on_complete then
 					on_complete()
 				end
-				return
+				
+				-- Restore original notification handler
+				mcp_http_transport.set_callbacks({
+					on_notification = original_on_notification
+				})
 			end
 		end
-
-		if next_result.type == "streaming_complete" then
-			-- Streaming finished
-			if on_complete then
-				on_complete()
-			end
-			return
-		elseif next_result.type == "streaming_chunk" then
-			-- Process this chunk
-			if on_chunk then
-				local chunk_type = next_result.chunk_type or "regular_content"
-				on_chunk(next_result.chunk, next_result.chunk_index, next_result.total_chunks, chunk_type)
-			end
-
-			-- Update for next iteration
-			remaining_chunks = next_result.remaining_chunks or {}
-			current_chunk_index = next_result.chunk_index or 0
-
-			-- Schedule next chunk with a small delay for smooth animation
-			vim.defer_fn(process_next_chunk, 50) -- 50ms delay between chunks
-		else
-			if on_complete then
-				on_complete()
-			end
+		
+		-- Call original handler for other notifications
+		if original_on_notification then
+			original_on_notification(notification)
 		end
 	end
 
-	-- Start processing remaining chunks
-	if #remaining_chunks > 0 then
-		vim.defer_fn(process_next_chunk, 100) -- Start after 100ms
-	else
-		if on_complete then
-			on_complete()
+	-- Set up streaming notification handler
+	mcp_http_transport.set_callbacks({
+		on_notification = streaming_handler
+	})
+
+	-- Set a timeout for streaming completion
+	vim.defer_fn(function()
+		if not streaming_complete then
+			-- Timeout reached, restore original handler and call completion
+			mcp_http_transport.set_callbacks({
+				on_notification = original_on_notification
+			})
+			if on_complete then
+				on_complete()
+			end
 		end
-	end
+	end, 30000) -- 30 second timeout
 
 	return true
 end
