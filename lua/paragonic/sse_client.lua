@@ -265,6 +265,7 @@ end
 function sse_client._setup_async_reading(client)
 	-- Store buffer in client state for persistence
 	client_state.read_buffer = ""
+	client_state.http_headers_received = false
 	
 	-- Set up read callback
 	client:read_start(function(err, data)
@@ -283,19 +284,75 @@ function sse_client._setup_async_reading(client)
 			return
 		end
 		
+		-- Debug: print received data
+		print("📥 SSE Received data: " .. #data .. " bytes")
+		if #data < 100 then
+			print("Data: " .. data:gsub("\r", "\\r"):gsub("\n", "\\n"))
+		end
+		
 		-- Add data to buffer
 		client_state.read_buffer = client_state.read_buffer .. data
 		
-		-- Process complete events
-		local events, remaining_buffer = sse_client._extract_events(client_state.read_buffer)
-		client_state.read_buffer = remaining_buffer
-		
-		for _, event_text in ipairs(events) do
-			local event, parse_err = sse_client.parse_event(event_text)
-			if event then
-				sse_client._handle_event(event)
-			elseif client_state.callbacks.on_parse_error then
-				client_state.callbacks.on_parse_error(parse_err, event_text)
+		-- Check if we've received HTTP headers yet
+		if not client_state.http_headers_received then
+			-- Look for end of HTTP headers (double CRLF)
+			local header_end = client_state.read_buffer:find("\r\n\r\n")
+			if header_end then
+				-- Extract and parse HTTP headers
+				local headers_text = client_state.read_buffer:sub(1, header_end - 1)
+				local status_line = headers_text:match("^([^\r\n]+)")
+				
+				if status_line then
+					local status_code = status_line:match("HTTP/[%d%.]+%s+(%d+)")
+					if status_code == "200" then
+						-- Headers received successfully, start processing SSE events
+						client_state.http_headers_received = true
+						-- Remove headers from buffer, keep only SSE data
+						client_state.read_buffer = client_state.read_buffer:sub(header_end + 4)
+						
+						-- Process any SSE events that came with the headers
+						if #client_state.read_buffer > 0 then
+							local events, remaining_buffer = sse_client._extract_events(client_state.read_buffer)
+							client_state.read_buffer = remaining_buffer
+							
+							for _, event_text in ipairs(events) do
+								local event, parse_err = sse_client.parse_event(event_text)
+								if event then
+									sse_client._handle_event(event)
+								elseif client_state.callbacks.on_parse_error then
+									client_state.callbacks.on_parse_error(parse_err, event_text)
+								end
+							end
+						end
+					else
+						-- HTTP error
+						if client_state.callbacks.on_error then
+							client_state.callbacks.on_error("HTTP error: " .. status_line, 0)
+						end
+						sse_client.disconnect()
+						return
+					end
+				else
+					-- Invalid HTTP response
+					if client_state.callbacks.on_error then
+						client_state.callbacks.on_error("Invalid HTTP response", 0)
+					end
+					sse_client.disconnect()
+					return
+				end
+			end
+		else
+			-- HTTP headers already received, process SSE events
+			local events, remaining_buffer = sse_client._extract_events(client_state.read_buffer)
+			client_state.read_buffer = remaining_buffer
+			
+			for _, event_text in ipairs(events) do
+				local event, parse_err = sse_client.parse_event(event_text)
+				if event then
+					sse_client._handle_event(event)
+				elseif client_state.callbacks.on_parse_error then
+					client_state.callbacks.on_parse_error(parse_err, event_text)
+				end
 			end
 		end
 	end)
@@ -426,6 +483,10 @@ function sse_client._establish_connection()
 		host,
 		table.concat(headers, "\r\n")
 	)
+
+	-- Debug: print the request
+	print("🔍 SSE Request:")
+	print(request)
 
 	-- Send request
 	client:write(request)

@@ -3688,7 +3688,7 @@ mod tests {
         // Test that the method can be called without errors
         // Note: This test doesn't actually send notifications since we don't have active sessions
         // but it verifies the notification format is correct
-        McpHttpServer::send_mcp_progress_notifications(&server, &chunks, progress_token).await;
+        McpHttpServer::send_mcp_progress_notifications(&server, &chunks, progress_token, "test-session").await;
 
         // Test progress token extraction from request params
         let request_params = serde_json::json!({
