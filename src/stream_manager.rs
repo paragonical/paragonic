@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, RwLock};
+use tokio_stream::Stream;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -133,6 +134,37 @@ impl StreamManager {
         Ok(stream_id)
     }
 
+    /// Create an Axum-compatible SSE stream for a session
+    pub async fn create_axum_sse_stream(&self, session_id: &str) -> Result<impl Stream<Item = Result<axum::response::sse::Event, axum::Error>>, StreamError> {
+        use axum::response::sse::Event;
+        use tokio_stream::wrappers::BroadcastStream;
+        use tokio_stream::StreamExt;
+
+        // Create the stream first
+        let stream_id = self.create_stream(session_id).await?;
+        
+        // Get the stream to access its sender
+        let stream = self.get_stream(&stream_id).await.ok_or(StreamError::StreamNotFound)?;
+        
+        // Create a receiver from the sender
+        let receiver = stream.sender.subscribe();
+        
+        // Create the Axum SSE stream
+        let sse_stream = BroadcastStream::new(receiver)
+            .map(|result| {
+                result
+                    .map(|event| {
+                        Event::default()
+                            .id(event.id)
+                            .event(event.event_type.unwrap_or_else(|| "message".to_string()))
+                            .data(event.data)
+                    })
+                    .map_err(|e| axum::Error::new(e))
+            });
+
+        Ok(sse_stream)
+    }
+
     /// Get stream by ID
     pub async fn get_stream(&self, stream_id: &str) -> Option<SseStream> {
         let streams = self.streams.read().await;
@@ -147,6 +179,12 @@ impl StreamManager {
             .filter(|stream| stream.session_id == session_id)
             .cloned()
             .collect()
+    }
+
+    /// Get stream status information
+    pub async fn get_stream_status(&self, stream_id: &str) -> Option<(StreamState, usize)> {
+        let streams = self.streams.read().await;
+        streams.get(stream_id).map(|stream| (stream.state, stream.sender.receiver_count()))
     }
 
     /// Send an event to a stream
@@ -178,7 +216,7 @@ impl StreamManager {
 
             // Send the event
             if let Err(e) = stream.sender.send(event) {
-                warn!("Failed to send event to stream {}: {}", stream_id, e);
+                warn!("Failed to send event to stream {}: {} (receiver count: {})", stream_id, e, stream.sender.receiver_count());
                 return Err(StreamError::SendFailed);
             }
 

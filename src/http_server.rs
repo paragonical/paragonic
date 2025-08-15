@@ -22,6 +22,7 @@ use crate::embeddings::create_embedding;
 use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
 use crate::ollama::{ChatMessage, OllamaClient, OllamaConfig};
 use crate::patterns::{PatternBootstrap, PatternRegistry};
+use crate::stream_manager::{StreamManager, StreamError};
 
 #[derive(Debug)]
 struct ThinkingChunk {
@@ -67,15 +68,7 @@ pub struct Session {
     pub client_info: Option<Value>,
 }
 
-/// Stream manager for SSE streams
-#[derive(Clone)]
-pub struct StreamManager {
-    streams: Arc<
-        tokio::sync::RwLock<
-            std::collections::HashMap<String, tokio::sync::broadcast::Sender<Value>>,
-        >,
-    >,
-}
+
 
 impl McpHttpServer {
     /// Create a new MCP HTTP server
@@ -106,7 +99,11 @@ impl McpHttpServer {
                 protocol_version: "2025-06-18".to_string(),
             },
             session_manager: Arc::new(SessionManager::new()),
-            stream_manager: Arc::new(StreamManager::new()),
+            stream_manager: Arc::new(StreamManager::new(
+                std::time::Duration::from_secs(300), // 5 minute timeout
+                5, // max streams per session
+                100, // max total streams
+            )),
             ollama_client: Arc::new(ollama_client),
             pattern_registry: Arc::new(tokio::sync::RwLock::new(pattern_registry)),
         }
@@ -190,7 +187,8 @@ impl McpHttpServer {
             .await;
 
         // Create SSE stream
-        let stream = server.stream_manager.create_stream(&session.id).await;
+        let stream = server.stream_manager.create_axum_sse_stream(&session.id).await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         Ok(Sse::new(stream))
     }
@@ -1217,10 +1215,12 @@ impl McpHttpServer {
                             serde_json::to_string_pretty(&response_json).unwrap()
                         );
 
-                        // Send remaining chunks via SSE notifications
-                        // Add a small delay to ensure client has established SSE connection
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                        Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token).await;
+                                        // Send remaining chunks via SSE notifications
+                // Add a delay to ensure client has established SSE connection
+                info!("   ⏳ Waiting for client SSE connection to establish...");
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                info!("   📤 Starting to send remaining chunks via SSE");
+                Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token).await;
 
                         Ok(response_json)
                     } else {
@@ -2656,7 +2656,8 @@ impl McpHttpServer {
         // Send via SSE to all active streams
         for session_id in server.session_manager.get_active_sessions().await {
             let streams = server.stream_manager.get_session_streams(&session_id).await;
-            for stream_id in streams {
+            for stream in streams {
+                let stream_id = stream.id;
                 if let Err(e) = server.stream_manager.send_event(&stream_id, &initial_progress.to_string(), Some("notification")).await {
                     warn!("Failed to send initial progress notification: {}", e);
                 }
@@ -2688,7 +2689,8 @@ impl McpHttpServer {
             // Send via SSE to all active streams
             for session_id in server.session_manager.get_active_sessions().await {
                 let streams = server.stream_manager.get_session_streams(&session_id).await;
-                for stream_id in streams {
+                for stream in streams {
+                    let stream_id = stream.id;
                     if let Err(e) = server.stream_manager.send_event(&stream_id, &progress_notification.to_string(), Some("notification")).await {
                         warn!("Failed to send progress notification: {}", e);
                     }
@@ -2714,7 +2716,8 @@ impl McpHttpServer {
         // Send via SSE to all active streams
         for session_id in server.session_manager.get_active_sessions().await {
             let streams = server.stream_manager.get_session_streams(&session_id).await;
-            for stream_id in streams {
+            for stream in streams {
+                let stream_id = stream.id;
                 if let Err(e) = server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
                     warn!("Failed to send completion notification: {}", e);
                 }
@@ -2769,7 +2772,17 @@ impl McpHttpServer {
                     continue;
                 }
 
-                for stream_id in streams {
+                for stream in streams {
+                    let stream_id = stream.id;
+                    // Check stream status before sending
+                    if let Some((state, receiver_count)) = server.stream_manager.get_stream_status(&stream_id).await {
+                        debug!("   📊 Stream {} status: {:?}, receivers: {}", stream_id, state, receiver_count);
+                        if receiver_count == 0 {
+                            warn!("   ⚠️  Stream {} has no active receivers", stream_id);
+                            continue;
+                        }
+                    }
+                    
                     match server.stream_manager.send_event(&stream_id, &chunk_notification.to_string(), Some("notification")).await {
                         Ok(_) => {
                             sent_successfully = true;
@@ -2805,7 +2818,8 @@ impl McpHttpServer {
         // Send completion via SSE to all active streams
         for session_id in &active_sessions {
             let streams = server.stream_manager.get_session_streams(session_id).await;
-            for stream_id in streams {
+            for stream in streams {
+                let stream_id = stream.id;
                 match server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
                     Ok(_) => {
                         completion_sent = true;
@@ -2888,81 +2902,7 @@ impl SessionManager {
     }
 }
 
-impl StreamManager {
-    /// Create a new stream manager
-    pub fn new() -> Self {
-        Self {
-            streams: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
-        }
-    }
 
-    /// Create a new SSE stream for a session
-    pub async fn create_stream(
-        &self,
-        session_id: &str,
-    ) -> impl Stream<Item = Result<Event, axum::Error>> {
-        let (tx, rx) = tokio::sync::broadcast::channel(100);
-
-        {
-            let mut streams = self.streams.write().await;
-            streams.insert(session_id.to_string(), tx);
-        }
-
-        let stream = BroadcastStream::new(rx);
-        stream.map(|result| {
-            result
-                .map(|value| {
-                    Event::default()
-                        .id(Uuid::new_v4().to_string())
-                        .data(serde_json::to_string(&value).unwrap())
-                })
-                .map_err(|e| axum::Error::new(e))
-        })
-    }
-
-    /// Send a message to a session's stream
-    pub async fn send_message(&self, session_id: &str, message: Value) -> bool {
-        let streams = self.streams.read().await;
-        if let Some(tx) = streams.get(session_id) {
-            tx.send(message).is_ok()
-        } else {
-            false
-        }
-    }
-
-    /// Get all streams for a session
-    pub async fn get_session_streams(&self, session_id: &str) -> Vec<String> {
-        let streams = self.streams.read().await;
-        if streams.contains_key(session_id) {
-            vec![session_id.to_string()]
-        } else {
-            vec![]
-        }
-    }
-
-    /// Send an event to a stream
-    pub async fn send_event(
-        &self,
-        stream_id: &str,
-        event_data: &str,
-        event_type: Option<&str>,
-    ) -> Result<(), String> {
-        let streams = self.streams.read().await;
-        if let Some(tx) = streams.get(stream_id) {
-            let message = serde_json::json!({
-                "data": event_data,
-                "event_type": event_type
-            });
-            if tx.send(message).is_ok() {
-                Ok(())
-            } else {
-                Err("Failed to send event".to_string())
-            }
-        } else {
-            Err("Stream not found".to_string())
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -3103,15 +3043,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_manager() {
-        let manager = StreamManager::new();
+        let manager = StreamManager::new(
+            std::time::Duration::from_secs(300), // 5 minute timeout
+            5, // max streams per session
+            100, // max total streams
+        );
         let session_id = "test-session";
 
         // Test stream creation
-        let _stream = manager.create_stream(session_id).await;
+        let stream_result = manager.create_stream(session_id).await;
+        assert!(stream_result.is_ok());
 
-        // Test message sending
-        let message = serde_json::json!({"test": "message"});
-        assert!(manager.send_message(session_id, message).await);
+        // Test event sending
+        let stream_id = stream_result.unwrap();
+        let result = manager.send_event(&stream_id, "test message", None).await;
+        assert!(result.is_ok());
     }
 
     #[test]
