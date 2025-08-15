@@ -139,6 +139,13 @@ impl McpHttpServer {
             return Err(StatusCode::BAD_REQUEST);
         }
 
+        // Get or create session (same as SSE connection)
+        let session_id = Self::get_session_id(&headers);
+        let session = server
+            .session_manager
+            .get_or_create_session(session_id)
+            .await;
+
         // Parse and validate JSON-RPC message
         let jsonrpc_message = match Self::parse_jsonrpc_message(&body) {
             Ok(msg) => msg,
@@ -150,7 +157,7 @@ impl McpHttpServer {
 
         // Handle the message based on type
         match jsonrpc_message {
-            JsonRpcMessage::Request(request) => Self::handle_jsonrpc_request(server, request).await,
+            JsonRpcMessage::Request(request) => Self::handle_jsonrpc_request_with_session(server, request, session).await,
             JsonRpcMessage::Notification(notification) => {
                 Self::handle_jsonrpc_notification(server, notification).await
             }
@@ -484,6 +491,195 @@ impl McpHttpServer {
         }
     }
 
+    /// Handle JSON-RPC request with session
+    async fn handle_jsonrpc_request_with_session(
+        server: Self,
+        request: Value,
+        session: Session,
+    ) -> Result<axum::response::Response, StatusCode> {
+        let method = request
+            .get("method")
+            .and_then(|m| m.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+
+        let params = request.get("params");
+        let id = request.get("id").unwrap_or(&Value::Null);
+
+        // Handle different MCP methods
+        let result = match method {
+            // MCP Protocol Methods
+            "initialize" => Self::handle_initialize(&server, params).await,
+            "tools/list" => Self::handle_tools_list(&server, params).await,
+            "tools/call" => Self::handle_tools_call_with_session(&server, params, session).await,
+            "resources/list" => Self::handle_resources_list(&server, params).await,
+            "resources/read" => Self::handle_resources_read(&server, params).await,
+            "resources/subscribe" => Self::handle_resources_subscribe(&server, params).await,
+            "resources/unsubscribe" => Self::handle_resources_unsubscribe(&server, params).await,
+            "resources/templates/list" => {
+                Self::handle_resources_templates_list(&server, params).await
+            }
+
+            // Prompts
+            "prompts/list" => Self::handle_prompts_list(&server, params).await,
+            "prompts/get" => Self::handle_prompts_get(&server, params).await,
+
+            // Roots
+            "roots/list" => Self::handle_roots_list(&server, params).await,
+
+            // Logging
+            "logging/setLevel" => Self::handle_logging_set_level(&server, params).await,
+
+            // Notifications (handled as requests for now)
+            "notifications/cancelled" => {
+                Self::handle_notifications_cancelled(&server, params).await
+            }
+            "notifications/initialized" => {
+                Self::handle_notifications_initialized(&server, params).await
+            }
+            "notifications/message" => Self::handle_notifications_message(&server, params).await,
+            "notifications/progress" => Self::handle_notifications_progress(&server, params).await,
+            "notifications/prompts/list_changed" => {
+                Self::handle_notifications_prompts_list_changed(&server, params).await
+            }
+            "notifications/resources/list_changed" => {
+                Self::handle_notifications_resources_list_changed(&server, params).await
+            }
+            "notifications/resources/updated" => {
+                Self::handle_notifications_resources_updated(&server, params).await
+            }
+            "notifications/roots/list_changed" => {
+                Self::handle_notifications_roots_list_changed(&server, params).await
+            }
+            "notifications/tools/list_changed" => {
+                Self::handle_notifications_tools_list_changed(&server, params).await
+            }
+
+            // AI and Thinking Model Support (Critical)
+            "completion/complete" => Self::handle_completion_complete(&server, params).await,
+            "elicitation/create" => Self::handle_elicitation_create(&server, params).await,
+            "sampling/createMessage" => Self::handle_sampling_create_message(&server, params).await,
+
+            // Ping
+            "ping" => Self::handle_ping(&server, params).await,
+
+            // Legacy support for direct tool calls (for backward compatibility)
+            "chat_completion" => Self::handle_chat_completion(&server, params).await,
+            "formatted_chat_completion" => {
+                Self::handle_formatted_chat_completion(&server, params).await
+            }
+            "agent_chat_completion" => Self::handle_agent_chat_completion(&server, params).await,
+            "streaming_chat_completion" => {
+                Self::handle_streaming_chat_completion_with_session(&server, params, session).await
+            }
+
+            // File Operations
+            "read_file" => Self::handle_read_file(&server, params).await,
+            "write_file" => Self::handle_write_file(&server, params).await,
+            "list_files" => Self::handle_list_files(&server, params).await,
+
+            // Model Management
+            "list_models" => Self::handle_list_models(&server, params).await,
+            "model_info" => Self::handle_model_info(&server, params).await,
+            "generate_embedding" => Self::handle_generate_embedding(&server, params).await,
+
+            // Project Management
+            "create_project" => Self::handle_create_project(&server, params).await,
+            "get_project" => Self::handle_get_project(&server, params).await,
+            "list_projects" => Self::handle_list_projects(&server, params).await,
+            "update_project" => Self::handle_update_project(&server, params).await,
+            "delete_project" => Self::handle_delete_project(&server, params).await,
+
+            // Goal Management
+            "create_goal" => Self::handle_create_goal(&server, params).await,
+            "get_goal" => Self::handle_get_goal(&server, params).await,
+            "list_goals" => Self::handle_list_goals(&server, params).await,
+            "update_goal" => Self::handle_update_goal(&server, params).await,
+            "delete_goal" => Self::handle_delete_goal(&server, params).await,
+
+            // Task Management
+            "create_task" => Self::handle_create_task(&server, params).await,
+            "get_task" => Self::handle_get_task(&server, params).await,
+            "list_tasks" => Self::handle_list_tasks(&server, params).await,
+            "update_task" => Self::handle_update_task(&server, params).await,
+            "delete_task" => Self::handle_delete_task(&server, params).await,
+
+            // Search & Knowledge Management
+            "search_embeddings" => Self::handle_search_embeddings(&server, params).await,
+            "find_similar_content" => Self::handle_find_similar_content(&server, params).await,
+            "iragl_search" => Self::handle_iragl_search(&server, params).await,
+            "hybrid_search" => Self::handle_hybrid_search(&server, params).await,
+            "ingest_knowledge_stream" => {
+                Self::handle_ingest_knowledge_stream(&server, params).await
+            }
+
+            // Agent Management
+            "create_agent" => Self::handle_create_agent(&server, params).await,
+            "delete_agent" => Self::handle_delete_agent(&server, params).await,
+            "create_conversation" => Self::handle_create_conversation(&server, params).await,
+            "get_conversation" => Self::handle_get_conversation(&server, params).await,
+
+            // Pattern Management
+            "list_patterns" => Self::handle_list_patterns(&server, params).await,
+            "get_pattern" => Self::handle_get_pattern(&server, params).await,
+            "execute_pattern" => Self::handle_execute_pattern(&server, params).await,
+            "get_pattern_executions" => Self::handle_get_pattern_executions(&server, params).await,
+            "get_pattern_metrics" => Self::handle_get_pattern_metrics(&server, params).await,
+            "get_tool_patterns" => Self::handle_get_tool_patterns(&server, params).await,
+            "trigger_session_patterns" => Self::handle_trigger_session_patterns(&server, params).await,
+
+            // Optimization & Debug
+            "optimize_knowledge_base" => Self::handle_optimize_knowledge_base(&server, params).await,
+            "optimization_status" => Self::handle_optimization_status(&server, params).await,
+            "optimization_history" => Self::handle_optimization_history(&server, params).await,
+            "debug_markdown_test" => Self::handle_debug_markdown_test(&server, params).await,
+            "test_streaming_format" => Self::handle_test_streaming_format(&server, params).await,
+            "get_next_chunk" => Self::handle_get_next_chunk(&server, params).await,
+
+            // Tool Execution
+            "execute_tool_call" => Self::handle_execute_tool_call(&server, params).await,
+            "parse_tool_calls" => Self::handle_parse_tool_calls(&server, params).await,
+
+            // Unknown method
+            _ => {
+                error!("Unknown MCP method: {}", method);
+                Err(StatusCode::METHOD_NOT_ALLOWED)
+            }
+        };
+
+        // Create JSON-RPC response
+        match result {
+            Ok(result_data) => {
+                let response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result_data
+                });
+
+                Ok(axum::response::Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&response).unwrap()))
+                    .unwrap())
+            }
+            Err(status_code) => {
+                let error_response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": status_code.as_u16(),
+                        "message": status_code.canonical_reason().unwrap_or("Unknown error")
+                    }
+                });
+
+                Ok(axum::response::Response::builder()
+                    .status(status_code)
+                    .header("Content-Type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&error_response).unwrap()))
+                    .unwrap())
+            }
+        }
+    }
+
     /// Handle JSON-RPC notification
     async fn handle_jsonrpc_notification(
         _server: Self,
@@ -759,6 +955,16 @@ impl McpHttpServer {
     }
 
     async fn handle_tools_call(server: &Self, params: Option<&Value>) -> Result<Value, StatusCode> {
+        // Create a default session for backward compatibility
+        let session = server
+            .session_manager
+            .get_or_create_session(None)
+            .await;
+        
+        Self::handle_tools_call_with_session(server, params, session).await
+    }
+
+    async fn handle_tools_call_with_session(server: &Self, params: Option<&Value>, session: Session) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
         let name = params
             .get("name")
@@ -829,14 +1035,15 @@ impl McpHttpServer {
                     .and_then(|c| c.as_u64())
                     .unwrap_or(30);
 
-                // Use the existing streaming chat completion handler
-                Self::handle_streaming_chat_completion(
+                // Use the session-aware streaming chat completion handler
+                Self::handle_streaming_chat_completion_with_session(
                     server,
                     Some(&serde_json::json!({
                         "model": model,
                         "message": message,
                         "chunk_size": chunk_size
                     })),
+                    session,
                 )
                 .await
             }
@@ -1128,6 +1335,20 @@ impl McpHttpServer {
         server: &Self,
         params: Option<&Value>,
     ) -> Result<Value, StatusCode> {
+        // Create a default session for backward compatibility
+        let session = server
+            .session_manager
+            .get_or_create_session(None)
+            .await;
+        
+        Self::handle_streaming_chat_completion_with_session(server, params, session).await
+    }
+
+    async fn handle_streaming_chat_completion_with_session(
+        server: &Self,
+        params: Option<&Value>,
+        session: Session,
+    ) -> Result<Value, StatusCode> {
         let params = params.ok_or(StatusCode::BAD_REQUEST)?;
         let model = params
             .get("model")
@@ -1197,7 +1418,7 @@ impl McpHttpServer {
                     info!("   📤 Sending {} thinking chunks to client", chunks.len());
 
                     // Send MCP progress notifications for thinking chunks
-                    Self::send_mcp_progress_notifications(server, &chunks, &progress_token).await;
+                    Self::send_mcp_progress_notifications(server, &chunks, &progress_token, &session.id).await;
 
                     // Send first chunk immediately
                     if let Some(first_chunk) = chunks.first() {
@@ -1220,7 +1441,7 @@ impl McpHttpServer {
                 info!("   ⏳ Waiting for client SSE connection to establish...");
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 info!("   📤 Starting to send remaining chunks via SSE");
-                Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token).await;
+                Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token, &session.id).await;
 
                         Ok(response_json)
                     } else {
@@ -2636,6 +2857,7 @@ impl McpHttpServer {
         server: &Self,
         chunks: &[ThinkingChunk],
         progress_token: &str,
+        session_id: &str,
     ) {
         let total_chunks = chunks.len();
 
@@ -2653,14 +2875,12 @@ impl McpHttpServer {
             }
         });
 
-        // Send via SSE to all active streams
-        for session_id in server.session_manager.get_active_sessions().await {
-            let streams = server.stream_manager.get_session_streams(&session_id).await;
-            for stream in streams {
-                let stream_id = stream.id;
-                if let Err(e) = server.stream_manager.send_event(&stream_id, &initial_progress.to_string(), Some("notification")).await {
-                    warn!("Failed to send initial progress notification: {}", e);
-                }
+        // Send via SSE to the specific session
+        let streams = server.stream_manager.get_session_streams(session_id).await;
+        for stream in streams {
+            let stream_id = stream.id;
+            if let Err(e) = server.stream_manager.send_event(&stream_id, &initial_progress.to_string(), Some("notification")).await {
+                warn!("Failed to send initial progress notification: {}", e);
             }
         }
 
@@ -2686,14 +2906,12 @@ impl McpHttpServer {
                 }
             });
 
-            // Send via SSE to all active streams
-            for session_id in server.session_manager.get_active_sessions().await {
-                let streams = server.stream_manager.get_session_streams(&session_id).await;
-                for stream in streams {
-                    let stream_id = stream.id;
-                    if let Err(e) = server.stream_manager.send_event(&stream_id, &progress_notification.to_string(), Some("notification")).await {
-                        warn!("Failed to send progress notification: {}", e);
-                    }
+            // Send via SSE to the specific session
+            let streams = server.stream_manager.get_session_streams(session_id).await;
+            for stream in streams {
+                let stream_id = stream.id;
+                if let Err(e) = server.stream_manager.send_event(&stream_id, &progress_notification.to_string(), Some("notification")).await {
+                    warn!("Failed to send progress notification: {}", e);
                 }
             }
 
@@ -2713,14 +2931,12 @@ impl McpHttpServer {
             }
         });
 
-        // Send via SSE to all active streams
-        for session_id in server.session_manager.get_active_sessions().await {
-            let streams = server.stream_manager.get_session_streams(&session_id).await;
-            for stream in streams {
-                let stream_id = stream.id;
-                if let Err(e) = server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
-                    warn!("Failed to send completion notification: {}", e);
-                }
+        // Send via SSE to the specific session
+        let streams = server.stream_manager.get_session_streams(session_id).await;
+        for stream in streams {
+            let stream_id = stream.id;
+            if let Err(e) = server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
+                warn!("Failed to send completion notification: {}", e);
             }
         }
 
@@ -2732,6 +2948,7 @@ impl McpHttpServer {
         server: &Self,
         chunks: &[ThinkingChunk],
         progress_token: &str,
+        session_id: &str,
     ) {
         if chunks.is_empty() {
             return;
@@ -2739,14 +2956,14 @@ impl McpHttpServer {
 
         info!("   📤 Sending {} remaining chunks via SSE", chunks.len());
 
-        // Check if there are any active sessions first
-        let active_sessions = server.session_manager.get_active_sessions().await;
-        if active_sessions.is_empty() {
-            warn!("   ⚠️  No active sessions found for SSE notifications");
+        // Get streams for the specific session
+        let streams = server.stream_manager.get_session_streams(session_id).await;
+        if streams.is_empty() {
+            warn!("   ⚠️  No streams found for session {}", session_id);
             return;
         }
 
-        info!("   📡 Found {} active sessions for SSE", active_sessions.len());
+        info!("   📡 Found {} streams for session {}", streams.len(), session_id);
 
         // Send each chunk as an SSE notification
         for (index, chunk) in chunks.iter().enumerate() {
@@ -2764,33 +2981,25 @@ impl McpHttpServer {
 
             let mut sent_successfully = false;
 
-            // Send via SSE to all active streams
-            for session_id in &active_sessions {
-                let streams = server.stream_manager.get_session_streams(session_id).await;
-                if streams.is_empty() {
-                    warn!("   ⚠️  No streams found for session {}", session_id);
-                    continue;
-                }
-
-                for stream in streams {
-                    let stream_id = stream.id;
-                    // Check stream status before sending
-                    if let Some((state, receiver_count)) = server.stream_manager.get_stream_status(&stream_id).await {
-                        debug!("   📊 Stream {} status: {:?}, receivers: {}", stream_id, state, receiver_count);
-                        if receiver_count == 0 {
-                            warn!("   ⚠️  Stream {} has no active receivers", stream_id);
-                            continue;
-                        }
+            // Send via SSE to the specific session streams
+            for stream in &streams {
+                let stream_id = stream.id.clone();
+                // Check stream status before sending
+                if let Some((state, receiver_count)) = server.stream_manager.get_stream_status(&stream_id).await {
+                    debug!("   📊 Stream {} status: {:?}, receivers: {}", stream_id, state, receiver_count);
+                    if receiver_count == 0 {
+                        warn!("   ⚠️  Stream {} has no active receivers", stream_id);
+                        continue;
                     }
-                    
-                    match server.stream_manager.send_event(&stream_id, &chunk_notification.to_string(), Some("notification")).await {
-                        Ok(_) => {
-                            sent_successfully = true;
-                            debug!("   ✅ Sent chunk {} to stream {}", index + 1, stream_id);
-                        }
-                        Err(e) => {
-                            warn!("   ❌ Failed to send chunk {} to stream {}: {}", index + 1, stream_id, e);
-                        }
+                }
+                
+                match server.stream_manager.send_event(&stream_id, &chunk_notification.to_string(), Some("notification")).await {
+                    Ok(_) => {
+                        sent_successfully = true;
+                        debug!("   ✅ Sent chunk {} to stream {}", index + 1, stream_id);
+                    }
+                    Err(e) => {
+                        warn!("   ❌ Failed to send chunk {} to stream {}: {}", index + 1, stream_id, e);
                     }
                 }
             }
@@ -2815,19 +3024,16 @@ impl McpHttpServer {
 
         let mut completion_sent = false;
 
-        // Send completion via SSE to all active streams
-        for session_id in &active_sessions {
-            let streams = server.stream_manager.get_session_streams(session_id).await;
-            for stream in streams {
-                let stream_id = stream.id;
-                match server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
-                    Ok(_) => {
-                        completion_sent = true;
-                        debug!("   ✅ Sent completion to stream {}", stream_id);
-                    }
-                    Err(e) => {
-                        warn!("   ❌ Failed to send completion to stream {}: {}", stream_id, e);
-                    }
+        // Send completion via SSE to the specific session streams
+        for stream in &streams {
+            let stream_id = stream.id.clone();
+            match server.stream_manager.send_event(&stream_id, &completion_notification.to_string(), Some("notification")).await {
+                Ok(_) => {
+                    completion_sent = true;
+                    debug!("   ✅ Sent completion to stream {}", stream_id);
+                }
+                Err(e) => {
+                    warn!("   ❌ Failed to send completion to stream {}: {}", stream_id, e);
                 }
             }
         }
