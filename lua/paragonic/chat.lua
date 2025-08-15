@@ -778,6 +778,13 @@ function M.send_message_command_debug()
 	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
 	local response, err = M.send_message_enhanced(message, default_model)
 
+	-- Debug: Log response structure
+	debug.append_debug_message(current_buf, "Response type: " .. type(response), "debug")
+	if response then
+		debug.append_debug_message(current_buf, "Response keys: " .. (type(response) == "table" and table.concat(vim.tbl_keys(response), ", ") or "not a table"), "debug")
+		debug.append_debug_message(current_buf, "Response preview: " .. tostring(response):sub(1, 100), "debug")
+	end
+
 	-- Stop progress updates
 	if progress_timer then
 		progress_timer:stop()
@@ -809,15 +816,33 @@ function M.send_message_command_debug()
 	-- Add the response to the buffer
 	-- Split response into lines to handle multi-line responses
 	local response_content_lines = {}
-	for line in response:gmatch("[^\r\n]+") do
-		if line:match("%S") then -- Only add non-empty lines
-			table.insert(response_content_lines, line)
+	
+	-- Handle different response types
+	if type(response) == "string" then
+		for line in response:gmatch("[^\r\n]+") do
+			if line:match("%S") then -- Only add non-empty lines
+				table.insert(response_content_lines, line)
+			end
 		end
+	elseif type(response) == "table" then
+		-- Handle table response - extract content from common fields
+		local content = response.content or response.message or response.result or tostring(response)
+		if type(content) == "string" then
+			for line in content:gmatch("[^\r\n]+") do
+				if line:match("%S") then -- Only add non-empty lines
+					table.insert(response_content_lines, line)
+				end
+			end
+		else
+			table.insert(response_content_lines, tostring(response))
+		end
+	else
+		table.insert(response_content_lines, tostring(response))
 	end
 
 	-- If no lines were extracted, add the original response as a single line
 	if #response_content_lines == 0 then
-		table.insert(response_content_lines, response)
+		table.insert(response_content_lines, tostring(response))
 	end
 
 	local response_lines = {}
