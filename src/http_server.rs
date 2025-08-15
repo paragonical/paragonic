@@ -1441,25 +1441,21 @@ impl McpHttpServer {
                     // Send MCP progress notifications for thinking chunks
                     Self::send_mcp_progress_notifications(server, &chunks, &progress_token, &session.id).await;
 
-                    // Send first chunk immediately as MCP response
+                    // Send first chunk immediately
                     if let Some(first_chunk) = chunks.first() {
-                        let response_json = serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": request_id,
-                            "result": {
-                                "type": "streaming_chunk",
-                                "chunk": first_chunk.content,
-                                "chunk_type": first_chunk.chunk_type,
-                                "chunk_index": 0,
-                                "total_chunks": chunks.len(),
-                                "progressToken": progress_token
-                            }
+                        let chunk_data = serde_json::json!({
+                            "type": "streaming_chunk",
+                            "chunk": first_chunk.content,
+                            "chunk_type": first_chunk.chunk_type,
+                            "chunk_index": 0,
+                            "total_chunks": chunks.len(),
+                            "progressToken": progress_token
                         });
 
-                        info!("   📤 Sending first chunk to client (MCP format):");
+                        info!("   📤 Sending first chunk to client:");
                         info!(
-                            "   Response JSON: {}",
-                            serde_json::to_string_pretty(&response_json).unwrap()
+                            "   Chunk data: {}",
+                            serde_json::to_string_pretty(&chunk_data).unwrap()
                         );
 
                         // Send remaining chunks via SSE notifications
@@ -1469,7 +1465,7 @@ impl McpHttpServer {
                         info!("   📤 Starting to send remaining chunks via SSE");
                         Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token, &session.id).await;
 
-                        Ok(response_json)
+                        Ok(chunk_data)
                     } else {
                         // Fallback to regular content if no thinking chunks found
                         let response_json = serde_json::json!({
