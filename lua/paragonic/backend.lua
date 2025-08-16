@@ -37,7 +37,12 @@ local function create_mcp_client()
 		mcp.set_callbacks({
 			on_stream_expired = function(expiration_data)
 				debug.debug_print("⚠️ Stream expired: " .. (expiration_data.message or "Unknown"), "warning")
-				-- Auto-request new stream
+				-- Don't auto-renew during initialization or active streaming
+				if client.is_streaming then
+					debug.debug_print("⚠️ Stream expired during active streaming, not auto-renewing", "warning")
+					return
+				end
+				-- Auto-request new stream only when not streaming
 				local success, err = mcp.request_new_stream()
 				if success then
 					debug.debug_print("✅ Successfully requested new stream", "success")
