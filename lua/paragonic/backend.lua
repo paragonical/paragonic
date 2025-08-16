@@ -176,6 +176,14 @@ local function create_mcp_client()
 		return chunks
 	end
 
+	function client:add_streaming_chunk(chunk)
+		if not client.streaming_chunks then
+			client.streaming_chunks = {}
+		end
+		table.insert(client.streaming_chunks, chunk)
+		debug.debug_print("📥 Added chunk to streaming buffer: " .. (chunk.chunk_type or "unknown"), "debug")
+	end
+
 	function client:clear_streaming_chunks()
 		client.streaming_chunks = {}
 	end
