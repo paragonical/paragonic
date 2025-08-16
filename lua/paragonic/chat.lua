@@ -158,6 +158,7 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 	local utils = require("paragonic.utils")
 	local thinking_content_started = false
 	local thinking_end_line = nil -- Track where thinking content ends
+	local has_thinking_content = false -- Track if any thinking content was processed
 
 	return function(chunk_content, chunk_index, total_chunks, chunk_type)
 		if not buffer or not vim.api.nvim_buf_is_valid(buffer) then
@@ -190,6 +191,8 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			if enable_debug then
 				debug.debug_print("🧠 Raw thinking content: " .. chunk_content, "debug")
 			end
+
+			has_thinking_content = true -- Mark that we have thinking content
 
 			if not thinking_content_started then
 				-- First thinking content - add brain icon and wrap to buffer width
@@ -293,7 +296,7 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 
 			-- Auto-fold thinking content if it exists
-			if thinking_content_started then
+			if has_thinking_content then
 				M.fold_thinking_content(buffer, start_line)
 			end
 
@@ -848,17 +851,21 @@ function M.fold_thinking_content(current_buf, start_line_num)
 			vim.api.nvim_buf_set_lines(current_buf, fold_end, fold_end + 1, false, { end_line_content .. " }}}" })
 		end
 
-		-- Close the fold using a safer approach
+		-- Close the fold using a more reliable approach
 		vim.defer_fn(function()
 			-- Check if the buffer and lines still exist
 			if vim.api.nvim_buf_is_valid(current_buf) and fold_start < vim.api.nvim_buf_line_count(current_buf) then
 				-- Use a more reliable way to close the fold
 				vim.api.nvim_buf_call(current_buf, function()
+					-- Move to the fold start line
 					vim.cmd("normal! " .. (fold_start + 1) .. "G")
+					-- Close the fold
 					vim.cmd("foldclose")
+					-- Force redraw to show the fold
+					vim.cmd("redraw!")
 				end)
 			end
-		end, 100) -- Small delay to ensure buffer is ready
+		end, 200) -- Increased delay to ensure buffer is ready
 
 		-- Move cursor back to the end
 		vim.defer_fn(function()
@@ -866,9 +873,11 @@ function M.fold_thinking_content(current_buf, start_line_num)
 				local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
 				vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
 			end
-		end, 150)
+		end, 250)
 
 		debug.debug_print("🧠 Created fold from line " .. fold_start .. " to " .. fold_end, "debug")
+	else
+		debug.debug_print("🧠 No thinking section found to fold", "debug")
 	end
 end
 
