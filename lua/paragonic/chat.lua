@@ -266,6 +266,13 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			local normalized_chunk = chunk_content:gsub("%s+", " "):lower():match("^%s*(.-)%s*$")
 			local normalized_message = original_message:gsub("%s+", " "):lower():match("^%s*(.-)%s*$")
 
+			if enable_debug then
+				debug.debug_print(
+					"🔍 Comparing: '" .. normalized_chunk .. "' vs '" .. normalized_message .. "'",
+					"debug"
+				)
+			end
+
 			if
 				chunk_content
 				and original_message
@@ -276,6 +283,10 @@ normalized_chunk == normalized_message
 					or normalized_chunk:find(normalized_message, 1, true)
 					-- Or the chunk is very similar to the original message (word-based comparison)
 					or (#normalized_chunk == #normalized_message and normalized_chunk == normalized_message)
+					-- More aggressive: check if chunk is just the original message with quotes or formatting
+					or normalized_chunk:match(
+						"^%s*[\"']?" .. normalized_message:gsub("[%-%.%+%*%?%[%]%^%$%(%)%%]", "%%%1") .. "[\"']?%s*$"
+					)
 				)
 			then
 				if enable_debug then
