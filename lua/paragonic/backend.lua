@@ -426,29 +426,11 @@ function M._initialize_backend()
 		end
 	end
 
-	-- Test connection with hello call
-	debug.debug_print("🔧 Step 4: About to test connection with hello call (MCP)...", "debug")
-	local hello_start = vim.loop.hrtime() / 1000000
-	local response = M._rpc_client:hello()
-	local hello_end = vim.loop.hrtime() / 1000000
-	local hello_duration = hello_end - hello_start
-
-	if not response then
-		if hello_duration > connection_timeout then
-			debug.debug_print(
-				"❌ Hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms",
-				"error"
-			)
-		else
-			debug.debug_print("❌ Hello call failed - no response", "error")
-		end
-		M._rpc_client:disconnect()
-		M._rpc_client = nil
-		return false
-	end
-
+	-- Skip hello call to preserve SSE connection for streaming
+	debug.debug_print("🔧 Step 4: Skipping hello call to preserve SSE connection for streaming", "debug")
+	
 	debug.debug_print(
-		"✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms",
+		"✅ Backend initialization completed successfully",
 		"success"
 	)
 	return true

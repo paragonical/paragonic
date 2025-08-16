@@ -1215,6 +1215,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		debug.debug_print("✅ SSE connection is active before streaming", "debug")
 	else
 		debug.debug_print("❌ SSE connection is not active before streaming", "debug")
+		-- Try to ensure SSE connection is active for streaming
+		debug.debug_print("🔄 Attempting to ensure SSE connection for streaming", "debug")
 	end
 	
 	-- Add first chunk to streaming buffer for consistent processing
