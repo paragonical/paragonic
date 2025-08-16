@@ -90,6 +90,13 @@ function M.setup(opts)
 			end,
 			opts = {},
 		},
+		{
+			name = "ParagonicTestInline",
+			func = function()
+				vim.cmd("source test_thinking_callback_inline.lua")
+			end,
+			opts = {},
+		},
 
 		-- Project and config commands
 		{ name = "ParagonicCreateProject", func = M.ui.create_project_command, opts = {} },
