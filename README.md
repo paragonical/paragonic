@@ -1,6 +1,6 @@
 # _Paragonic_: Agency-Alliance for Neovim with Ollama
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://github.com/paragonic/paragonic/releases/tag/v0.7.0)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://github.com/paragonic/paragonic/releases/tag/v0.8.0)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -52,7 +52,7 @@ different activities and perspectives.
 _Paragonic_ is a unified MCP host, client and server that together helps the user 
 to manage agents and humans in a way that is both efficient and effective.
 
-> **⚠️ Version 0.7.0 Notice**: This release introduces a major architectural change from TCP-based JSON-RPC to HTTP-based Model Context Protocol (MCP). This is a breaking change that may affect existing functionality. See [RELEASE_NOTES_0.7.0.md](RELEASE_NOTES_0.7.0.md) for details.
+> **🎉 Version 0.8.0**: This release completes the MCP single protocol reform with 100% MCP compliance, automated integration testing, and a clean, maintainable architecture. See [RELEASE_NOTES_0.8.0.md](RELEASE_NOTES_0.8.0.md) for details.
 
 For expertise we have a balanced system: Machines trade breadth for adapation,
 while humans trade speed for breadth. Machine models are trained on vast
