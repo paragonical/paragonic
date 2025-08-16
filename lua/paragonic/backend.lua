@@ -151,6 +151,17 @@ local function create_mcp_client()
 	end
 
 	function client:streaming_chat_completion(params)
+		-- Check connection first
+		if not self:is_connected() then
+			debug.debug_print("⚠️ Connection lost, attempting to reconnect...", "warn")
+			local reconnect_success, reconnect_err = self:reconnect()
+			if not reconnect_success then
+				debug.debug_print("❌ Reconnection failed: " .. tostring(reconnect_err), "error")
+				return nil, "connection_failed: " .. tostring(reconnect_err)
+			end
+			debug.debug_print("✅ Reconnected successfully", "info")
+		end
+		
 		-- Clear any previous streaming chunks
 		client.streaming_chunks = {}
 		client.streaming_error = nil
@@ -171,6 +182,7 @@ local function create_mcp_client()
 		
 		if not resp then
 			client.is_streaming = false
+			debug.debug_print("❌ Streaming request failed: " .. tostring(err), "error")
 			return resp, err
 		end
 		
