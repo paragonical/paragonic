@@ -5,6 +5,22 @@ Handles chat interface and message sending functionality
 
 local M = {}
 
+-- Disable debug notifications by default to reduce noise
+local debug = require("paragonic.debug")
+debug.disable_notifications()
+
+-- Command to toggle debug notifications
+function M.toggle_debug_notifications()
+	local config = debug.get_debug_config()
+	if config.show_notifications then
+		debug.disable_notifications()
+		vim.notify("Debug notifications disabled", vim.log.levels.INFO)
+	else
+		debug.enable_notifications()
+		vim.notify("Debug notifications enabled", vim.log.levels.INFO)
+	end
+end
+
 -- Helper function to extract text backward from cursor to previous tombstone
 -- This enables multi-line input by capturing all lines from the cursor
 -- position back to the previous ∎ tombstone marker
@@ -13,7 +29,6 @@ local function extract_backward_to_tombstone(current_buf)
 	local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
 
 	-- Debug: Print cursor position
-	local debug = require("paragonic.debug")
 	debug.debug_print("🔍 extract_backward_to_tombstone: cursor_line = " .. cursor_line, "debug")
 
 	-- Get all lines from start of buffer to cursor line
