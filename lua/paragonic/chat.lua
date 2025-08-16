@@ -1304,6 +1304,121 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 				local total_chunks = response.result.total_chunks or 1
 				on_chunk(response.result.chunk, chunk_index, total_chunks, chunk_type)
 			end
+			
+			-- Check if this is the first chunk of a multi-chunk response
+			local chunk_index = response.result.chunk_index or 0
+			local total_chunks = response.result.total_chunks or 1
+			
+			if chunk_index == 0 and total_chunks > 1 then
+				debug.debug_print("📝 First chunk received, expecting " .. total_chunks .. " total chunks via SSE", "debug")
+				
+				-- Set up non-blocking streaming with timers to receive remaining chunks
+				local max_wait_time = 30 -- seconds
+				local check_interval = 100 -- milliseconds
+				local total_wait_time = 0
+				local chunks_received = 1 -- We already have the first chunk
+				local completion_detected = false
+				
+				-- Create a timer for non-blocking chunk checking
+				local check_timer = vim.loop.new_timer()
+				
+				local function check_for_remaining_chunks()
+					-- Check if streaming is complete
+					if rpc_client:is_streaming_complete() then
+						debug.debug_print("🔄 Streaming complete detected", "debug")
+						completion_detected = true
+						check_timer:stop()
+						check_timer:close()
+						
+						-- Mark streaming as inactive
+						rpc_client:set_streaming_active(false)
+						if on_complete then
+							on_complete()
+						end
+						return
+					end
+					
+					local chunks = rpc_client:get_streaming_chunks()
+					debug.debug_print("Checking for remaining chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
+					
+					if chunks and #chunks > 0 then
+						debug.debug_print("Found " .. #chunks .. " additional chunks, processing them", "debug")
+						
+						-- Process chunks asynchronously
+						local function process_chunk_async(chunk_index)
+							if chunk_index > #chunks then
+								-- All chunks processed, continue checking for more
+								debug.debug_print("🔄 All additional chunks processed, continuing to check for more", "debug")
+								return
+							end
+							
+							local chunk = chunks[chunk_index]
+							if on_chunk then
+								local chunk_type = chunk.chunk_type or "regular_content"
+								debug.debug_print("🔄 About to call on_chunk for additional chunk " .. tostring(chunk_index) .. " with type: " .. chunk_type, "debug")
+								debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
+								on_chunk(chunk.chunk, chunk.chunk_index or 0, chunk.total_chunks or 1, chunk_type)
+								debug.debug_print("🔄 on_chunk call completed for additional chunk " .. tostring(chunk_index), "debug")
+							end
+							
+							-- Schedule next chunk processing with a small delay for smooth animation
+							vim.defer_fn(function()
+								process_chunk_async(chunk_index + 1)
+							end, 50) -- 50ms delay between chunks
+						end
+						
+						-- Start processing chunks
+						process_chunk_async(1)
+						
+						-- Clear chunks after retrieving them
+						rpc_client:clear_streaming_chunks()
+						chunks_received = chunks_received + #chunks
+						debug.debug_print("🔄 Additional chunks processed and cleared, total received: " .. chunks_received .. "/" .. total_chunks, "debug")
+						
+						-- Check if we've received all chunks
+						if chunks_received >= total_chunks then
+							debug.debug_print("🔄 All chunks received (" .. chunks_received .. "/" .. total_chunks .. "), completing", "debug")
+							check_timer:stop()
+							check_timer:close()
+							
+							-- Mark streaming as inactive
+							rpc_client:set_streaming_active(false)
+							if on_complete then
+								on_complete()
+							end
+							return
+						end
+					end
+					
+					total_wait_time = total_wait_time + (check_interval / 1000)
+					
+					-- Check if we should complete (timeout)
+					if total_wait_time >= max_wait_time then
+						debug.debug_print("Completing streaming (timeout) after " .. total_wait_time .. "s, received " .. chunks_received .. "/" .. total_chunks .. " chunks", "debug")
+						check_timer:stop()
+						check_timer:close()
+						
+						-- Mark streaming as inactive
+						rpc_client:set_streaming_active(false)
+						if on_complete and not completion_detected then
+							on_complete()
+						end
+						return
+					end
+				end
+				
+				-- Start checking for remaining chunks
+				check_timer:start(check_interval, check_interval, vim.schedule_wrap(check_for_remaining_chunks))
+				
+				return true
+			else
+				-- Single chunk or last chunk, complete immediately
+				debug.debug_print("📝 Single chunk or last chunk received, completing", "debug")
+				if on_complete then
+					on_complete()
+				end
+				return true
+			end
 		elseif response.result and response.result.content then
 			debug.debug_print("📝 Found content in response result", "debug")
 			-- Process the content as a single chunk
