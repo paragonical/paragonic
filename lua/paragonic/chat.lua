@@ -1178,11 +1178,30 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		return nil, "Streaming error: " .. (response.error.message or "Unknown error")
 	end
 
+	-- Debug: Log the response structure
+	local debug = require("paragonic.debug")
+	debug.debug_print("Response type: " .. type(response), "debug")
+	if type(response) == "table" then
+		debug.debug_print("Response keys: " .. table.concat(vim.tbl_keys(response), ", "), "debug")
+		if response.result then
+			debug.debug_print("Result type: " .. type(response.result), "debug")
+			if type(response.result) == "table" then
+				debug.debug_print("Result keys: " .. table.concat(vim.tbl_keys(response.result), ", "), "debug")
+			end
+		end
+	end
+
 	-- Process the first chunk from the immediate response
+	-- The response should contain the first chunk directly
 	if response.chunk and on_chunk then
-		local debug = require("paragonic.debug")
 		debug.debug_print("Processing first chunk from immediate response: " .. (response.chunk_type or "unknown"), "debug")
 		on_chunk(response.chunk, response.chunk_index or 0, response.total_chunks or 1, response.chunk_type or "regular_content")
+	elseif response.result and response.result.chunk and on_chunk then
+		-- Try result.chunk if direct chunk is not available
+		debug.debug_print("Processing first chunk from result: " .. (response.result.chunk_type or "unknown"), "debug")
+		on_chunk(response.result.chunk, response.result.chunk_index or 0, response.result.total_chunks or 1, response.result.chunk_type or "regular_content")
+	else
+		debug.debug_print("No first chunk found in response", "debug")
 	end
 
 	-- Wait for streaming chunks to arrive via SSE
