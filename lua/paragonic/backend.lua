@@ -88,6 +88,10 @@ local function create_mcp_client()
 		end
 
 		debug.debug_print("✅ MCP connected and session initialized", "success")
+		
+		-- Mark as potentially streaming to prevent SSE disconnection during initialization
+		client.is_streaming = true
+		
 		return true
 	end
 

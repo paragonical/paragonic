@@ -1205,9 +1205,10 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		end
 	end
 
-	-- Process the first chunk from the immediate response
-	-- Mark streaming as active to prevent reconnection conflicts
+	-- Mark streaming as active BEFORE processing any chunks to prevent race conditions
 	rpc_client:set_streaming_active(true)
+	
+	-- Process the first chunk from the immediate response
 	
 	-- Debug: Check SSE connection status before starting streaming
 	local sse_client = require("paragonic.sse_client")

@@ -597,6 +597,15 @@ function sse_client._handle_event(event)
 		if success and parsed_data and parsed_data.params and parsed_data.params.type == "stream_expired" then
 			debug.debug_print_safe("⚠️ Stream expired notification received: " .. (parsed_data.params.message or "Unknown"), "warning")
 			
+			-- Check if streaming is active before handling stream expiration
+			local backend = require("paragonic.backend")
+			local rpc_client = backend._get_rpc_client()
+			if rpc_client and rpc_client.is_streaming then
+				debug.debug_print_safe("⚠️ Stream expired during active streaming, deferring reconnection", "warning")
+				-- Don't disconnect during active streaming, just log the expiration
+				return
+			end
+			
 			-- Mark connection as expired
 			client_state.is_connected = false
 			client_state.stream_expired = true
