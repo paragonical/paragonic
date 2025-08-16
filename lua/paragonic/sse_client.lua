@@ -414,10 +414,15 @@ end
 
 -- Disconnect from SSE stream
 function sse_client.disconnect()
+	local debug = require("paragonic.debug")
+	debug.debug_print_safe("🔌 SSE disconnect() called", "debug")
+	
 	if not client_state.is_connected then
+		debug.debug_print_safe("🔌 SSE already disconnected", "debug")
 		return false, SSEClientError.NOT_CONNECTED
 	end
 
+	debug.debug_print_safe("🔌 SSE disconnecting...", "debug")
 	client_state.is_connected = false
 	
 	-- Close TCP client if exists
@@ -557,6 +562,9 @@ function sse_client._handle_event(event)
 	-- Log event handling
 	local debug = require("paragonic.debug")
 	debug.debug_print_safe("📨 SSE Event received - Type: " .. (event.event_type or "message") .. ", ID: " .. (event.id or "none"), "debug")
+	
+	-- Log connection status
+	debug.debug_print_safe("🔗 SSE Connection status: " .. (client_state.is_connected and "connected" or "disconnected"), "debug")
 	
 	-- Update last event ID
 	if event.id then
