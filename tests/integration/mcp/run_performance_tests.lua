@@ -3,7 +3,7 @@
 -- This test suite verifies performance characteristics of the MCP
 -- HTTP transport implementation.
 
-local mcp_transport_adapter = require("../../lua/paragonic/mcp_transport_adapter")
+local mcp_http_transport = require("../../lua/paragonic/mcp_http_transport")
 local mcp_config = require("../../lua/paragonic/mcp_config")
 
 -- Test utilities
@@ -83,8 +83,8 @@ local function test_initialization_performance()
 	local times = {}
 	for i = 1, 10 do
 		local time = measure_time(function()
-			mcp_transport_adapter.init()
-			mcp_transport_adapter.cleanup()
+			mcp_http_transport.init()
+			mcp_http_transport.cleanup()
 		end)
 		table.insert(times, time)
 	end
@@ -102,7 +102,7 @@ end
 local function test_request_throughput()
 	print("  Testing request throughput...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	local request_count = 100
 	local start_time = vim.loop.now()
@@ -114,7 +114,7 @@ local function test_request_throughput()
 			params = { id = i },
 		}
 
-		local response, err = mcp_transport_adapter.send_request(request)
+		local response, err = mcp_http_transport.send_request(request)
 		-- Expected to fail without server, but we're measuring throughput
 	end
 
@@ -126,7 +126,7 @@ local function test_request_throughput()
 	print(string.format("    Throughput: %.1f requests/second", requests_per_second))
 	assert_true(requests_per_second > 10, "Should process at least 10 requests per second")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_memory_usage()
@@ -134,7 +134,7 @@ local function test_memory_usage()
 
 	local initial_memory = measure_memory_usage()
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Send multiple requests to simulate usage
 	for i = 1, 50 do
@@ -144,7 +144,7 @@ local function test_memory_usage()
 			params = { data = string.rep("x", 1000) }, -- 1KB of data
 		}
 
-		local response, err = mcp_transport_adapter.send_request(request)
+		local response, err = mcp_http_transport.send_request(request)
 	end
 
 	local final_memory = measure_memory_usage()
@@ -153,13 +153,13 @@ local function test_memory_usage()
 	print(string.format("    Memory increase: %d KB", memory_increase))
 	assert_true(memory_increase < 10000, "Memory increase should be less than 10MB")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_concurrent_operations()
 	print("  Testing concurrent operations...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	local operation_count = 20
 	local completed_operations = 0
@@ -175,7 +175,7 @@ local function test_concurrent_operations()
 				params = { id = i },
 			}
 
-			local response, err = mcp_transport_adapter.send_request(request)
+			local response, err = mcp_http_transport.send_request(request)
 			completed_operations = completed_operations + 1
 		end)
 	end
@@ -191,20 +191,20 @@ local function test_concurrent_operations()
 	print(string.format("    Completed %d concurrent operations in %.3f seconds", operation_count, total_time))
 	assert_true(total_time < 5.0, "Concurrent operations should complete within 5 seconds")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_transport_switching_performance()
 	print("  Testing transport switching performance...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	local switch_count = 10
 	local times = {}
 
 	for i = 1, switch_count do
 		local time = measure_time(function()
-			mcp_transport_adapter.switch_transport("http", {
+			mcp_http_transport.switch_transport("http", {
 				base_url = "http://localhost:3000",
 			})
 		end)
@@ -220,20 +220,20 @@ local function test_transport_switching_performance()
 	print(string.format("    Average transport switch time: %.3f seconds", avg_time))
 	assert_true(avg_time < 0.5, "Transport switching should complete within 0.5 seconds")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_health_check_performance()
 	print("  Testing health check performance...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	local check_count = 50
 	local times = {}
 
 	for i = 1, check_count do
 		local time = measure_time(function()
-			mcp_transport_adapter.health_check()
+			mcp_http_transport.health_check()
 		end)
 		table.insert(times, time)
 	end
@@ -247,7 +247,7 @@ local function test_health_check_performance()
 	print(string.format("    Average health check time: %.3f seconds", avg_time))
 	assert_true(avg_time < 0.1, "Health check should complete within 0.1 seconds")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_configuration_performance()
@@ -291,7 +291,7 @@ end
 local function test_error_handling_performance()
 	print("  Testing error handling performance...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	local error_count = 100
 	local times = {}
@@ -299,7 +299,7 @@ local function test_error_handling_performance()
 	for i = 1, error_count do
 		local time = measure_time(function()
 			-- Send invalid request to trigger error handling
-			local response, err = mcp_transport_adapter.send_request(nil)
+			local response, err = mcp_http_transport.send_request(nil)
 		end)
 		table.insert(times, time)
 	end
@@ -313,7 +313,7 @@ local function test_error_handling_performance()
 	print(string.format("    Average error handling time: %.3f seconds", avg_time))
 	assert_true(avg_time < 0.01, "Error handling should complete within 0.01 seconds")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 -- Run all tests
@@ -321,7 +321,7 @@ print("Starting MCP Performance Tests")
 print("==============================")
 
 -- Clean up before running tests
-mcp_transport_adapter.cleanup()
+mcp_http_transport.cleanup()
 
 -- Run tests
 run_test("Initialization performance", test_initialization_performance)
@@ -348,7 +348,7 @@ if test_results.failed > 0 then
 end
 
 -- Clean up after tests
-mcp_transport_adapter.cleanup()
+mcp_http_transport.cleanup()
 
 -- Exit with appropriate code
 if test_results.failed > 0 then

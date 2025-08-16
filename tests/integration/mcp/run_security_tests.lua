@@ -3,7 +3,7 @@
 -- This test suite verifies security measures of the MCP
 -- HTTP transport implementation.
 
-local mcp_transport_adapter = require("../../lua/paragonic/mcp_transport_adapter")
+local mcp_http_transport = require("../../lua/paragonic/mcp_http_transport")
 local mcp_config = require("../../lua/paragonic/mcp_config")
 local http_client = require("../../lua/paragonic/http_client")
 
@@ -99,20 +99,20 @@ end
 local function test_input_validation_requests()
 	print("  Testing request input validation...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Test nil request
-	local response, err = mcp_transport_adapter.send_request(nil)
+	local response, err = mcp_http_transport.send_request(nil)
 	assert_nil(response, "should return nil for nil request")
 	assert_equal("invalid_message", err, "should return invalid_message error")
 
 	-- Test empty request
-	local response2, err2 = mcp_transport_adapter.send_request({})
+	local response2, err2 = mcp_http_transport.send_request({})
 	assert_nil(response2, "should return nil for empty request")
 	assert_not_nil(err2, "should return error for empty request")
 
 	-- Test request without jsonrpc
-	local response3, err3 = mcp_transport_adapter.send_request({
+	local response3, err3 = mcp_http_transport.send_request({
 		method = "test",
 		params = {},
 	})
@@ -120,7 +120,7 @@ local function test_input_validation_requests()
 	assert_not_nil(err3, "should return error for request without jsonrpc")
 
 	-- Test request with invalid jsonrpc version
-	local response4, err4 = mcp_transport_adapter.send_request({
+	local response4, err4 = mcp_http_transport.send_request({
 		jsonrpc = "1.0",
 		method = "test",
 		params = {},
@@ -129,7 +129,7 @@ local function test_input_validation_requests()
 	assert_not_nil(err4, "should return error for invalid jsonrpc version")
 
 	-- Test request without method
-	local response5, err5 = mcp_transport_adapter.send_request({
+	local response5, err5 = mcp_http_transport.send_request({
 		jsonrpc = "2.0",
 		params = {},
 	})
@@ -137,7 +137,7 @@ local function test_input_validation_requests()
 	assert_not_nil(err5, "should return error for request without method")
 
 	-- Test request with non-string method
-	local response6, err6 = mcp_transport_adapter.send_request({
+	local response6, err6 = mcp_http_transport.send_request({
 		jsonrpc = "2.0",
 		method = 123,
 		params = {},
@@ -147,7 +147,7 @@ local function test_input_validation_requests()
 
 	-- Test request with extremely long method name
 	local long_method = string.rep("a", 10000)
-	local response7, err7 = mcp_transport_adapter.send_request({
+	local response7, err7 = mcp_http_transport.send_request({
 		jsonrpc = "2.0",
 		method = long_method,
 		params = {},
@@ -155,26 +155,26 @@ local function test_input_validation_requests()
 	assert_nil(response7, "should return nil for extremely long method")
 	assert_not_nil(err7, "should return error for extremely long method")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_input_validation_notifications()
 	print("  Testing notification input validation...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Test nil notification
-	local success, err = mcp_transport_adapter.send_notification(nil)
+	local success, err = mcp_http_transport.send_notification(nil)
 	assert_false(success, "should return false for nil notification")
 	assert_equal("invalid_message", err, "should return invalid_message error")
 
 	-- Test empty notification
-	local success2, err2 = mcp_transport_adapter.send_notification({})
+	local success2, err2 = mcp_http_transport.send_notification({})
 	assert_false(success2, "should return false for empty notification")
 	assert_not_nil(err2, "should return error for empty notification")
 
 	-- Test notification without jsonrpc
-	local success3, err3 = mcp_transport_adapter.send_notification({
+	local success3, err3 = mcp_http_transport.send_notification({
 		method = "test",
 		params = {},
 	})
@@ -182,7 +182,7 @@ local function test_input_validation_notifications()
 	assert_not_nil(err3, "should return error for notification without jsonrpc")
 
 	-- Test notification with invalid jsonrpc version
-	local success4, err4 = mcp_transport_adapter.send_notification({
+	local success4, err4 = mcp_http_transport.send_notification({
 		jsonrpc = "1.0",
 		method = "test",
 		params = {},
@@ -191,33 +191,33 @@ local function test_input_validation_notifications()
 	assert_not_nil(err4, "should return error for invalid jsonrpc version")
 
 	-- Test notification without method
-	local success5, err5 = mcp_transport_adapter.send_notification({
+	local success5, err5 = mcp_http_transport.send_notification({
 		jsonrpc = "2.0",
 		params = {},
 	})
 	assert_false(success5, "should return false for notification without method")
 	assert_not_nil(err5, "should return error for notification without method")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_input_validation_session_initialization()
 	print("  Testing session initialization input validation...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Test nil client info
-	local success, err = mcp_transport_adapter.initialize_session(nil)
+	local success, err = mcp_http_transport.initialize_session(nil)
 	assert_false(success, "should return false for nil client info")
 	assert_not_nil(err, "should return error for nil client info")
 
 	-- Test empty client info
-	local success2, err2 = mcp_transport_adapter.initialize_session({})
+	local success2, err2 = mcp_http_transport.initialize_session({})
 	assert_false(success2, "should return false for empty client info")
 	assert_not_nil(err2, "should return error for empty client info")
 
 	-- Test client info without name
-	local success3, err3 = mcp_transport_adapter.initialize_session({
+	local success3, err3 = mcp_http_transport.initialize_session({
 		version = "1.0.0",
 		capabilities = {},
 	})
@@ -225,7 +225,7 @@ local function test_input_validation_session_initialization()
 	assert_not_nil(err3, "should return error for client info without name")
 
 	-- Test client info with non-string name
-	local success4, err4 = mcp_transport_adapter.initialize_session({
+	local success4, err4 = mcp_http_transport.initialize_session({
 		name = 123,
 		version = "1.0.0",
 		capabilities = {},
@@ -235,7 +235,7 @@ local function test_input_validation_session_initialization()
 
 	-- Test client info with extremely long name
 	local long_name = string.rep("a", 10000)
-	local success5, err5 = mcp_transport_adapter.initialize_session({
+	local success5, err5 = mcp_http_transport.initialize_session({
 		name = long_name,
 		version = "1.0.0",
 		capabilities = {},
@@ -243,7 +243,7 @@ local function test_input_validation_session_initialization()
 	assert_false(success5, "should return false for extremely long client name")
 	assert_not_nil(err5, "should return error for extremely long client name")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_url_validation()
@@ -262,7 +262,7 @@ local function test_url_validation()
 	}
 
 	for _, url in ipairs(invalid_urls) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = "http",
 			base_url = url,
 		})
@@ -278,12 +278,12 @@ local function test_url_validation()
 	}
 
 	for _, url in ipairs(valid_urls) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = "http",
 			base_url = url,
 		})
 		assert_true(success, "should accept valid URL: " .. url)
-		mcp_transport_adapter.cleanup()
+		mcp_http_transport.cleanup()
 	end
 end
 
@@ -300,7 +300,7 @@ local function test_protocol_version_validation()
 	}
 
 	for _, version in ipairs(invalid_versions) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = "http",
 			base_url = "http://localhost:3000",
 			protocol_version = version,
@@ -309,13 +309,13 @@ local function test_protocol_version_validation()
 	end
 
 	-- Test valid protocol version
-	local success = mcp_transport_adapter.init({
+	local success = mcp_http_transport.init({
 		transport_type = "http",
 		base_url = "http://localhost:3000",
 		protocol_version = "2025-06-18",
 	})
 	assert_true(success, "should accept valid protocol version")
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_timeout_validation()
@@ -331,7 +331,7 @@ local function test_timeout_validation()
 	}
 
 	for _, timeout in ipairs(invalid_timeouts) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = "http",
 			base_url = "http://localhost:3000",
 			request_timeout = timeout,
@@ -347,20 +347,20 @@ local function test_timeout_validation()
 	}
 
 	for _, timeout in ipairs(valid_timeouts) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = "http",
 			base_url = "http://localhost:3000",
 			request_timeout = timeout,
 		})
 		assert_true(success, "should accept valid timeout: " .. tostring(timeout))
-		mcp_transport_adapter.cleanup()
+		mcp_http_transport.cleanup()
 	end
 end
 
 local function test_payload_size_limits()
 	print("  Testing payload size limits...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Test extremely large payload
 	local large_payload = string.rep("x", 1000000) -- 1MB
@@ -372,7 +372,7 @@ local function test_payload_size_limits()
 		},
 	}
 
-	local response, err = mcp_transport_adapter.send_request(request)
+	local response, err = mcp_http_transport.send_request(request)
 	assert_nil(response, "should return nil for extremely large payload")
 	assert_not_nil(err, "should return error for extremely large payload")
 
@@ -386,18 +386,18 @@ local function test_payload_size_limits()
 		},
 	}
 
-	local response2, err2 = mcp_transport_adapter.send_request(request2)
+	local response2, err2 = mcp_http_transport.send_request(request2)
 	-- Should fail due to no server, but validation should pass
 	assert_nil(response2, "should return nil without server")
 	assert_not_nil(err2, "should return error without server")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_json_injection_prevention()
 	print("  Testing JSON injection prevention...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Test malicious JSON strings
 	local malicious_inputs = {
@@ -409,14 +409,14 @@ local function test_json_injection_prevention()
 	for _, malicious_input in ipairs(malicious_inputs) do
 		local success, parsed = pcall(vim.json.decode, malicious_input)
 		if success then
-			local response, err = mcp_transport_adapter.send_request(parsed)
+			local response, err = mcp_http_transport.send_request(parsed)
 			-- Should fail due to no server, but validation should pass
 			assert_nil(response, "should return nil without server")
 			assert_not_nil(err, "should return error without server")
 		end
 	end
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_transport_type_validation()
@@ -435,7 +435,7 @@ local function test_transport_type_validation()
 	}
 
 	for _, transport_type in ipairs(invalid_types) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = transport_type,
 		})
 		assert_false(success, "should reject invalid transport type: " .. tostring(transport_type))
@@ -448,15 +448,15 @@ local function test_transport_type_validation()
 	}
 
 	for _, transport_type in ipairs(valid_types) do
-		local success = mcp_transport_adapter.init({
+		local success = mcp_http_transport.init({
 			transport_type = transport_type,
 		})
 		assert_true(success, "should accept valid transport type: " .. transport_type)
-		mcp_transport_adapter.cleanup()
+		mcp_http_transport.cleanup()
 	end
 
 	-- Test TCP transport (not implemented yet)
-	local success = mcp_transport_adapter.init({
+	local success = mcp_http_transport.init({
 		transport_type = "tcp",
 	})
 	assert_false(success, "should reject TCP transport (not implemented)")
@@ -474,25 +474,25 @@ local function test_configuration_security()
 		password = "secret-password-789",
 	}
 
-	local success = mcp_transport_adapter.init(sensitive_config)
+	local success = mcp_http_transport.init(sensitive_config)
 	assert_true(success, "should accept configuration with sensitive data")
 
 	-- Verify sensitive data is not exposed in status
-	local status = mcp_transport_adapter.get_status()
+	local status = mcp_http_transport.get_status()
 	assert_nil(status.auth_token, "should not expose auth_token in status")
 	assert_nil(status.api_key, "should not expose api_key in status")
 	assert_nil(status.password, "should not expose password in status")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 local function test_error_message_sanitization()
 	print("  Testing error message sanitization...")
 
-	mcp_transport_adapter.init()
+	mcp_http_transport.init()
 
 	-- Test that error messages don't expose sensitive information
-	local response, err = mcp_transport_adapter.send_request(nil)
+	local response, err = mcp_http_transport.send_request(nil)
 	assert_nil(response, "should return nil for invalid request")
 	assert_not_nil(err, "should return error for invalid request")
 
@@ -502,7 +502,7 @@ local function test_error_message_sanitization()
 	assert_false(string.find(err, "key"), "error should not contain key")
 	assert_false(string.find(err, "secret"), "error should not contain secret")
 
-	mcp_transport_adapter.cleanup()
+	mcp_http_transport.cleanup()
 end
 
 -- Run all tests
@@ -510,7 +510,7 @@ print("Starting MCP Security Tests")
 print("===========================")
 
 -- Clean up before running tests
-mcp_transport_adapter.cleanup()
+mcp_http_transport.cleanup()
 
 -- Run tests
 run_test("Request input validation", test_input_validation_requests)
@@ -540,7 +540,7 @@ if test_results.failed > 0 then
 end
 
 -- Clean up after tests
-mcp_transport_adapter.cleanup()
+mcp_http_transport.cleanup()
 
 -- Exit with appropriate code
 if test_results.failed > 0 then
