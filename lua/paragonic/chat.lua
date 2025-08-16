@@ -57,6 +57,14 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 			local base_width = math.floor(full_buffer_width * 0.7)
 			if base_width < 20 then base_width = 20 end
 			
+			-- Debug: Check if chunk is valid
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Processing thinking_content chunk: " .. string.format("%q", chunk), "debug")
+				end
+			end
+			
 			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
 			for _, line in ipairs(wrapped_lines) do
 				table.insert(response_lines, line)
@@ -86,6 +94,14 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 			end
 			local base_width = math.floor(full_buffer_width * 0.7)
 			if base_width < 20 then base_width = 20 end
+			
+			-- Debug: Check if chunk is valid
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Processing regular_content chunk: " .. string.format("%q", chunk), "debug")
+				end
+			end
 			
 			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk, base_width)
 			for _, line in ipairs(wrapped_lines) do
