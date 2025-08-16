@@ -6,28 +6,29 @@ package.path = package.path .. ";lua/?.lua;lua/?/init.lua"
 
 local function test_thinking_content_wrapping()
 	print("🧪 Testing thinking content wrapping...")
-	
+
 	-- Load the utils module to test wrapping directly
 	local utils = require("paragonic.utils")
 	if not utils then
 		print("❌ Failed to load utils module")
 		return false
 	end
-	
+
 	print("✅ Utils module loaded successfully")
-	
+
 	-- Test the wrap_text_with_zigzag function directly
-	local test_text = "This is a long thinking step that should be wrapped to multiple lines when it exceeds the maximum width limit. It contains multiple sentences and should demonstrate proper text wrapping functionality."
+	local test_text =
+		"This is a long thinking step that should be wrapped to multiple lines when it exceeds the maximum width limit. It contains multiple sentences and should demonstrate proper text wrapping functionality."
 	local max_width = 50
-	
+
 	print("📝 Testing wrap_text_with_zigzag with width " .. max_width)
 	local wrapped_lines = utils.wrap_text_with_zigzag(test_text, max_width)
-	
+
 	if not wrapped_lines or #wrapped_lines == 0 then
 		print("❌ No wrapped lines returned")
 		return false
 	end
-	
+
 	print("✅ Wrapped into " .. #wrapped_lines .. " lines:")
 	for i, line in ipairs(wrapped_lines) do
 		print("  Line " .. i .. ": " .. line)
@@ -44,17 +45,17 @@ local function test_thinking_content_wrapping()
 			end
 		end
 	end
-	
+
 	-- Test with shorter text that doesn't need wrapping
 	local short_text = "Short thinking step"
 	print("📝 Testing with short text: " .. short_text)
 	local short_wrapped = utils.wrap_text_with_zigzag(short_text, max_width)
-	
+
 	if not short_wrapped or #short_wrapped == 0 then
 		print("❌ No wrapped lines returned for short text")
 		return false
 	end
-	
+
 	print("✅ Short text wrapped into " .. #short_wrapped .. " lines:")
 	for i, line in ipairs(short_wrapped) do
 		print("  Line " .. i .. ": " .. line)
@@ -64,17 +65,17 @@ local function test_thinking_content_wrapping()
 			return false
 		end
 	end
-	
+
 	-- Test with word that should fit on first line
 	local short_word = "hippopotomonstrosesquippedaliophobia"
 	print("📝 Testing with short word: " .. short_word)
 	local short_wrapped = utils.wrap_text_with_zigzag(short_word, 50)
-	
+
 	if not short_wrapped or #short_wrapped == 0 then
 		print("❌ No wrapped lines returned for short word")
 		return false
 	end
-	
+
 	print("✅ Short word wrapped into " .. #short_wrapped .. " lines:")
 	for i, line in ipairs(short_wrapped) do
 		print("  Line " .. i .. ": " .. line)
@@ -91,7 +92,7 @@ local function test_thinking_content_wrapping()
 			end
 		end
 	end
-	
+
 	print("✅ Thinking content wrapping test passed")
 	return true
 end

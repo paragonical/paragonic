@@ -111,7 +111,7 @@ end
 function M.wrap_text_with_glyph(text, max_width, glyph, gutter_spaces)
 	-- Set default glyph if not provided
 	glyph = glyph or "◊"
-	
+
 	-- Set default gutter spaces if not provided
 	gutter_spaces = gutter_spaces or 2
 

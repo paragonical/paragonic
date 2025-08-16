@@ -19,12 +19,12 @@ local function test_mcp_search_functions()
 	local success = pcall(function()
 		return backend._initialize_backend()
 	end)
-	
+
 	if not success then
 		print("⚠ Backend initialization skipped (expected in standalone mode)")
 		return
 	end
-	
+
 	local client = backend._get_rpc_client()
 	if not client then
 		print("⚠ Backend client not available (expected in standalone mode)")
@@ -82,7 +82,7 @@ local function test_function_signatures()
 	local init_success = pcall(function()
 		return backend._initialize_backend()
 	end)
-	
+
 	if init_success then
 		local client = backend._get_rpc_client()
 		if client then

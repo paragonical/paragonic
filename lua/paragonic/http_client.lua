@@ -420,8 +420,6 @@ function http_client._send_single_request(request)
 		table.insert(args, tostring(client_state.optimization.keep_alive_timeout))
 	end
 
-
-
 	-- Add method
 	table.insert(args, "-X")
 	table.insert(args, request.method)

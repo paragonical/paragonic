@@ -318,7 +318,7 @@ function mcp_performance.check_performance_alerts(metrics)
 
 		-- Log alert
 		local debug = require("paragonic.debug")
-debug.debug_print(string.format("[PERFORMANCE %s] %s: %s", alert.level, alert.category, alert.message), "info")
+		debug.debug_print(string.format("[PERFORMANCE %s] %s: %s", alert.level, alert.category, alert.message), "info")
 	end
 end
 

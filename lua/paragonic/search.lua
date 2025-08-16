@@ -715,19 +715,19 @@ end
 function M.search_embeddings(query, limit)
 	local backend = require("paragonic.backend")
 	local rpc_client = backend._get_rpc_client()
-	
+
 	if not rpc_client then
 		if not backend._initialize_backend() then
 			return nil, "Backend not available"
 		end
 		rpc_client = backend._get_rpc_client()
 	end
-	
+
 	local result, err = rpc_client:search_embeddings(query, limit)
 	if not result then
 		return nil, err
 	end
-	
+
 	-- Parse MCP tool call response
 	if result.content and result.content[1] and result.content[1].text then
 		local success, parsed = pcall(vim.json.decode, result.content[1].text)
@@ -735,26 +735,26 @@ function M.search_embeddings(query, limit)
 			return parsed
 		end
 	end
-	
+
 	return result
 end
 
 function M.find_similar_content(query, content_type, limit, threshold)
 	local backend = require("paragonic.backend")
 	local rpc_client = backend._get_rpc_client()
-	
+
 	if not rpc_client then
 		if not backend._initialize_backend() then
 			return nil, "Backend not available"
 		end
 		rpc_client = backend._get_rpc_client()
 	end
-	
+
 	local result, err = rpc_client:find_similar_content(query, content_type, limit, threshold)
 	if not result then
 		return nil, err
 	end
-	
+
 	-- Parse MCP tool call response
 	if result.content and result.content[1] and result.content[1].text then
 		local success, parsed = pcall(vim.json.decode, result.content[1].text)
@@ -762,26 +762,26 @@ function M.find_similar_content(query, content_type, limit, threshold)
 			return parsed
 		end
 	end
-	
+
 	return result
 end
 
 function M.hybrid_search(query, content_type, limit, threshold, include_text_filtering)
 	local backend = require("paragonic.backend")
 	local rpc_client = backend._get_rpc_client()
-	
+
 	if not rpc_client then
 		if not backend._initialize_backend() then
 			return nil, "Backend not available"
 		end
 		rpc_client = backend._get_rpc_client()
 	end
-	
+
 	local result, err = rpc_client:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
 	if not result then
 		return nil, err
 	end
-	
+
 	-- Parse MCP tool call response
 	if result.content and result.content[1] and result.content[1].text then
 		local success, parsed = pcall(vim.json.decode, result.content[1].text)
@@ -789,7 +789,7 @@ function M.hybrid_search(query, content_type, limit, threshold, include_text_fil
 			return parsed
 		end
 	end
-	
+
 	return result
 end
 

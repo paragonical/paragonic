@@ -142,7 +142,7 @@ function sse_client.connect(stream_id, callbacks)
 
 	-- Check if we're in a test environment (no real Neovim)
 	local is_test_environment = not is_neovim
-	
+
 	if is_test_environment then
 		-- In test environment, mark as connected
 		client_state.is_connected = true
@@ -155,36 +155,39 @@ function sse_client.connect(stream_id, callbacks)
 		local success, client_or_err = pcall(function()
 			return sse_client._establish_connection()
 		end)
-		
+
 		if success and client_or_err then
 			local client = client_or_err
 			client_state.is_connected = true
 			client_state.connection_client = client
-			
+
 			-- Log successful connection
 			local debug = require("paragonic.debug")
 			debug.debug_print_safe("✅ SSE connection established for temporary stream", "success")
-			
+
 			if client_state.callbacks.on_connect then
 				client_state.callbacks.on_connect(stream_id or "default")
 			end
-			
+
 			-- Set up async reading for SSE events
 			sse_client._setup_async_reading(client)
-			
+
 			return true
 		else
 			-- For now, let's skip SSE connection if it fails and just return success
 			-- This allows the MCP transport to work without SSE for basic functionality
 			local debug = require("paragonic.debug")
-			debug.debug_print_safe("⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"), "warning")
+			debug.debug_print_safe(
+				"⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"),
+				"warning"
+			)
 			debug.debug_print_safe("🔧 Falling back to non-SSE mode", "info")
 			client_state.is_connected = true
-			
+
 			if client_state.callbacks.on_connect then
 				client_state.callbacks.on_connect(stream_id or "default")
 			end
-			
+
 			return true
 		end
 	end
@@ -195,7 +198,7 @@ function sse_client._setup_async_reading(client)
 	-- Store buffer in client state for persistence
 	client_state.read_buffer = ""
 	client_state.http_headers_received = false
-	
+
 	-- Set up read callback
 	client:read_start(function(err, data)
 		if err then
@@ -206,19 +209,19 @@ function sse_client._setup_async_reading(client)
 			sse_client.disconnect()
 			return
 		end
-		
+
 		if not data then
 			-- Connection closed
 			sse_client.disconnect()
 			return
 		end
-		
+
 		-- Always log important SSE events (use safe version for async contexts)
 		local debug = require("paragonic.debug")
-		
+
 		-- Log data reception (always)
 		debug.debug_print_safe("📥 SSE Received data: " .. #data .. " bytes", "debug")
-		
+
 		-- Log detailed data in debug mode (sanitized for display)
 		if vim.g.paragonic_debug_buffer then
 			if #data < 100 then
@@ -226,10 +229,10 @@ function sse_client._setup_async_reading(client)
 				debug.debug_print_safe("Data: " .. sanitized_data, "debug")
 			end
 		end
-		
+
 		-- Add data to buffer
 		client_state.read_buffer = client_state.read_buffer .. data
-		
+
 		-- Check if we've received HTTP headers yet
 		if not client_state.http_headers_received then
 			-- Look for end of HTTP headers (double CRLF)
@@ -238,7 +241,7 @@ function sse_client._setup_async_reading(client)
 				-- Extract and parse HTTP headers
 				local headers_text = client_state.read_buffer:sub(1, header_end - 1)
 				local status_line = headers_text:match("^([^\r\n]+)")
-				
+
 				if status_line then
 					local status_code = status_line:match("HTTP/[%d%.]+%s+(%d+)")
 					if status_code == "200" then
@@ -246,12 +249,12 @@ function sse_client._setup_async_reading(client)
 						client_state.http_headers_received = true
 						-- Remove headers from buffer, keep only SSE data
 						client_state.read_buffer = client_state.read_buffer:sub(header_end + 4)
-						
+
 						-- Process any SSE events that came with the headers
 						if #client_state.read_buffer > 0 then
 							local events, remaining_buffer = sse_client._extract_events(client_state.read_buffer)
 							client_state.read_buffer = remaining_buffer
-							
+
 							for _, event_text in ipairs(events) do
 								local event, parse_err = sse_client.parse_event(event_text)
 								if event then
@@ -282,7 +285,7 @@ function sse_client._setup_async_reading(client)
 			-- HTTP headers already received, process SSE events
 			local events, remaining_buffer = sse_client._extract_events(client_state.read_buffer)
 			client_state.read_buffer = remaining_buffer
-			
+
 			for _, event_text in ipairs(events) do
 				local event, parse_err = sse_client.parse_event(event_text)
 				if event then
@@ -299,12 +302,12 @@ end
 function sse_client._extract_events(buffer)
 	local events = {}
 	local lines = {}
-	
+
 	-- Split buffer into lines
 	for line in buffer:gmatch("[^\r\n]*") do
 		table.insert(lines, line)
 	end
-	
+
 	-- Find complete events (separated by empty lines)
 	local current_event = {}
 	local last_empty = 0
@@ -320,13 +323,13 @@ function sse_client._extract_events(buffer)
 			table.insert(current_event, line)
 		end
 	end
-	
+
 	-- Return remaining buffer (incomplete events)
 	local remaining_buffer = ""
 	if last_empty > 0 and last_empty < #lines then
 		remaining_buffer = table.concat(lines, "\n", last_empty + 1)
 	end
-	
+
 	return events, remaining_buffer
 end
 
@@ -334,7 +337,7 @@ end
 function sse_client.disconnect()
 	local debug = require("paragonic.debug")
 	debug.debug_print_safe("🔌 SSE disconnect() called", "debug")
-	
+
 	if not client_state.is_connected then
 		debug.debug_print_safe("🔌 SSE already disconnected", "debug")
 		return false, SSEClientError.NOT_CONNECTED
@@ -342,7 +345,7 @@ function sse_client.disconnect()
 
 	debug.debug_print_safe("🔌 SSE disconnecting...", "debug")
 	client_state.is_connected = false
-	
+
 	-- Close TCP client if exists
 	if client_state.connection_client then
 		client_state.connection_client:close()
@@ -362,7 +365,7 @@ function sse_client._establish_connection()
 	-- We don't need to pass the stream ID as a query parameter
 
 	local url = client_state.base_url .. endpoint
-	
+
 	-- Build headers string for vim.uv
 	local headers = {
 		"Accept: text/event-stream",
@@ -384,7 +387,7 @@ function sse_client._establish_connection()
 		-- Fallback for non-Neovim environment
 		return nil, "vim.uv not available in this environment"
 	end
-	
+
 	-- Parse URL to get host and port
 	local host, port
 	if url:match("^https://") then
@@ -394,11 +397,11 @@ function sse_client._establish_connection()
 		host = url:match("^http://([^:/]+)")
 		port = url:match(":([0-9]+)") or 80
 	end
-	
+
 	if not host then
 		return nil, "Invalid URL: " .. url
 	end
-	
+
 	-- Convert port to number
 	port = tonumber(port) or 80
 
@@ -415,10 +418,7 @@ function sse_client._establish_connection()
 
 	-- Build HTTP request
 	local request = string.format(
-		"GET %s HTTP/1.1\r\n" ..
-		"Host: %s\r\n" ..
-		"%s\r\n" ..
-		"\r\n",
+		"GET %s HTTP/1.1\r\n" .. "Host: %s\r\n" .. "%s\r\n" .. "\r\n",
 		endpoint,
 		host,
 		table.concat(headers, "\r\n")
@@ -427,7 +427,7 @@ function sse_client._establish_connection()
 	-- Always log SSE connection attempts
 	local debug = require("paragonic.debug")
 	debug.debug_print_safe("🔍 SSE Request:", "debug")
-	
+
 	-- Log detailed request in debug mode (sanitized for display)
 	if vim.g.paragonic_debug_buffer then
 		local sanitized_request = request:gsub("\r\n", "\\r\\n"):gsub("\r", "\\r"):gsub("\n", "\\n")
@@ -436,7 +436,7 @@ function sse_client._establish_connection()
 
 	-- Send request
 	client:write(request)
-	
+
 	-- Return the client for streaming
 	return client
 end
@@ -445,10 +445,16 @@ end
 function sse_client._handle_event(event)
 	-- Log event handling
 	local debug = require("paragonic.debug")
-	debug.debug_print_safe("📨 SSE Event received - Type: " .. (event.event_type or "message") .. ", ID: " .. (event.id or "none"), "debug")
-	
+	debug.debug_print_safe(
+		"📨 SSE Event received - Type: " .. (event.event_type or "message") .. ", ID: " .. (event.id or "none"),
+		"debug"
+	)
+
 	-- Log connection status
-	debug.debug_print_safe("🔗 SSE Connection status: " .. (client_state.is_connected and "connected" or "disconnected"), "debug")
+	debug.debug_print_safe(
+		"🔗 SSE Connection status: " .. (client_state.is_connected and "connected" or "disconnected"),
+		"debug"
+	)
 
 	-- Trigger appropriate callback
 	if event.event_type == "message" or not event.event_type then

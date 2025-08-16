@@ -396,7 +396,7 @@ function mcp_owasp_security.log_security_event(event_type, event_data)
 		json_string = string.format("{event_type='%s', timestamp=%d}", event_type, log_entry.timestamp)
 	end
 	local debug = require("paragonic.debug")
-debug.debug_print(string.format("[SECURITY] %s: %s", event_type, json_string), "info")
+	debug.debug_print(string.format("[SECURITY] %s: %s", event_type, json_string), "info")
 end
 
 function mcp_owasp_security.get_event_severity(event_type)

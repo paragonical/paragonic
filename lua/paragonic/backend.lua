@@ -36,10 +36,13 @@ local function create_mcp_client()
 		-- Set up MCP callbacks for streaming
 		mcp.set_callbacks({
 			on_streaming_chunk = function(request_id, chunk)
-				debug.debug_print("📥 Received streaming chunk for request " .. request_id .. ": " .. (chunk.chunk or "no content"), "debug")
+				debug.debug_print(
+					"📥 Received streaming chunk for request " .. request_id .. ": " .. (chunk.chunk or "no content"),
+					"debug"
+				)
 				debug.debug_print("📥 Chunk type: " .. (chunk.chunk_type or "unknown"), "debug")
 				debug.debug_print("📥 Chunk index: " .. (chunk.chunk_index or "unknown"), "debug")
-				
+
 				-- Store the chunk for the chat system to retrieve
 				if not client.streaming_chunks then
 					client.streaming_chunks = {}
@@ -50,17 +53,20 @@ local function create_mcp_client()
 			on_streaming_complete = function(request_id, chunks, final_response)
 				debug.debug_print("✅ Streaming complete for request " .. request_id, "success")
 				debug.debug_print("📊 Total chunks received: " .. #chunks, "debug")
-				
+
 				-- Store final response if provided
 				if final_response then
 					client.final_response = final_response
 				end
-				
+
 				-- Mark streaming as complete
 				client.is_streaming = false
 			end,
 			on_streaming_error = function(request_id, error)
-				debug.debug_print("❌ Streaming error for request " .. request_id .. ": " .. (error or "unknown error"), "error")
+				debug.debug_print(
+					"❌ Streaming error for request " .. request_id .. ": " .. (error or "unknown error"),
+					"error"
+				)
 				client.is_streaming = false
 				client.streaming_error = error
 			end,
@@ -77,7 +83,7 @@ local function create_mcp_client()
 		end
 
 		debug.debug_print("✅ MCP connected and session initialized", "success")
-		
+
 		return true
 	end
 
@@ -111,8 +117,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "list_models",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -127,9 +133,9 @@ local function create_mcp_client()
 				model = model or "deepseek-r1:1.5b",
 				options = {},
 				_meta = {
-					progressToken = "chat_" .. os.time() .. "_" .. math.random(1000, 9999)
-				}
-			}
+					progressToken = "chat_" .. os.time() .. "_" .. math.random(1000, 9999),
+				},
+			},
 		})
 		return resp, err
 	end
@@ -143,9 +149,9 @@ local function create_mcp_client()
 				arguments = {
 					model = model or "deepseek-r1:1.5b",
 					message = message,
-					format_config = format_config or {}
-				}
-			}
+					format_config = format_config or {},
+				},
+			},
 		})
 		return resp, err
 	end
@@ -161,52 +167,55 @@ local function create_mcp_client()
 			end
 			debug.debug_print("✅ Reconnected successfully", "info")
 		end
-		
+
 		-- Clear any previous streaming chunks
 		client.streaming_chunks = {}
 		client.streaming_error = nil
 		client.final_response = nil
-		
+
 		-- Mark as streaming
 		client.is_streaming = true
-		
+
 		local request = {
 			jsonrpc = "2.0",
 			method = "streaming_chat_completion",
 			id = math.random(1000, 9999),
 			params = params or {},
 			_meta = {
-				progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999)
-			}
+				progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999),
+			},
 		}
-		
+
 		-- Debug: Log the request being sent
 		debug.debug_print("📤 Sending streaming request:", "debug")
 		debug.debug_print("   Method: " .. request.method, "debug")
 		debug.debug_print("   ID: " .. tostring(request.id), "debug")
 		debug.debug_print("   Params: " .. (params and params.message and params.message:sub(1, 50) or "none"), "debug")
-		
+
 		local resp, err = mcp.send_request(request)
-		
+
 		if not resp then
 			client.is_streaming = false
 			debug.debug_print("❌ Streaming request failed: " .. tostring(err), "error")
 			return resp, err
 		end
-		
+
 		-- Check if this is a streaming response
 		if resp.result and resp.result.type == "streaming_chunks" then
 			client.current_streaming_request_id = resp.result.progressToken
-			debug.debug_print("🔄 Received streaming chunks: " .. (resp.result.chunks and #resp.result.chunks or 0) .. " chunks", "info")
-			
+			debug.debug_print(
+				"🔄 Received streaming chunks: " .. (resp.result.chunks and #resp.result.chunks or 0) .. " chunks",
+				"info"
+			)
+
 			-- Store the chunks for the chat system to retrieve
 			if resp.result.chunks then
 				client.streaming_chunks = resp.result.chunks
 			end
-			
+
 			-- Mark streaming as complete since we got all chunks
 			client.is_streaming = false
-			
+
 			return resp
 		else
 			-- Regular response, not streaming
@@ -246,7 +255,7 @@ local function create_mcp_client()
 		if not client.current_streaming_request_id then
 			return true -- No active streaming
 		end
-		
+
 		return mcp.is_streaming_complete(client.current_streaming_request_id)
 	end
 
@@ -254,14 +263,14 @@ local function create_mcp_client()
 		if not client.current_streaming_request_id then
 			return false, "No active streaming to cancel"
 		end
-		
+
 		local success, err = mcp.cancel_streaming(client.current_streaming_request_id)
 		if success then
 			client.is_streaming = false
 			client.current_streaming_request_id = nil
 			debug.debug_print("🛑 Streaming cancelled", "info")
 		end
-		
+
 		return success, err
 	end
 
@@ -290,8 +299,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "list_projects",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -304,9 +313,9 @@ local function create_mcp_client()
 				name = "create_project",
 				arguments = {
 					name = name,
-					description = description or ""
-				}
-			}
+					description = description or "",
+				},
+			},
 		})
 		return resp, err
 	end
@@ -330,9 +339,9 @@ local function create_mcp_client()
 				name = "write_file",
 				arguments = {
 					file_path = "config.json",
-					content = vim.json.encode(config_data)
-				}
-			}
+					content = vim.json.encode(config_data),
+				},
+			},
 		})
 		return resp, err
 	end
@@ -346,9 +355,9 @@ local function create_mcp_client()
 				name = "search_embeddings",
 				arguments = {
 					query = query,
-					limit = limit or 10
-				}
-			}
+					limit = limit or 10,
+				},
+			},
 		})
 		return resp, err
 	end
@@ -363,9 +372,9 @@ local function create_mcp_client()
 					query = query,
 					content_type = content_type or "all",
 					limit = limit or 10,
-					threshold = threshold or 0.7
-				}
-			}
+					threshold = threshold or 0.7,
+				},
+			},
 		})
 		return resp, err
 	end
@@ -380,9 +389,9 @@ local function create_mcp_client()
 				arguments = {
 					content = content,
 					content_type = content_type or "text",
-					metadata = metadata or {}
-				}
-			}
+					metadata = metadata or {},
+				},
+			},
 		})
 		return resp, err
 	end
@@ -393,8 +402,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "get_knowledge_summary",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -406,8 +415,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "list_patterns",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -420,9 +429,9 @@ local function create_mcp_client()
 				name = "execute_pattern",
 				arguments = {
 					pattern_name = pattern_name,
-					context = context or {}
-				}
-			}
+					context = context or {},
+				},
+			},
 		})
 		return resp, err
 	end
@@ -433,8 +442,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "create_pattern",
-				arguments = pattern_data
-			}
+				arguments = pattern_data,
+			},
 		})
 		return resp, err
 	end
@@ -446,8 +455,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "get_session_info",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -459,9 +468,9 @@ local function create_mcp_client()
 			params = {
 				name = "update_session_context",
 				arguments = {
-					context = context or {}
-				}
-			}
+					context = context or {},
+				},
+			},
 		})
 		return resp, err
 	end
@@ -473,8 +482,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "test_connection",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -485,8 +494,8 @@ local function create_mcp_client()
 			method = "tools/call",
 			params = {
 				name = "get_debug_info",
-				arguments = {}
-			}
+				arguments = {},
+			},
 		})
 		return resp, err
 	end
@@ -542,7 +551,7 @@ function M.initialize_backend()
 	if not M._rpc_client then
 		M.init()
 	end
-	
+
 	local success, err = M._rpc_client:connect()
 	return success, err
 end

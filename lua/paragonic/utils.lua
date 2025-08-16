@@ -111,7 +111,7 @@ end
 function M.wrap_text_with_glyph(text, max_width, glyph)
 	-- Set default max_width if not provided
 	max_width = max_width or 80
-	
+
 	-- Set default glyph if not provided
 	glyph = glyph or "◊"
 
@@ -203,7 +203,7 @@ end
 function M.wrap_text_with_single_glyph(text, max_width, glyph)
 	-- Set default max_width if not provided
 	max_width = max_width or 80
-	
+
 	-- Set default glyph if not provided
 	glyph = glyph or "◊"
 

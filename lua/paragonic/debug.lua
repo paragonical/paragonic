@@ -48,7 +48,7 @@ end
 -- This version uses vim.notify for immediate feedback and defers buffer logging
 function M.debug_print_safe(message, level)
 	level = level or "debug"
-	
+
 	-- Use vim.notify for immediate feedback in fast contexts (if enabled)
 	if debug_config.show_notifications then
 		local notify_level = vim.log.levels.DEBUG
@@ -61,13 +61,13 @@ function M.debug_print_safe(message, level)
 		elseif level == "success" then
 			notify_level = vim.log.levels.INFO
 		end
-		
+
 		-- Defer notification to safe context to avoid fast event context errors
 		vim.defer_fn(function()
 			vim.notify(message, notify_level, { title = "Paragonic Debug" })
 		end, 0)
 	end
-	
+
 	-- Defer buffer logging to safe context
 	vim.defer_fn(function()
 		M.append_debug_message(nil, message, level)
@@ -159,12 +159,12 @@ function M.append_debug_message(buffer, message, level)
 	for line in message:gmatch("[^\r\n]+") do
 		table.insert(message_lines, line)
 	end
-	
+
 	-- If no lines found, add the original message
 	if #message_lines == 0 then
 		table.insert(message_lines, message)
 	end
-	
+
 	-- Format each line
 	for i, line in ipairs(message_lines) do
 		local prefix = "**[" .. timestamp .. "] DEBUG [" .. level:upper() .. "]:** "

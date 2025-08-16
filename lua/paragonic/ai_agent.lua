@@ -793,9 +793,9 @@ function M.ai_agent_get_state()
 			local buf = vim.api.nvim_win_get_buf(win)
 			local cursor = vim.api.nvim_win_get_cursor(win)
 			local pos = vim.api.nvim_win_get_position(win)
-			local size = { 
+			local size = {
 				width = vim.api.nvim_win_get_width(win),
-				height = vim.api.nvim_win_get_height(win)
+				height = vim.api.nvim_win_get_height(win),
 			}
 
 			table.insert(state.windows, {

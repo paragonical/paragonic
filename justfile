@@ -846,7 +846,55 @@ test-mcp-client-validation:
     echo "✓ MCP client validation passed"
 
 
+# Formatting and linting
 format: luafmt
 
 luafmt:
-    find . -name "*.lua" -exec stylua {} \;
+    #!/usr/bin/env bash
+    echo "=== Formatting Lua files with Stylua ==="
+    if command -v stylua >/dev/null 2>&1; then
+        find . -name "*.lua" -exec stylua {} \;
+        echo "✓ Lua files formatted with Stylua"
+    else
+        echo "✗ Stylua not found. Install with: cargo install stylua"
+        exit 1
+    fi
+
+# Check Lua syntax and format
+check-lua:
+    #!/usr/bin/env bash
+    echo "=== Checking Lua syntax and format ==="
+    
+    # Check if stylua is available
+    if ! command -v stylua >/dev/null 2>&1; then
+        echo "✗ Stylua not found. Install with: cargo install stylua"
+        exit 1
+    fi
+    
+    # Check syntax of all Lua files
+    local failed_files=()
+    
+    while IFS= read -r -d '' file; do
+        echo "Checking syntax: $file"
+        if ! stylua --check "$file"; then
+            failed_files+=("$file")
+        fi
+    done < <(find . -name "*.lua" -print0)
+    
+    if [ ${#failed_files[@]} -gt 0 ]; then
+        echo ""
+        echo "✗ Lua syntax/format issues found in:"
+        for file in "${failed_files[@]}"; do
+            echo "  - $file"
+        done
+        echo ""
+        echo "Run 'just format' to fix formatting issues"
+        exit 1
+    fi
+    
+    echo "✓ All Lua files have correct syntax and format"
+
+# Format and check in one command
+format-check: format check-lua
+    #!/usr/bin/env bash
+    echo "✓ Formatting and syntax check completed"
