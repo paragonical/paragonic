@@ -673,7 +673,7 @@ function M.wrap_thinking_content(text, max_width, glyph)
 			local is_first_line = true
 			local current_line = ""
 			local current_length = 0
-			local text_start_pos = #glyph + 2 -- Position where text content starts on first line
+			local text_start_pos = 3 -- Position where text content starts (3 spaces after glyph)
 
 			for j, word in ipairs(words) do
 				local word_length = #word
