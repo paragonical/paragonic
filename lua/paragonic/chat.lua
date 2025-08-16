@@ -816,6 +816,17 @@ function M.send_message_command_debug()
 		if chunk_type == "thinking_start" then
 			-- Start thinking section
 			table.insert(response_lines, "🧠  <think>")
+		elseif chunk_type == "thinking_content" then
+			-- Add thinking content with brain glyph and proper wrapping
+			local utils = require("paragonic.utils")
+			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_brain(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
 		elseif chunk_type == "thinking_step" then
 			-- Add thinking step with proper indentation
 			-- Add zigzag content with proper wrapping
