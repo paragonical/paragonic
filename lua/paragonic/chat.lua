@@ -1732,8 +1732,13 @@ function M.send_message_command_thinking()
 		-- Simple test to see if callback is working
 		vim.notify("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
 		
-		local debug = require("paragonic.debug")
-		debug.debug_print("🔄 Processing chunk " .. chunk_index .. " of " .. total_chunks .. " (type: " .. chunk_type .. ")", "debug")
+		-- Test if we can access the debug module
+		local ok, debug = pcall(require, "paragonic.debug")
+		if ok then
+			debug.debug_print("🔄 Processing chunk " .. chunk_index .. " of " .. total_chunks .. " (type: " .. chunk_type .. ")", "debug")
+		else
+			vim.notify("DEBUG ERROR: " .. tostring(debug), vim.log.levels.ERROR)
+		end
 		
 		if chunk_type == "thinking_start" then
 			-- Start thinking section with brain symbol
