@@ -474,6 +474,9 @@ function M.open_chat()
 			":ParagonicSendSmart<CR>",
 			{ noremap = true, silent = true, desc = "Send message (smart - auto-detects model capabilities)" }
 		)
+		
+		-- TEST: Add notification to verify keymap is set
+		vim.notify("TEST: Keymap <CR> set to ParagonicSendSmart", vim.log.levels.INFO)
 		vim.api.nvim_buf_set_keymap(
 			chat_buf,
 			"n",
