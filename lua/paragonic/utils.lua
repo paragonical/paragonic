@@ -266,22 +266,16 @@ function M.wrap_text_with_single_glyph(text, max_width, glyph)
 						if current_line ~= "" then
 							table.insert(lines, current_line)
 						end
-						-- Start new line with proper indentation
-						if is_first_line then
-							current_line = glyph .. "  " .. word
-							current_length = #glyph + 2 + word_length
-							is_first_line = false
-						else
-							current_line = "    " .. word
-							current_length = 4 + word_length
-						end
+						-- Start new line with proper indentation (no glyph after first line)
+						current_line = "    " .. word
+						current_length = 4 + word_length
 					else
 						-- Add word to current line (with space if not first word)
 						if current_line ~= "" then
 							current_line = current_line .. " " .. word
 							current_length = current_length + 1 + word_length
 						else
-							-- First word on the line
+							-- First word on the line - only add glyph to the very first line
 							if is_first_line then
 								current_line = glyph .. "  " .. word
 								current_length = #glyph + 2 + word_length
