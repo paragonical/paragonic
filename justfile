@@ -18,7 +18,7 @@ neovim-cmd := env_var_or_default("NEOVIM_CMD", "nvim")
 unit-dir := "tests/unit"
 integration-dir := "tests/integration"
 e2e-dir := "tests/e2e"
-deprecated-dir := "tests/deprecated"
+# Deprecated tests have been removed
 
 # Test failure tracking
 test-failures := ""
@@ -718,13 +718,12 @@ test-server-lifecycle-standalone:
     echo ""
     just test-server-lifecycle
 
-# Clean up deprecated tests
+# Deprecated tests have been cleaned up
 clean-deprecated:
     #!/usr/bin/env bash
-    echo "=== Cleaning Deprecated Tests ==="
-    echo "Moving deprecated tests to {{deprecated-dir}}..."
-    echo "Review {{deprecated-dir}} and remove obsolete tests manually"
-    echo "✓ Deprecated tests moved"
+    echo "=== Deprecated Tests Already Cleaned ==="
+    echo "✓ All deprecated tests have been removed"
+    echo "✓ Test structure is now clean and organized"
 
 # Clean up old Makefiles
 clean-makefiles:
@@ -780,7 +779,7 @@ help:
     echo "  test-e2e-startup  - Startup tests"
     echo ""
     echo "Utility targets:"
-    echo "  clean-deprecated  - Clean up deprecated tests"
+    echo "  clean-deprecated  - Deprecated tests already cleaned"
     echo "  clean-makefiles   - Remove old Makefile versions"
     echo ""
     echo "Examples:"
