@@ -1246,7 +1246,10 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	for i, chunk in ipairs(chunks) do
 		if on_chunk then
 			local chunk_type = chunk.chunk_type or "regular_content"
+			debug.debug_print("🔄 About to call on_chunk for chunk " .. i .. " with type: " .. chunk_type, "debug")
+			debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
 			on_chunk(chunk.chunk, chunk.chunk_index, chunk.total_chunks, chunk_type)
+			debug.debug_print("🔄 on_chunk call completed for chunk " .. i, "debug")
 		end
 		-- Small delay for smooth animation
 		if i < #chunks then
