@@ -117,15 +117,34 @@ function M.append_debug_message(buffer, message, level)
 
 	-- Format debug message with timestamp
 	local timestamp = os.date("%H:%M:%S")
-	local formatted_message = "**[" .. timestamp .. "] DEBUG [" .. level:upper() .. "]:** " .. message
-
 	-- Get current debug buffer lines
 	local current_lines = vim.api.nvim_buf_get_lines(debug_buf, 0, -1, false)
 
+	-- Split message into lines to handle newlines properly
+	local lines_to_add = {}
+	local message_lines = {}
+	for line in message:gmatch("[^\r\n]+") do
+		table.insert(message_lines, line)
+	end
+	
+	-- If no lines found, add the original message
+	if #message_lines == 0 then
+		table.insert(message_lines, message)
+	end
+	
+	-- Format each line
+	for i, line in ipairs(message_lines) do
+		local prefix = "**[" .. timestamp .. "] DEBUG [" .. level:upper() .. "]:** "
+		if i == 1 then
+			table.insert(lines_to_add, prefix .. line)
+		else
+			-- Indent continuation lines
+			table.insert(lines_to_add, string.rep(" ", #prefix) .. line)
+		end
+	end
+
 	-- Append debug message to debug buffer
-	vim.api.nvim_buf_set_lines(debug_buf, #current_lines, #current_lines, false, {
-		formatted_message,
-	})
+	vim.api.nvim_buf_set_lines(debug_buf, #current_lines, #current_lines, false, lines_to_add)
 
 	return true, "Debug message appended successfully"
 end
