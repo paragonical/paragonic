@@ -1289,6 +1289,14 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		end
 	end
 
+	-- Debug: Log chunk structure to see what we're receiving
+	local debug = require("paragonic.debug")
+	debug.debug_print("Number of chunks: " .. #chunks, "debug")
+	for i, chunk in ipairs(chunks) do
+		debug.debug_print("Chunk " .. i .. " type: " .. (chunk.chunk_type or "unknown"), "debug")
+		debug.debug_print("Chunk " .. i .. " content: " .. (chunk.chunk or "no content"):sub(1, 100):gsub("\n", "\\n"), "debug")
+	end
+	
 	-- Collect all content from chunks first
 	local full_content = ""
 	for _, chunk in ipairs(chunks) do
@@ -1298,7 +1306,6 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	end
 	
 	-- Debug: Log the content to see if it contains thinking tags
-	local debug = require("paragonic.debug")
 	debug.debug_print("Full content length: " .. #full_content, "debug")
 	debug.debug_print("Content contains <think>: " .. tostring(full_content:find("<think>") ~= nil), "debug")
 	debug.debug_print("Content contains </think>: " .. tostring(full_content:find("</think>") ~= nil), "debug")
