@@ -9,6 +9,196 @@ local M = {}
 local debug = require("paragonic.debug")
 debug.disable_notifications()
 
+-- Shared on_chunk handler for streaming responses
+-- @param current_buf number - The buffer to write to
+-- @param line_num number - The line number to start writing from
+-- @param chat_window_id number - The window ID for safe cursor positioning
+-- @param enable_debug boolean - Whether to enable debug output
+-- @return function - The on_chunk callback function
+local function create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, enable_debug)
+	local response_content = ""
+	local response_lines = {}
+	local start_time = vim.uv.now()
+	
+	return function(chunk, chunk_index, total_chunks, chunk_type)
+		-- Add chunk to response content
+		response_content = response_content .. chunk
+		
+		-- Debug output if enabled
+		if enable_debug then
+			local chunk_index_str = chunk_index and tostring(chunk_index) or "unknown"
+			local total_chunks_str = total_chunks and tostring(total_chunks) or "unknown"
+			vim.notify("CALLBACK: Processing chunk " .. chunk_index_str .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
+			
+			local ok, debug = pcall(require, "paragonic.debug")
+			if ok then
+				debug.debug_print("🔄 Processing chunk " .. chunk_index_str .. " of " .. total_chunks_str .. " (type: " .. chunk_type .. ")", "debug")
+			end
+		end
+		
+		-- Process thinking content with proper formatting
+		if chunk_type == "thinking_start" then
+			-- Start thinking section
+			table.insert(response_lines, "🧠  <think>")
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Added thinking_start line", "debug")
+				end
+			end
+		elseif chunk_type == "thinking_content" then
+			-- Add thinking step with proper wrapping and zigzag prefix
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Added " .. #wrapped_lines .. " thinking_content lines", "debug")
+				end
+			end
+		elseif chunk_type == "thinking_end" then
+			-- End thinking section
+			table.insert(response_lines, "󱦟  </think>")
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Added thinking_end line", "debug")
+				end
+			end
+		elseif chunk_type == "regular_content" then
+			-- Add regular content with diamond prefix
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Added " .. #wrapped_lines .. " regular_content lines", "debug")
+				end
+			end
+		else
+			-- Default chunk handling - treat as regular content
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Added " .. #wrapped_lines .. " default content lines", "debug")
+				end
+			end
+		end
+		
+		-- Update the buffer in real-time
+		local current_response_lines = {}
+		for _, line in ipairs(response_lines) do
+			table.insert(current_response_lines, line)
+		end
+		
+		-- Add timing placeholder
+		table.insert(current_response_lines, " ⏱️   ...")
+		table.insert(current_response_lines, "∎")
+		
+		-- Insert/update response in buffer
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #current_response_lines, false, current_response_lines)
+		
+		-- Force redraw for smooth animation
+		vim.cmd("redraw!")
+		
+		-- Move cursor to the end of the buffer (safely handle window changes)
+		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+		-- Check if the chat window still exists and is valid
+		local window_exists = pcall(function()
+			return vim.api.nvim_win_is_valid(chat_window_id)
+		end)
+		
+		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
+			-- Check if the window is still showing the chat buffer
+			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
+			if window_buf == current_buf then
+				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
+			end
+		else
+			-- Fallback to current window
+			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
+		end
+	end, function() -- on_complete callback
+		-- Calculate timing information
+		local end_time = vim.uv.now()
+		local duration_ms = end_time - start_time
+		local duration_sec = duration_ms / 1000
+		
+		-- Update timing in the last response
+		local final_response_lines = {}
+		for _, line in ipairs(response_lines) do
+			table.insert(final_response_lines, line)
+		end
+		
+		-- Add timing information
+		table.insert(final_response_lines, "")
+		table.insert(final_response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
+		table.insert(final_response_lines, "")
+		table.insert(final_response_lines, "∎")
+		
+		-- Update buffer with final response
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #final_response_lines, false, final_response_lines)
+		
+		-- Move cursor to the end of the buffer (safely handle window changes)
+		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+		-- Check if the chat window still exists and is valid
+		local window_exists = pcall(function()
+			return vim.api.nvim_win_is_valid(chat_window_id)
+		end)
+		
+		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
+			-- Check if the window is still showing the chat buffer
+			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
+			if window_buf == current_buf then
+				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
+			end
+		else
+			-- Fallback to current window
+			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
+		end
+		
+		-- Debug success notification
+		if enable_debug then
+			vim.notify("Thinking streaming completed successfully", vim.log.levels.INFO)
+		end
+	end
+end
+
 -- Command to toggle debug notifications
 function M.toggle_debug_notifications()
 	local config = debug.get_debug_config()
@@ -1039,196 +1229,6 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	check_for_chunks()
 
 	return true
-end
-
--- Shared on_chunk handler for streaming responses
--- @param current_buf number - The buffer to write to
--- @param line_num number - The line number to start writing from
--- @param chat_window_id number - The window ID for safe cursor positioning
--- @param enable_debug boolean - Whether to enable debug output
--- @return function - The on_chunk callback function
-local function create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, enable_debug)
-	local response_content = ""
-	local response_lines = {}
-	local start_time = vim.uv.now()
-	
-	return function(chunk, chunk_index, total_chunks, chunk_type)
-		-- Add chunk to response content
-		response_content = response_content .. chunk
-		
-		-- Debug output if enabled
-		if enable_debug then
-			local chunk_index_str = chunk_index and tostring(chunk_index) or "unknown"
-			local total_chunks_str = total_chunks and tostring(total_chunks) or "unknown"
-			vim.notify("CALLBACK: Processing chunk " .. chunk_index_str .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
-			
-			local ok, debug = pcall(require, "paragonic.debug")
-			if ok then
-				debug.debug_print("🔄 Processing chunk " .. chunk_index_str .. " of " .. total_chunks_str .. " (type: " .. chunk_type .. ")", "debug")
-			end
-		end
-		
-		-- Process thinking content with proper formatting
-		if chunk_type == "thinking_start" then
-			-- Start thinking section
-			table.insert(response_lines, "🧠  <think>")
-			if enable_debug then
-				local ok, debug = pcall(require, "paragonic.debug")
-				if ok then
-					debug.debug_print("🧠 Added thinking_start line", "debug")
-				end
-			end
-		elseif chunk_type == "thinking_content" then
-			-- Add thinking step with proper wrapping and zigzag prefix
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-			if enable_debug then
-				local ok, debug = pcall(require, "paragonic.debug")
-				if ok then
-					debug.debug_print("🧠 Added " .. #wrapped_lines .. " thinking_content lines", "debug")
-				end
-			end
-		elseif chunk_type == "thinking_end" then
-			-- End thinking section
-			table.insert(response_lines, "󱦟  </think>")
-			if enable_debug then
-				local ok, debug = pcall(require, "paragonic.debug")
-				if ok then
-					debug.debug_print("🧠 Added thinking_end line", "debug")
-				end
-			end
-		elseif chunk_type == "regular_content" then
-			-- Add regular content with diamond prefix
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-			if enable_debug then
-				local ok, debug = pcall(require, "paragonic.debug")
-				if ok then
-					debug.debug_print("◊ Added " .. #wrapped_lines .. " regular_content lines", "debug")
-				end
-			end
-		else
-			-- Default chunk handling - treat as regular content
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-			if enable_debug then
-				local ok, debug = pcall(require, "paragonic.debug")
-				if ok then
-					debug.debug_print("◊ Added " .. #wrapped_lines .. " default content lines", "debug")
-				end
-			end
-		end
-		
-		-- Update the buffer in real-time
-		local current_response_lines = {}
-		for _, line in ipairs(response_lines) do
-			table.insert(current_response_lines, line)
-		end
-		
-		-- Add timing placeholder
-		table.insert(current_response_lines, " ⏱️   ...")
-		table.insert(current_response_lines, "∎")
-		
-		-- Insert/update response in buffer
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #current_response_lines, false, current_response_lines)
-		
-		-- Force redraw for smooth animation
-		vim.cmd("redraw!")
-		
-		-- Move cursor to the end of the buffer (safely handle window changes)
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		-- Check if the chat window still exists and is valid
-		local window_exists = pcall(function()
-			return vim.api.nvim_win_is_valid(chat_window_id)
-		end)
-		
-		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
-			-- Check if the window is still showing the chat buffer
-			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
-			if window_buf == current_buf then
-				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
-			end
-		else
-			-- Fallback to current window
-			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-		end
-	end, function() -- on_complete callback
-		-- Calculate timing information
-		local end_time = vim.uv.now()
-		local duration_ms = end_time - start_time
-		local duration_sec = duration_ms / 1000
-		
-		-- Update timing in the last response
-		local final_response_lines = {}
-		for _, line in ipairs(response_lines) do
-			table.insert(final_response_lines, line)
-		end
-		
-		-- Add timing information
-		table.insert(final_response_lines, "")
-		table.insert(final_response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
-		table.insert(final_response_lines, "")
-		table.insert(final_response_lines, "∎")
-		
-		-- Update buffer with final response
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #final_response_lines, false, final_response_lines)
-		
-		-- Move cursor to the end of the buffer (safely handle window changes)
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		-- Check if the chat window still exists and is valid
-		local window_exists = pcall(function()
-			return vim.api.nvim_win_is_valid(chat_window_id)
-		end)
-		
-		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
-			-- Check if the window is still showing the chat buffer
-			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
-			if window_buf == current_buf then
-				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
-			end
-		else
-			-- Fallback to current window
-			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-		end
-		
-		-- Debug success notification
-		if enable_debug then
-			vim.notify("Thinking streaming completed successfully", vim.log.levels.INFO)
-		end
-	end
 end
 
 -- Send message command with thinking model support and folding
