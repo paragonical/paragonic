@@ -1172,28 +1172,13 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	end
 
 	-- Process the first chunk from the immediate response
-	-- The response should contain the first chunk directly
-	if response.chunk and on_chunk then
-		debug.debug_print("Processing first chunk from immediate response: " .. (response.chunk_type or "unknown"), "debug")
-		on_chunk(response.chunk, response.chunk_index or 0, response.total_chunks or 1, response.chunk_type or "regular_content")
-	elseif response.result and response.result.chunk and on_chunk then
-		-- Try result.chunk if direct chunk is not available
-		debug.debug_print("Processing first chunk from result: " .. (response.result.chunk_type or "unknown"), "debug")
-		on_chunk(response.result.chunk, response.result.chunk_index or 0, response.result.total_chunks or 1, response.result.chunk_type or "regular_content")
-		
-		-- Check if this is the final chunk (no more streaming expected)
-		if response.result.chunk_type == "thinking_end" or response.result.chunk_type == "regular_content" then
-			debug.debug_print("Final chunk detected, completing immediately", "debug")
-			if on_complete then
-				on_complete()
-			end
-			return true
-		elseif response.result.chunk_type == "thinking_start" then
-			-- For thinking_start, we need to wait for additional chunks, but set a shorter timeout
-			debug.debug_print("Thinking start detected, will wait for additional chunks", "debug")
-			-- Reduce the max wait time for thinking mode
-			max_wait_time = 10 -- seconds instead of 30
-		end
+	-- Add first chunk to streaming buffer for consistent processing
+	if response.chunk then
+		debug.debug_print("Adding first chunk to streaming buffer: " .. (response.chunk_type or "unknown"), "debug")
+		rpc_client:add_streaming_chunk(response)
+	elseif response.result and response.result.chunk then
+		debug.debug_print("Adding first chunk from result to streaming buffer: " .. (response.result.chunk_type or "unknown"), "debug")
+		rpc_client:add_streaming_chunk(response.result)
 	else
 		debug.debug_print("No first chunk found in response", "debug")
 	end
@@ -1271,15 +1256,13 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 			return
 		end
 		
-		-- For thinking mode, if we've waited more than 5 seconds with no chunks, complete anyway
-		if total_wait_time > 5 and not chunks_processed then
-			debug.debug_print("No chunks received after 5s, completing thinking mode", "debug")
-			check_timer:stop()
-			check_timer:close()
-			if on_complete then
-				on_complete()
+		-- Check for completion based on chunk types
+		if chunks and #chunks > 0 then
+			local last_chunk = chunks[#chunks]
+			if last_chunk and (last_chunk.chunk_type == "thinking_end" or last_chunk.chunk_type == "regular_content") then
+				debug.debug_print("Final chunk type detected: " .. (last_chunk.chunk_type or "unknown"), "debug")
+				-- Don't complete here, let the chunk processing handle it
 			end
-			return
 		end
 		
 		-- Schedule next check
