@@ -12,7 +12,7 @@ use axum::{
 };
 use serde_json::Value;
 use std::sync::Arc;
-use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -22,7 +22,7 @@ use crate::embeddings::create_embedding;
 use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
 use crate::ollama::{ChatMessage, OllamaClient, OllamaConfig};
 use crate::patterns::{PatternBootstrap, PatternRegistry};
-use crate::stream_manager::{StreamManager, StreamError};
+use crate::stream_manager::StreamManager;
 
 #[derive(Debug)]
 struct ThinkingChunk {

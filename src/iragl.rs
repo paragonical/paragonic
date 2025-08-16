@@ -2724,18 +2724,7 @@ fn process_log_content(content: &str) -> ParagonicResult<String> {
     Ok(processed_lines.join("\n"))
 }
 
-/// Determine optimal chunk size based on content type and file size
-fn determine_optimal_chunk_size(content_type: &str, file_size: u64) -> usize {
-    match content_type {
-        "markdown" => 4000, // Larger chunks for markdown to preserve context
-        "python" | "rust" | "javascript" => 2000, // Smaller chunks for code
-        "json" => 3000,
-        "yaml" | "toml" => 2000,
-        "csv" => 1000, // Small chunks for CSV data
-        "log" => 1500,
-        _ => 2500, // Default chunk size
-    }
-}
+// Unused function removed - determine_optimal_chunk_size was never called
 
 /// Split content into semantic chunks based on content type
 ///
