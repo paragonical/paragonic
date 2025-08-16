@@ -705,9 +705,14 @@ function M.open_chat()
 		)
 	end
 
-	-- Open the buffer in a new window
-	vim.api.nvim_command("split")
+	-- Open the buffer in a vertical split (1/3 width)
+	vim.api.nvim_command("vsplit")
 	vim.api.nvim_set_current_buf(chat_buf)
+	
+	-- Set the width to 1/3 of the total window width
+	local total_width = vim.api.nvim_win_get_width(0)
+	local chat_width = math.floor(total_width / 3)
+	vim.api.nvim_win_set_width(0, chat_width)
 
 	-- Move cursor to the end of the buffer
 	vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(0), 0 })
