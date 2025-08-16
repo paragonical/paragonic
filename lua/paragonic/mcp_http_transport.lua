@@ -1,7 +1,13 @@
 -- MCP HTTP Transport for Model Context Protocol
 --
 -- This module provides the complete MCP HTTP transport implementation,
--- integrating HTTP client for requests and SSE client for events.
+-- following the MCP Streamable HTTP transport specification.
+-- 
+-- Key principles:
+-- 1. Every JSON-RPC message from client MUST be a new HTTP POST request
+-- 2. Server MAY initiate temporary SSE stream in response to POST request
+-- 3. SSE stream closes after sending the JSON-RPC response
+-- 4. No persistent SSE connections
 
 local mcp_http_transport = {}
 -- Try to load http_client with different paths
@@ -13,26 +19,8 @@ else
 	-- Fallback to relative path
 	success, result = pcall(require, "http_client")
 	if success then
-		http_client = result
-	else
 		-- Final fallback to absolute path
 		http_client = require("../../lua/paragonic/http_client")
-	end
-end
-
--- Try to load sse_client with different paths
-local sse_client
-local success2, result2 = pcall(require, "paragonic.sse_client")
-if success2 then
-	sse_client = result2
-else
-	-- Fallback to relative path
-	success2, result2 = pcall(require, "sse_client")
-	if success2 then
-		sse_client = result2
-	else
-		-- Final fallback to absolute path
-		sse_client = require("../../lua/paragonic/sse_client")
 	end
 end
 
@@ -79,14 +67,14 @@ local DEFAULT_REQUEST_TIMEOUT = 60 -- seconds
 local transport_state = {
 	base_url = nil,
 	session_id = nil,
-	stream_id = nil,
 	protocol_version = DEFAULT_PROTOCOL_VERSION,
 	is_initialized = false,
-	is_connected = false,
 	initialization_timeout = DEFAULT_INITIALIZATION_TIMEOUT,
 	request_timeout = DEFAULT_REQUEST_TIMEOUT,
 	callbacks = {},
 	message_id_counter = 0,
+	-- Track active streaming requests
+	active_streams = {},
 }
 
 -- MCP message types
@@ -99,7 +87,6 @@ local MCPMessageType = {
 -- MCP HTTP transport errors
 local MCPHTTPTransportError = {
 	NOT_INITIALIZED = "not_initialized",
-	NOT_CONNECTED = "not_connected",
 	INITIALIZATION_FAILED = "initialization_failed",
 	CONNECTION_FAILED = "connection_failed",
 	INVALID_MESSAGE = "invalid_message",
@@ -150,18 +137,6 @@ function mcp_http_transport.init(config)
 		end
 	end
 
-	-- Additional validation for negative ports (more specific)
-	-- This regex is too complex, removing for now
-	-- if base_url:match("://[^/]*:-%d+") then
-	--     return false, "Invalid base_url: negative port not allowed"
-	-- end
-
-	-- Simple validation for negative ports (after protocol)
-	-- TODO: Implement more precise negative port validation
-	-- if base_url:match("://[^/]*:-") then
-	--     return false, "Invalid base_url: negative port not allowed"
-	-- end
-
 	local protocol_version = config.protocol_version or DEFAULT_PROTOCOL_VERSION
 
 	-- Protocol version validation
@@ -202,19 +177,6 @@ function mcp_http_transport.init(config)
 		return false, "Failed to initialize HTTP client"
 	end
 
-	-- Initialize SSE client
-	local sse_success = sse_client.init({
-		base_url = transport_state.base_url,
-		timeout = transport_state.initialization_timeout,
-		reconnect_delay = config.reconnect_delay or 1,
-		max_reconnect_attempts = config.max_reconnect_attempts or 5,
-		event_buffer_size = config.event_buffer_size or 100,
-	})
-
-	if not sse_success then
-		return false, "Failed to initialize SSE client"
-	end
-
 	transport_state.is_initialized = true
 
 	-- Initialize performance monitoring if available
@@ -243,7 +205,7 @@ function mcp_http_transport.init(config)
 		local perf_success = mcp_performance.init(perf_config)
 		if not perf_success then
 			local debug = require("paragonic.debug")
-debug.debug_print("[MCP] Warning: Performance monitoring initialization failed", "warning")
+			debug.debug_print("[MCP] Warning: Performance monitoring initialization failed", "warning")
 		end
 	end
 
@@ -351,84 +313,35 @@ function mcp_http_transport.initialize_session(client_info)
 	-- Extract session ID from response headers (MCP spec compliance)
 	if response.headers and response.headers["mcp-session-id"] then
 		transport_state.session_id = response.headers["mcp-session-id"]
-		transport_state.stream_id = transport_state.session_id
-
-		-- Set session ID in clients
+		
+		-- Set session ID in HTTP client
 		http_client.set_session_id(transport_state.session_id)
-		sse_client.set_session_id(transport_state.session_id)
-		sse_client.set_stream_id(transport_state.stream_id)
 	else
 		-- Fallback to JSON body for backward compatibility
 		if response.result then
 			transport_state.session_id = response.result.sessionId
-			transport_state.stream_id = response.result.streamId
-
-			-- Set session ID in clients
+			
+			-- Set session ID in HTTP client
 			http_client.set_session_id(transport_state.session_id)
-			sse_client.set_session_id(transport_state.session_id)
-			sse_client.set_stream_id(transport_state.stream_id)
 		end
 	end
 
-	-- Connect to SSE stream for events
-	local sse_callbacks = {
-		on_connect = function(stream_id)
-			transport_state.is_connected = true
-			if transport_state.callbacks.on_connect then
-				transport_state.callbacks.on_connect(stream_id)
-			end
-		end,
-		on_disconnect = function()
-			transport_state.is_connected = false
-			if transport_state.callbacks.on_disconnect then
-				transport_state.callbacks.on_disconnect()
-			end
-		end,
-		on_message = function(event)
-			mcp_http_transport._handle_sse_message(event)
-		end,
-		on_notification = function(event)
-			mcp_http_transport._handle_sse_notification(event)
-		end,
-		on_error = function(error_msg, attempt)
-			if transport_state.callbacks.on_error then
-				transport_state.callbacks.on_error(error_msg, attempt)
-			end
-		end,
-		on_parse_error = function(error_msg, raw_event)
-			if transport_state.callbacks.on_parse_error then
-				transport_state.callbacks.on_parse_error(error_msg, raw_event)
-			end
-		end,
-		on_stream_expired = function(expiration_data)
-			transport_state.is_connected = false
-			if transport_state.callbacks.on_stream_expired then
-				transport_state.callbacks.on_stream_expired(expiration_data)
-			end
-		end,
-		on_reconnected = function()
-			transport_state.is_connected = true
-			if transport_state.callbacks.on_reconnected then
-				transport_state.callbacks.on_reconnected()
-			end
-		end,
-		on_reconnect_failed = function(error)
-			if transport_state.callbacks.on_reconnect_failed then
-				transport_state.callbacks.on_reconnect_failed(error)
-			end
-		end,
+	-- Send initialized notification
+	local initialized_notification = {
+		jsonrpc = "2.0",
+		method = "initialized",
+		params = {},
 	}
 
-	-- Connect to SSE stream - the server creates the stream internally based on session ID
-	local connect_success, connect_err = sse_client.connect(nil, sse_callbacks)
-	if not connect_success then
-		return false, connect_err or "Failed to connect to SSE stream"
+	local success, err = mcp_http_transport.send_notification(initialized_notification)
+	if not success then
+		return false, err or "Failed to send initialized notification"
 	end
 
 	return true
 end
 
--- Send MCP request
+-- Send MCP request with streaming support
 function mcp_http_transport.send_request(request)
 	if not transport_state.is_initialized then
 		return nil, MCPHTTPTransportError.NOT_INITIALIZED
@@ -529,6 +442,10 @@ function mcp_http_transport.send_request(request)
 	local start_time = os.clock()
 	local success = false
 
+	-- Check if this is a streaming request
+	local is_streaming_request = request.method == "streaming_chat_completion" or 
+		(request.params and request.params._meta and request.params._meta.progressToken)
+
 	-- Send HTTP POST request
 	local response, err = http_client.post("/mcp", request)
 	if not response then
@@ -553,12 +470,125 @@ function mcp_http_transport.send_request(request)
 		return nil, http_client.get_error_message(response)
 	end
 
-	-- Parse JSON response
-	if not response.body or type(response.body) ~= "table" then
-		return nil, MCPHTTPTransportError.INVALID_MESSAGE
+	-- Check if response is SSE stream
+	if response.headers and response.headers["content-type"] and 
+	   response.headers["content-type"]:find("text/event%-stream") then
+		-- This is a streaming response, handle SSE
+		return mcp_http_transport._handle_sse_response(request.id, response)
+	else
+		-- This is a regular JSON response
+		if not response.body or type(response.body) ~= "table" then
+			return nil, MCPHTTPTransportError.INVALID_MESSAGE
+		end
+		return response.body
 	end
+end
 
-	return response.body
+-- Handle SSE response for streaming
+function mcp_http_transport._handle_sse_response(request_id, response)
+	-- Create a temporary SSE client for this request
+	local sse_client = require("paragonic.sse_client")
+	
+	-- Initialize SSE client for this request
+	local sse_success = sse_client.init({
+		base_url = transport_state.base_url,
+		timeout = transport_state.request_timeout,
+	})
+	
+	if not sse_success then
+		return nil, "Failed to initialize SSE client for streaming"
+	end
+	
+	-- Set session ID if available
+	if transport_state.session_id then
+		sse_client.set_session_id(transport_state.session_id)
+	end
+	
+	-- Track this stream
+	transport_state.active_streams[request_id] = {
+		sse_client = sse_client,
+		chunks = {},
+		completed = false,
+		error = nil,
+	}
+	
+	-- Set up SSE callbacks for this stream
+	local stream_callbacks = {
+		on_message = function(event)
+			if event.data then
+				-- Parse JSON-RPC message from SSE data
+				local success, message = pcall(json.decode, event.data)
+				if success and message then
+					-- Handle streaming chunks
+					if message.method == "notifications/message" and message.params then
+						local params = message.params
+						if params.type == "streaming_chunk" then
+							table.insert(transport_state.active_streams[request_id].chunks, params)
+							
+							-- Call streaming callback if available
+							if transport_state.callbacks.on_streaming_chunk then
+								transport_state.callbacks.on_streaming_chunk(request_id, params)
+							end
+						elseif params.type == "streaming_complete" then
+							transport_state.active_streams[request_id].completed = true
+							
+							-- Call completion callback if available
+							if transport_state.callbacks.on_streaming_complete then
+								transport_state.callbacks.on_streaming_complete(request_id, transport_state.active_streams[request_id].chunks)
+							end
+							
+							-- Clean up SSE client
+							sse_client.disconnect()
+							transport_state.active_streams[request_id] = nil
+						end
+					elseif message.id == request_id then
+						-- This is the final response for our request
+						transport_state.active_streams[request_id].completed = true
+						transport_state.active_streams[request_id].final_response = message
+						
+						-- Call completion callback if available
+						if transport_state.callbacks.on_streaming_complete then
+							transport_state.callbacks.on_streaming_complete(request_id, transport_state.active_streams[request_id].chunks, message)
+						end
+						
+						-- Clean up SSE client
+						sse_client.disconnect()
+						transport_state.active_streams[request_id] = nil
+					end
+				end
+			end
+		end,
+		on_error = function(error_msg)
+			transport_state.active_streams[request_id].error = error_msg
+			transport_state.active_streams[request_id].completed = true
+			
+			-- Call error callback if available
+			if transport_state.callbacks.on_streaming_error then
+				transport_state.callbacks.on_streaming_error(request_id, error_msg)
+			end
+			
+			-- Clean up SSE client
+			sse_client.disconnect()
+			transport_state.active_streams[request_id] = nil
+		end,
+	}
+	
+	-- Connect to SSE stream
+	local connect_success, connect_err = sse_client.connect(nil, stream_callbacks)
+	if not connect_success then
+		transport_state.active_streams[request_id] = nil
+		return nil, connect_err or "Failed to connect to SSE stream"
+	end
+	
+	-- Return immediately with streaming status
+	return {
+		jsonrpc = "2.0",
+		id = request_id,
+		result = {
+			streaming = true,
+			request_id = request_id,
+		}
+	}
 end
 
 -- Send MCP notification
@@ -655,76 +685,62 @@ function mcp_http_transport.send_notification(notification)
 	return true
 end
 
--- Handle SSE message event
-function mcp_http_transport._handle_sse_message(event)
-	if not event.data then
-		return
+-- Get streaming chunks for a request
+function mcp_http_transport.get_streaming_chunks(request_id)
+	if not transport_state.active_streams[request_id] then
+		return nil, "No active stream for request ID: " .. request_id
 	end
-
-	-- Parse JSON-RPC message from SSE data
-	local success, message = pcall(json.decode, event.data)
-	if not success or not message then
-		if transport_state.callbacks.on_parse_error then
-			transport_state.callbacks.on_parse_error("Failed to parse SSE message", event.data)
-		end
-		return
-	end
-
-	-- Validate message
-	if not message.jsonrpc or message.jsonrpc ~= "2.0" then
-		if transport_state.callbacks.on_error then
-			transport_state.callbacks.on_error("Invalid JSON-RPC version", 0)
-		end
-		return
-	end
-
-	-- Handle based on message type
-	if message.id then
-		-- This is a response
-		if transport_state.callbacks.on_response then
-			transport_state.callbacks.on_response(message)
-		end
-	else
-		-- This is a notification
-		if transport_state.callbacks.on_notification then
-			transport_state.callbacks.on_notification(message)
-		end
-	end
+	
+	return transport_state.active_streams[request_id].chunks
 end
 
--- Handle SSE notification event
-function mcp_http_transport._handle_sse_notification(event)
-	if not event.data then
-		return
+-- Check if streaming is complete for a request
+function mcp_http_transport.is_streaming_complete(request_id)
+	if not transport_state.active_streams[request_id] then
+		return true -- No active stream means it's complete
 	end
+	
+	return transport_state.active_streams[request_id].completed
+end
 
-	-- Parse JSON-RPC notification from SSE data
-	local success, notification = pcall(json.decode, event.data)
-	if not success or not notification then
-		if transport_state.callbacks.on_parse_error then
-			transport_state.callbacks.on_parse_error("Failed to parse SSE notification", event.data)
-		end
-		return
+-- Cancel streaming for a request
+function mcp_http_transport.cancel_streaming(request_id)
+	if not transport_state.active_streams[request_id] then
+		return false, "No active stream for request ID: " .. request_id
 	end
-
-	-- Validate notification
-	if not notification.jsonrpc or notification.jsonrpc ~= "2.0" then
-		if transport_state.callbacks.on_error then
-			transport_state.callbacks.on_error("Invalid JSON-RPC version", 0)
-		end
-		return
+	
+	-- Send cancellation notification
+	local cancel_notification = {
+		jsonrpc = "2.0",
+		method = "notifications/cancelled",
+		params = {
+			request_id = request_id,
+		}
+	}
+	
+	local success, err = mcp_http_transport.send_notification(cancel_notification)
+	if not success then
+		return false, err or "Failed to send cancellation notification"
 	end
-
-	-- Handle notification
-	if transport_state.callbacks.on_notification then
-		transport_state.callbacks.on_notification(notification)
+	
+	-- Clean up stream
+	if transport_state.active_streams[request_id].sse_client then
+		transport_state.active_streams[request_id].sse_client.disconnect()
 	end
+	transport_state.active_streams[request_id] = nil
+	
+	return true
 end
 
 -- Shutdown MCP session
 function mcp_http_transport.shutdown()
 	if not transport_state.is_initialized then
 		return false, MCPHTTPTransportError.NOT_INITIALIZED
+	end
+
+	-- Cancel all active streams
+	for request_id, _ in pairs(transport_state.active_streams) do
+		mcp_http_transport.cancel_streaming(request_id)
 	end
 
 	-- Send shutdown notification
@@ -741,16 +757,10 @@ function mcp_http_transport.shutdown()
 		end
 	end
 
-	-- Disconnect SSE client
-	if transport_state.is_connected then
-		sse_client.disconnect()
-		transport_state.is_connected = false
-	end
-
 	-- Reset state
 	transport_state.session_id = nil
-	transport_state.stream_id = nil
 	transport_state.is_initialized = false
+	transport_state.active_streams = {}
 
 	return true
 end
@@ -759,107 +769,22 @@ end
 function mcp_http_transport.get_status()
 	return {
 		is_initialized = transport_state.is_initialized,
-		is_connected = transport_state.is_connected,
 		session_id = transport_state.session_id,
-		stream_id = transport_state.stream_id,
 		protocol_version = transport_state.protocol_version,
 		base_url = transport_state.base_url,
 		message_id_counter = transport_state.message_id_counter,
+		active_streams_count = 0, -- Count active streams
 	}
 end
 
 -- Check if transport is ready
 function mcp_http_transport.is_ready()
-	return transport_state.is_initialized and transport_state.is_connected
-end
-
--- Set callbacks for stream management
-function mcp_http_transport.set_callbacks(callbacks)
-	transport_state.callbacks = callbacks or {}
-end
-
--- Request a new stream (for when current stream expires)
-function mcp_http_transport.request_new_stream()
-	if not transport_state.is_initialized then
-		return false, MCPHTTPTransportError.NOT_INITIALIZED
-	end
-
-	-- Check if streaming is active - don't disconnect during streaming
-	local backend = require("paragonic.backend")
-	local rpc_client = backend._get_rpc_client()
-	if rpc_client and rpc_client.is_streaming then
-		debug.debug_print("⚠️ Stream renewal requested during active streaming, deferring", "warning")
-		return false, "Stream renewal deferred during active streaming"
-	end
-
-	-- Disconnect current SSE connection
-	sse_client.disconnect()
-	
-	-- Reconnect to get a new stream
-	local sse_callbacks = {
-		on_connect = function(stream_id)
-			transport_state.is_connected = true
-			if transport_state.callbacks.on_connect then
-				transport_state.callbacks.on_connect(stream_id)
-			end
-		end,
-		on_disconnect = function()
-			transport_state.is_connected = false
-			if transport_state.callbacks.on_disconnect then
-				transport_state.callbacks.on_disconnect()
-			end
-		end,
-		on_message = function(event)
-			mcp_http_transport._handle_sse_message(event)
-		end,
-		on_notification = function(event)
-			mcp_http_transport._handle_sse_notification(event)
-		end,
-		on_error = function(error_msg, attempt)
-			if transport_state.callbacks.on_error then
-				transport_state.callbacks.on_error(error_msg, attempt)
-			end
-		end,
-		on_parse_error = function(error_msg, raw_event)
-			if transport_state.callbacks.on_parse_error then
-				transport_state.callbacks.on_parse_error(error_msg, raw_event)
-			end
-		end,
-		on_stream_expired = function(expiration_data)
-			transport_state.is_connected = false
-			if transport_state.callbacks.on_stream_expired then
-				transport_state.callbacks.on_stream_expired(expiration_data)
-			end
-		end,
-		on_reconnected = function()
-			transport_state.is_connected = true
-			if transport_state.callbacks.on_reconnected then
-				transport_state.callbacks.on_reconnected()
-			end
-		end,
-		on_reconnect_failed = function(error)
-			if transport_state.callbacks.on_reconnect_failed then
-				transport_state.callbacks.on_reconnect_failed(error)
-			end
-		end,
-	}
-
-	local success, err = sse_client.connect(nil, sse_callbacks)
-	if success then
-		return true
-	else
-		return false, err or "Failed to request new stream"
-	end
+	return transport_state.is_initialized
 end
 
 -- Get session ID
 function mcp_http_transport.get_session_id()
 	return transport_state.session_id
-end
-
--- Get stream ID
-function mcp_http_transport.get_stream_id()
-	return transport_state.stream_id
 end
 
 -- Get performance metrics
@@ -887,7 +812,6 @@ function mcp_http_transport.cleanup()
 
 	-- Clean up clients
 	http_client.cleanup()
-	sse_client.cleanup()
 
 	-- Cleanup performance monitoring
 	if mcp_performance then
@@ -898,14 +822,13 @@ function mcp_http_transport.cleanup()
 	transport_state = {
 		base_url = nil,
 		session_id = nil,
-		stream_id = nil,
 		protocol_version = DEFAULT_PROTOCOL_VERSION,
 		is_initialized = false,
-		is_connected = false,
 		initialization_timeout = DEFAULT_INITIALIZATION_TIMEOUT,
 		request_timeout = DEFAULT_REQUEST_TIMEOUT,
 		callbacks = {},
 		message_id_counter = 0,
+		active_streams = {},
 	}
 end
 

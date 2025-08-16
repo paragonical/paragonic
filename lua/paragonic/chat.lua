@@ -1153,9 +1153,6 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 	return true
 end
 
--- Send a streaming message with thinking model support
--- Handles intermediate thinking output with <think></think> encapsulation
--- Uses brain symbol for first step, vertical ideographic iteration mark (〻) for successive steps
 -- Implements Neovim folding for thinking steps
 function M.send_message_thinking_streaming(message, model, on_chunk, on_complete)
 	local backend = require("paragonic.backend")
@@ -1205,173 +1202,111 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		end
 	end
 
-	-- Mark streaming as active BEFORE processing any chunks to prevent race conditions
-	rpc_client:set_streaming_active(true)
-	
-	-- Process the first chunk from the immediate response
-	
-	-- Debug: Check SSE connection status before starting streaming
-	local sse_client = require("paragonic.sse_client")
-	if sse_client and sse_client.is_connected then
-		debug.debug_print("✅ SSE connection is active before streaming", "debug")
-	else
-		debug.debug_print("❌ SSE connection is not active before streaming", "debug")
-		-- Try to ensure SSE connection is active for streaming
-		debug.debug_print("🔄 Attempting to ensure SSE connection for streaming", "debug")
-	end
-	
-	-- Add first chunk to streaming buffer for consistent processing
-	if response.chunk then
-		debug.debug_print("Adding first chunk to streaming buffer: " .. (response.chunk_type or "unknown"), "debug")
-		rpc_client:add_streaming_chunk(response)
-	elseif response.result and response.result.chunk then
-		debug.debug_print("Adding first chunk from result to streaming buffer: " .. (response.result.chunk_type or "unknown"), "debug")
-		rpc_client:add_streaming_chunk(response.result)
-	else
-		debug.debug_print("No first chunk found in response", "debug")
-	end
-
-	-- Set up non-blocking streaming with timers
-	local max_wait_time = 30 -- seconds
-	local check_interval = 100 -- milliseconds
-	local total_wait_time = 0
-	local chunks_processed = 0
-	local completion_detected = false
-	
-	-- Keep SSE connection alive with periodic pings
-	local ping_timer = vim.loop.new_timer()
-	local ping_interval = 5000 -- 5 seconds
-	local ping_count = 0
-	
-	local function send_ping()
-		ping_count = ping_count + 1
-		debug.debug_print("🔄 Sending SSE ping #" .. ping_count, "debug")
-		-- Send a ping to keep the connection alive
-		local sse_client = require("paragonic.sse_client")
-		if sse_client and sse_client.is_connected then
-			-- The SSE client should handle pings automatically
-			debug.debug_print("✅ SSE connection still active", "debug")
-		else
-			debug.debug_print("❌ SSE connection lost during streaming", "debug")
-		end
-	end
-	
-	-- Create a timer for non-blocking chunk checking
-	local check_timer = vim.loop.new_timer()
-	
+	-- Check if this is a streaming response
+	if response.result and response.result.streaming then
+		debug.debug_print("🔄 Started streaming request: " .. response.result.request_id, "info")
+		
+		-- Set up non-blocking streaming with timers
+		local max_wait_time = 30 -- seconds
+		local check_interval = 100 -- milliseconds
+		local total_wait_time = 0
+		local chunks_processed = 0
+		local completion_detected = false
+		
+		-- Create a timer for non-blocking chunk checking
+		local check_timer = vim.loop.new_timer()
+		
 		local function check_for_chunks()
+			-- Check if streaming is complete
+			if rpc_client:is_streaming_complete() then
+				debug.debug_print("🔄 Streaming complete detected", "debug")
+				completion_detected = true
+				check_timer:stop()
+				check_timer:close()
+				
+				-- Mark streaming as inactive
+				rpc_client:set_streaming_active(false)
+				if on_complete then
+					on_complete()
+				end
+				return
+			end
+			
 			local chunks = rpc_client:get_streaming_chunks()
 			debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
 			
-					-- Debug: Check if we're receiving any SSE data
-		if rpc_client and rpc_client.is_connected then
-			debug.debug_print("RPC client is connected, checking for new data", "debug")
-		else
-			debug.debug_print("RPC client is not connected", "debug")
-		end
-		
-		-- Debug: Check SSE connection status and events
-		local sse_client = require("paragonic.sse_client")
-		if sse_client and sse_client.is_connected then
-			debug.debug_print("SSE client is connected", "debug")
-			-- Check if there are any SSE events in the buffer
-			local events = sse_client.get_event_buffer()
-			if events and #events > 0 then
-				debug.debug_print("SSE event buffer has " .. #events .. " events", "debug")
-				for i, event in ipairs(events) do
-					debug.debug_print("SSE Event " .. i .. ": " .. (event.event_type or "unknown") .. " - " .. (event.data and event.data:sub(1, 50) or "no data"), "debug")
-				end
-			else
-				debug.debug_print("SSE event buffer is empty", "debug")
-			end
-		else
-			debug.debug_print("SSE client is not connected", "debug")
-		end
-		
-		-- Debug: Check if we should continue waiting for more chunks
-		if chunks and #chunks == 0 then
-			debug.debug_print("No chunks found, but continuing to wait for SSE streaming...", "debug")
-		end
-		
-		if chunks and #chunks > 0 then
-			debug.debug_print("Found " .. #chunks .. " chunks, processing them", "debug")
-			
-			-- Process chunks asynchronously
-			local function process_chunk_async(chunk_index)
-				if chunk_index > #chunks then
-					-- All chunks processed, call completion
-					debug.debug_print("🔄 All chunks processed, calling completion", "debug")
-					-- Mark streaming as inactive
-					rpc_client:set_streaming_active(false)
-					if on_complete then
-						on_complete()
+			if chunks and #chunks > 0 then
+				debug.debug_print("Found " .. #chunks .. " chunks, processing them", "debug")
+				
+				-- Process chunks asynchronously
+				local function process_chunk_async(chunk_index)
+					if chunk_index > #chunks then
+						-- All chunks processed, continue checking for more
+						debug.debug_print("🔄 All chunks processed, continuing to check for more", "debug")
+						return
 					end
-					completion_detected = true
-					check_timer:stop()
-					check_timer:close()
-					ping_timer:stop()
-					ping_timer:close()
-					return
+					
+					local chunk = chunks[chunk_index]
+					if on_chunk then
+						local chunk_type = chunk.chunk_type or "regular_content"
+						debug.debug_print("🔄 About to call on_chunk for chunk " .. tostring(chunk_index) .. " with type: " .. chunk_type, "debug")
+						debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
+						on_chunk(chunk.chunk, chunk.chunk_index or 0, chunk.total_chunks or 1, chunk_type)
+						debug.debug_print("🔄 on_chunk call completed for chunk " .. tostring(chunk_index), "debug")
+					end
+					
+					-- Schedule next chunk processing with a small delay for smooth animation
+					vim.defer_fn(function()
+						process_chunk_async(chunk_index + 1)
+					end, 50) -- 50ms delay between chunks
 				end
 				
-				local chunk = chunks[chunk_index]
-				if on_chunk then
-					local chunk_type = chunk.chunk_type or "regular_content"
-					debug.debug_print("🔄 About to call on_chunk for chunk " .. tostring(chunk_index) .. " with type: " .. chunk_type, "debug")
-					debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
-					on_chunk(chunk.chunk, chunk.chunk_index or 0, chunk.total_chunks or 1, chunk_type)
-					debug.debug_print("🔄 on_chunk call completed for chunk " .. tostring(chunk_index), "debug")
-				end
+				-- Start processing chunks
+				process_chunk_async(1)
 				
-				-- Schedule next chunk processing with a small delay for smooth animation
-				vim.defer_fn(function()
-					process_chunk_async(chunk_index + 1)
-				end, 50) -- 50ms delay between chunks
+				-- Clear chunks after retrieving them
+				rpc_client:clear_streaming_chunks()
+				debug.debug_print("🔄 Chunks processed and cleared, continuing to check for more", "debug")
 			end
 			
-			-- Start processing chunks
-			process_chunk_async(1)
+			total_wait_time = total_wait_time + (check_interval / 1000)
 			
-			-- Clear chunks after retrieving them
-			rpc_client:clear_streaming_chunks()
-			debug.debug_print("🔄 Chunks processed and cleared, continuing to check for more", "debug")
-			-- Don't return here - continue checking for more chunks
-		end
-		
-		total_wait_time = total_wait_time + (check_interval / 1000)
-		
-		-- Check if we should complete (either timeout or no more chunks expected)
-		if total_wait_time >= max_wait_time or completion_detected then
-			debug.debug_print("Completing streaming (timeout or completion detected) after " .. total_wait_time .. "s", "debug")
-			check_timer:stop()
-			check_timer:close()
-			ping_timer:stop()
-			ping_timer:close()
-			-- Mark streaming as inactive
-			rpc_client:set_streaming_active(false)
-			if on_complete and not completion_detected then
-				on_complete()
-			end
-			return
-		end
-		
-		-- Check for completion based on chunk types
-		if chunks and #chunks > 0 then
-			local last_chunk = chunks[#chunks]
-			if last_chunk and (last_chunk.chunk_type == "thinking_end" or last_chunk.chunk_type == "regular_content") then
-				debug.debug_print("Final chunk type detected: " .. (last_chunk.chunk_type or "unknown"), "debug")
-				-- Don't complete here, let the chunk processing handle it
+			-- Check if we should complete (timeout)
+			if total_wait_time >= max_wait_time then
+				debug.debug_print("Completing streaming (timeout) after " .. total_wait_time .. "s", "debug")
+				check_timer:stop()
+				check_timer:close()
+				
+				-- Mark streaming as inactive
+				rpc_client:set_streaming_active(false)
+				if on_complete and not completion_detected then
+					on_complete()
+				end
+				return
 			end
 		end
 		
-		-- Schedule next check
-		check_timer:start(check_interval, 0, check_for_chunks)
+		-- Start checking for chunks
+		check_timer:start(check_interval, check_interval, vim.schedule_wrap(check_for_chunks))
+		
+		return true
+	else
+		-- Regular response, not streaming
+		debug.debug_print("📝 Received regular (non-streaming) response", "debug")
+		
+		-- Process the response as a single chunk
+		if response.result and response.result.content then
+			if on_chunk then
+				on_chunk(response.result.content, 1, 1, "regular_content")
+			end
+		end
+		
+		if on_complete then
+			on_complete()
+		end
+		
+		return true
 	end
-	
-	-- Start the non-blocking chunk checking
-	check_for_chunks()
-
-	return true
 end
 
 -- Send message command with thinking model support and folding

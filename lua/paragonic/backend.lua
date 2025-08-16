@@ -33,47 +33,36 @@ local function create_mcp_client()
 			return false, err
 		end
 
-		-- Set up MCP callbacks for stream management
+		-- Set up MCP callbacks for streaming
 		mcp.set_callbacks({
-			on_stream_expired = function(expiration_data)
-				debug.debug_print("⚠️ Stream expired: " .. (expiration_data.message or "Unknown"), "warning")
-				-- Don't auto-renew during initialization or active streaming
-				if client.is_streaming then
-					debug.debug_print("⚠️ Stream expired during active streaming, not auto-renewing", "warning")
-					return
+			on_streaming_chunk = function(request_id, chunk)
+				debug.debug_print("📥 Received streaming chunk for request " .. request_id .. ": " .. (chunk.chunk or "no content"), "debug")
+				debug.debug_print("📥 Chunk type: " .. (chunk.chunk_type or "unknown"), "debug")
+				debug.debug_print("📥 Chunk index: " .. (chunk.chunk_index or "unknown"), "debug")
+				
+				-- Store the chunk for the chat system to retrieve
+				if not client.streaming_chunks then
+					client.streaming_chunks = {}
 				end
-				-- Auto-request new stream only when not streaming
-				local success, err = mcp.request_new_stream()
-				if success then
-					debug.debug_print("✅ Successfully requested new stream", "success")
-				else
-					debug.debug_print("❌ Failed to request new stream: " .. (err or "unknown error"), "error")
+				table.insert(client.streaming_chunks, chunk)
+				debug.debug_print("📥 Total chunks stored: " .. #client.streaming_chunks, "debug")
+			end,
+			on_streaming_complete = function(request_id, chunks, final_response)
+				debug.debug_print("✅ Streaming complete for request " .. request_id, "success")
+				debug.debug_print("📊 Total chunks received: " .. #chunks, "debug")
+				
+				-- Store final response if provided
+				if final_response then
+					client.final_response = final_response
 				end
+				
+				-- Mark streaming as complete
+				client.is_streaming = false
 			end,
-			on_reconnected = function()
-				debug.debug_print("✅ Successfully reconnected to new stream", "success")
-			end,
-			on_reconnect_failed = function(error)
-				debug.debug_print("❌ Reconnection failed: " .. (error or "unknown error"), "error")
-			end,
-			on_notification = function(notification)
-				-- Handle streaming notifications
-				if notification.method == "notifications/message" and notification.params then
-					local params = notification.params
-					if params.type == "streaming_chunk" then
-						-- Forward streaming chunk to chat system
-						debug.debug_print("📥 Received streaming chunk: " .. (params.chunk or "no content"), "debug")
-						debug.debug_print("📥 Chunk type: " .. (params.chunk_type or "unknown"), "debug")
-						debug.debug_print("📥 Chunk index: " .. (params.chunk_index or "unknown"), "debug")
-						
-						-- Store the chunk for the chat system to retrieve
-						if not client.streaming_chunks then
-							client.streaming_chunks = {}
-						end
-						table.insert(client.streaming_chunks, params)
-						debug.debug_print("📥 Total chunks stored: " .. #client.streaming_chunks, "debug")
-					end
-				end
+			on_streaming_error = function(request_id, error)
+				debug.debug_print("❌ Streaming error for request " .. request_id .. ": " .. (error or "unknown error"), "error")
+				client.is_streaming = false
+				client.streaming_error = error
 			end,
 		})
 
@@ -88,9 +77,6 @@ local function create_mcp_client()
 		end
 
 		debug.debug_print("✅ MCP connected and session initialized", "success")
-		
-		-- Mark as potentially streaming to prevent SSE disconnection during initialization
-		client.is_streaming = true
 		
 		return true
 	end
@@ -167,6 +153,11 @@ local function create_mcp_client()
 	function client:streaming_chat_completion(params)
 		-- Clear any previous streaming chunks
 		client.streaming_chunks = {}
+		client.streaming_error = nil
+		client.final_response = nil
+		
+		-- Mark as streaming
+		client.is_streaming = true
 		
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
@@ -177,7 +168,22 @@ local function create_mcp_client()
 				progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999)
 			}
 		})
-		return resp, err
+		
+		if not resp then
+			client.is_streaming = false
+			return resp, err
+		end
+		
+		-- Check if this is a streaming response
+		if resp.result and resp.result.streaming then
+			client.current_streaming_request_id = resp.result.request_id
+			debug.debug_print("🔄 Started streaming request: " .. resp.result.request_id, "info")
+			return resp
+		else
+			-- Regular response, not streaming
+			client.is_streaming = false
+			return resp, err
+		end
 	end
 
 	function client:get_streaming_chunks()
@@ -205,6 +211,29 @@ local function create_mcp_client()
 		else
 			debug.debug_print("🔄 Streaming marked as inactive", "debug")
 		end
+	end
+
+	function client:is_streaming_complete()
+		if not client.current_streaming_request_id then
+			return true -- No active streaming
+		end
+		
+		return mcp.is_streaming_complete(client.current_streaming_request_id)
+	end
+
+	function client:cancel_streaming()
+		if not client.current_streaming_request_id then
+			return false, "No active streaming to cancel"
+		end
+		
+		local success, err = mcp.cancel_streaming(client.current_streaming_request_id)
+		if success then
+			client.is_streaming = false
+			client.current_streaming_request_id = nil
+			debug.debug_print("🛑 Streaming cancelled", "info")
+		end
+		
+		return success, err
 	end
 
 	function client:get_next_chunk(params)
@@ -303,211 +332,267 @@ local function create_mcp_client()
 				name = "find_similar_content",
 				arguments = {
 					query = query,
-					content_type = content_type,
+					content_type = content_type or "all",
 					limit = limit or 10,
-					threshold = threshold or 0.0
+					threshold = threshold or 0.7
 				}
 			}
 		})
 		return resp, err
 	end
 
-	function client:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
+	-- Knowledge Management (using MCP tools)
+	function client:add_knowledge(content, content_type, metadata)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
 			method = "tools/call",
 			params = {
-				name = "hybrid_search",
+				name = "add_knowledge",
 				arguments = {
-					query = query,
-					content_type = content_type,
-					limit = limit or 10,
-					threshold = threshold or 0.0,
-					include_text_filtering = include_text_filtering ~= false
+					content = content,
+					content_type = content_type or "text",
+					metadata = metadata or {}
 				}
 			}
 		})
 		return resp, err
 	end
 
+	function client:get_knowledge_summary()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "get_knowledge_summary",
+				arguments = {}
+			}
+		})
+		return resp, err
+	end
+
+	-- Pattern Management (using MCP tools)
+	function client:list_patterns()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "list_patterns",
+				arguments = {}
+			}
+		})
+		return resp, err
+	end
+
+	function client:execute_pattern(pattern_name, context)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "execute_pattern",
+				arguments = {
+					pattern_name = pattern_name,
+					context = context or {}
+				}
+			}
+		})
+		return resp, err
+	end
+
+	function client:create_pattern(pattern_data)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "create_pattern",
+				arguments = pattern_data
+			}
+		})
+		return resp, err
+	end
+
+	-- Session Management (using MCP tools)
+	function client:get_session_info()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "get_session_info",
+				arguments = {}
+			}
+		})
+		return resp, err
+	end
+
+	function client:update_session_context(context)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "update_session_context",
+				arguments = {
+					context = context or {}
+				}
+			}
+		})
+		return resp, err
+	end
+
+	-- Debug and Testing
+	function client:test_connection()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "test_connection",
+				arguments = {}
+			}
+		})
+		return resp, err
+	end
+
+	function client:get_debug_info()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "get_debug_info",
+				arguments = {}
+			}
+		})
+		return resp, err
+	end
+
+	-- Initialize streaming state
+	client.streaming_chunks = {}
+	client.is_streaming = false
+	client.current_streaming_request_id = nil
+	client.streaming_error = nil
+	client.final_response = nil
+
 	return client
 end
 
--- Get RPC client, initializing backend if needed
-function M._get_rpc_client()
-	if not M._rpc_client then
-		-- Return nil immediately - let calling functions handle initialization
-		-- This prevents freezing during buffer operations
-		return nil
-	end
-
-	-- Check if the client is still connected and try to reconnect if needed
-	-- Don't reconnect during active streaming to avoid stream conflicts
-	if not M._rpc_client:is_connected() and not M._rpc_client.is_streaming then
-		local debug = require("paragonic.debug")
-		debug.debug_print("🔧 Client disconnected, attempting reconnection...", "info")
-		local success = M._rpc_client:reconnect()
-		if not success then
-			debug.debug_print("❌ Reconnection failed, returning nil", "error")
-			return nil
-		end
-		debug.debug_print("✅ Client reconnected successfully", "success")
-	elseif not M._rpc_client:is_connected() and M._rpc_client.is_streaming then
-		local debug = require("paragonic.debug")
-		debug.debug_print("⚠️ Client disconnected during streaming, not reconnecting to preserve stream", "warning")
-	end
-
-	return M._rpc_client
-end
-
--- Initialize Rust backend (now MCP HTTP)
-function M._initialize_backend()
+-- Initialize backend
+function M.init()
 	local debug = require("paragonic.debug")
-	debug.debug_print("🔧 _initialize_backend() called (MCP)", "debug")
+	debug.debug_print("🔧 Initializing Paragonic backend", "info")
 
-	-- Only initialize once
-	if M._rpc_client then
-		debug.debug_print("✅ Client already exists, returning true", "info")
-		return true
-	end
+	-- Create MCP client
+	M._rpc_client = create_mcp_client()
 
-	debug.debug_print("🔧 Starting MCP backend initialization...", "info")
-
-	-- Create MCP client shim
-	local client = create_mcp_client()
-	M._rpc_client = client
-
-	-- Connection attempts (preserve original timing/flow)
-	local connection_timeout = 5000 -- 5 seconds
-	local max_retries = 2
-	local retry_count = 0
-
-	while retry_count <= max_retries do
-		local start_time = vim.loop.hrtime() / 1000000
-		debug.debug_print(
-			"🔧 Attempt " .. (retry_count + 1) .. "/" .. (max_retries + 1) .. ": About to call connect()...",
-			"debug"
-		)
-
-		local ok, err = M._rpc_client:connect()
-		if not ok then
-			local end_time = vim.loop.hrtime() / 1000000
-			local duration = end_time - start_time
-			retry_count = retry_count + 1
-			if duration > connection_timeout then
-				debug.debug_print(
-					"❌ Connection timed out after "
-						.. string.format("%.1f", duration)
-						.. "ms (attempt "
-						.. retry_count
-						.. "/"
-						.. (max_retries + 1)
-						.. ")",
-					"error"
-				)
-			else
-				debug.debug_print(
-					"❌ Connection failed: "
-						.. (err or "unknown error")
-						.. " (attempt "
-						.. retry_count
-						.. "/"
-						.. (max_retries + 1)
-						.. ")",
-					"error"
-				)
-			end
-			if retry_count > max_retries then
-				debug.debug_print("❌ Failed to connect after " .. (max_retries + 1) .. " attempts", "error")
-				M._rpc_client = nil
-				return false
-			end
-			debug.debug_print("⏳ Waiting 1 second before retry...", "info")
-			vim.wait(1000)
-		else
-			debug.debug_print("✅ Connection successful!", "success")
-			break
-		end
-	end
-
-	-- Skip hello call to preserve SSE connection for streaming
-	debug.debug_print("🔧 Step 4: Skipping hello call to preserve SSE connection for streaming", "debug")
-	
-	debug.debug_print(
-		"✅ Backend initialization completed successfully",
-		"success"
-	)
+	debug.debug_print("✅ Paragonic backend initialized", "success")
 	return true
 end
 
--- Force reconnection to the backend (useful when server restarts)
-function M.force_reconnect()
-	local debug = require("paragonic.debug")
-	debug.debug_print("🔧 force_reconnect() called", "debug")
-
-	if not M._rpc_client then
-		debug.debug_print("🔧 No client exists, initializing backend...", "info")
-		return M._initialize_backend()
-	end
-
-	debug.debug_print("🔧 Forcing reconnection of existing client...", "info")
-	M._rpc_client:disconnect()
-	local success = M._rpc_client:reconnect()
-	if success then
-		debug.debug_print("✅ Force reconnection successful", "success")
-		return true
-	else
-		debug.debug_print("❌ Force reconnection failed, reinitializing backend...", "error")
-		M._rpc_client = nil
-		return M._initialize_backend()
-	end
+-- Get RPC client instance
+function M._get_rpc_client()
+	return M._rpc_client
 end
 
--- Manually initialize backend when needed
+-- Connect to backend
+function M.connect()
+	if not M._rpc_client then
+		M.init()
+	end
+
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔧 Connecting to Paragonic backend", "info")
+
+	local success, err = M._rpc_client:connect()
+	if success then
+		debug.debug_print("✅ Connected to Paragonic backend", "success")
+	else
+		debug.debug_print("❌ Failed to connect to Paragonic backend: " .. tostring(err), "error")
+	end
+
+	return success, err
+end
+
+-- Initialize backend (for backward compatibility with chat module)
 function M.initialize_backend()
 	if not M._rpc_client then
-		-- If MCP is already initialized and connected, adopt it without reconnecting
-		local ok_mcp, mcp = pcall(require, "paragonic.mcp_http_transport")
-		if ok_mcp and mcp.is_ready() then
-			M._rpc_client = (M._rpc_client or create_mcp_client())
-			return true
+		M.init()
+	end
+	
+	local success, err = M.connect()
+	return success
+end
+
+-- Disconnect from backend
+function M.disconnect()
+	if M._rpc_client then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔧 Disconnecting from Paragonic backend", "info")
+
+		local success = M._rpc_client:disconnect()
+		if success then
+			debug.debug_print("✅ Disconnected from Paragonic backend", "success")
+		else
+			debug.debug_print("❌ Failed to disconnect from Paragonic backend", "error")
 		end
-		M._initialize_backend()
+
+		return success
 	end
-	return M._rpc_client ~= nil
+	return false
 end
 
--- Get list of available models
-function M.get_available_models()
-	local rpc_client = M._get_rpc_client()
-	if not rpc_client then
-		-- Return default models to prevent freezing
-		return { "deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest" }
+-- Check if connected
+function M.is_connected()
+	if M._rpc_client then
+		return M._rpc_client:is_connected()
 	end
-
-	local success, response = pcall(function()
-		return rpc_client:list_models()
-	end)
-
-	if not success or not response then
-		return { "deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest" }
-	end
-
-	local utils = require("paragonic.utils")
-	local parsed_response = utils.parse_json_response(response)
-	if not parsed_response then
-		return { "deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest" }
-	end
-
-	if parsed_response.result and parsed_response.result.models then
-		return parsed_response.result.models
-	else
-		return { "deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest" }
-	end
+	return false
 end
 
--- The remainder of the module uses the rpc_client interface unchanged
--- (get_projects, create_project, get_config, save_config, search functions)
--- which are now backed by MCP HTTP through the shim above
+-- Reconnect to backend
+function M.reconnect()
+	if M._rpc_client then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔧 Reconnecting to Paragonic backend", "info")
+
+		local success, err = M._rpc_client:reconnect()
+		if success then
+			debug.debug_print("✅ Reconnected to Paragonic backend", "success")
+		else
+			debug.debug_print("❌ Failed to reconnect to Paragonic backend: " .. tostring(err), "error")
+		end
+
+		return success, err
+	end
+	return false, "No RPC client available"
+end
+
+-- Get backend status
+function M.get_status()
+	if not M._rpc_client then
+		return {
+			initialized = false,
+			connected = false,
+			streaming = false,
+		}
+	end
+
+	return {
+		initialized = true,
+		connected = M._rpc_client:is_connected(),
+		streaming = M._rpc_client.is_streaming or false,
+		streaming_chunks_count = #(M._rpc_client.streaming_chunks or {}),
+		current_streaming_request_id = M._rpc_client.current_streaming_request_id,
+		streaming_error = M._rpc_client.streaming_error,
+	}
+end
+
+-- Clean up backend
+function M.cleanup()
+	if M._rpc_client then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔧 Cleaning up Paragonic backend", "info")
+
+		M._rpc_client:disconnect()
+		M._rpc_client = nil
+
+		debug.debug_print("✅ Paragonic backend cleaned up", "success")
+	end
+end
 
 return M

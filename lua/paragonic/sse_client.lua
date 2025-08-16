@@ -1,8 +1,8 @@
 -- SSE client for MCP HTTP Server-Sent Events
 --
 -- This module provides SSE client functionality for the MCP
--- Streamable HTTP transport, including connection management,
--- event parsing, and stream resumption.
+-- Streamable HTTP transport, handling temporary SSE streams
+-- per request as specified in the MCP standard.
 
 local sse_client = {}
 -- Try to load http_client with different paths
@@ -14,35 +14,23 @@ else
 	-- Fallback to relative path
 	success, result = pcall(require, "http_client")
 	if success then
-		http_client = result
-	else
 		-- Final fallback to absolute path
 		http_client = require("../../lua/paragonic/http_client")
 	end
 end
 
 -- SSE client configuration
-local DEFAULT_RECONNECT_DELAY = 1 -- seconds
-local DEFAULT_MAX_RECONNECT_ATTEMPTS = 5
-local DEFAULT_EVENT_BUFFER_SIZE = 100
+local DEFAULT_TIMEOUT = 30 -- seconds
 
 -- SSE client state
 local client_state = {
 	base_url = nil,
 	session_id = nil,
-	stream_id = nil,
-	last_event_id = nil,
-	is_connected = false,
-	stream_expired = false,
-	auto_reconnect = true,
-	reconnect_delay = DEFAULT_RECONNECT_DELAY,
-	max_reconnect_attempts = DEFAULT_MAX_RECONNECT_ATTEMPTS,
-	event_buffer_size = DEFAULT_EVENT_BUFFER_SIZE,
-	event_buffer = {},
+	timeout = DEFAULT_TIMEOUT,
 	callbacks = {},
-	connection_thread = nil,
 	connection_client = nil,
 	read_buffer = "",
+	is_connected = false,
 }
 
 -- SSE event structure
@@ -57,9 +45,7 @@ local SSEEvent = {
 -- SSE client errors
 local SSEClientError = {
 	CONNECTION_FAILED = "connection_failed",
-	STREAM_NOT_FOUND = "stream_not_found",
 	INVALID_EVENT = "invalid_event",
-	MAX_RECONNECT_ATTEMPTS_EXCEEDED = "max_reconnect_attempts_exceeded",
 	ALREADY_CONNECTED = "already_connected",
 	NOT_CONNECTED = "not_connected",
 	INVALID_URL = "invalid_url",
@@ -70,14 +56,12 @@ function sse_client.init(config)
 	config = config or {}
 
 	client_state.base_url = config.base_url or "http://localhost:3000"
-	client_state.reconnect_delay = config.reconnect_delay or DEFAULT_RECONNECT_DELAY
-	client_state.max_reconnect_attempts = config.max_reconnect_attempts or DEFAULT_MAX_RECONNECT_ATTEMPTS
-	client_state.event_buffer_size = config.event_buffer_size or DEFAULT_EVENT_BUFFER_SIZE
+	client_state.timeout = config.timeout or DEFAULT_TIMEOUT
 
 	-- Initialize HTTP client
 	http_client.init({
 		base_url = client_state.base_url,
-		timeout = config.timeout or 30,
+		timeout = client_state.timeout,
 		retry_attempts = 1, -- SSE handles its own retries
 	})
 
@@ -98,31 +82,6 @@ end
 -- Get current session ID
 function sse_client.get_session_id()
 	return client_state.session_id
-end
-
--- Set stream ID
-function sse_client.set_stream_id(stream_id)
-	if not stream_id or type(stream_id) ~= "string" then
-		return false, "Invalid stream ID"
-	end
-
-	client_state.stream_id = stream_id
-	return true
-end
-
--- Get current stream ID
-function sse_client.get_stream_id()
-	return client_state.stream_id
-end
-
--- Set last event ID for resumption
-function sse_client.set_last_event_id(event_id)
-	client_state.last_event_id = event_id
-end
-
--- Get last event ID
-function sse_client.get_last_event_id()
-	return client_state.last_event_id
 end
 
 -- Parse SSE event from text
@@ -168,64 +127,20 @@ function sse_client.parse_event(event_text)
 	return event
 end
 
--- Connection worker (runs in separate thread)
-function sse_client._connection_worker()
-	local reconnect_attempts = 0
-
-	while client_state.is_connected do
-		local success, response = pcall(function()
-			return sse_client._establish_connection()
-		end)
-
-		if not success or not response then
-			reconnect_attempts = reconnect_attempts + 1
-
-			-- Trigger on_error callback
-			if client_state.callbacks.on_error then
-				client_state.callbacks.on_error("Connection failed", reconnect_attempts)
-			end
-
-			if reconnect_attempts >= client_state.max_reconnect_attempts then
-				-- Trigger on_max_reconnect_attempts callback
-				if client_state.callbacks.on_max_reconnect_attempts then
-					client_state.callbacks.on_max_reconnect_attempts()
-				end
-				break
-			end
-
-			-- Wait before reconnecting
-			vim.wait(client_state.reconnect_delay * 1000)
-		else
-			-- Reset reconnect attempts on successful connection
-			reconnect_attempts = 0
-
-			-- Process SSE stream
-			sse_client._process_stream(response)
-		end
-	end
-end
-
--- Connect to SSE stream
+-- Connect to SSE stream (temporary connection for single request)
 function sse_client.connect(stream_id, callbacks)
 	if client_state.is_connected then
 		return false, SSEClientError.ALREADY_CONNECTED
 	end
 
-	-- Stream ID is optional - the server creates streams internally
-	-- If provided, validate it's a string
-	if stream_id and type(stream_id) ~= "string" then
-		return false, "Invalid stream ID"
-	end
-
-	-- Set stream ID and callbacks
-	client_state.stream_id = stream_id
+	-- Set callbacks
 	client_state.callbacks = callbacks or {}
 
 	-- Check if we're in a test environment (no real Neovim)
 	local is_test_environment = not pcall(function() return vim.api end)
 	
 	if is_test_environment then
-		-- In test environment, avoid uv threads; mark as connected
+		-- In test environment, mark as connected
 		client_state.is_connected = true
 		if client_state.callbacks.on_connect then
 			client_state.callbacks.on_connect(stream_id or "default")
@@ -244,7 +159,7 @@ function sse_client.connect(stream_id, callbacks)
 			
 			-- Log successful connection
 			local debug = require("paragonic.debug")
-			debug.debug_print_safe("✅ SSE connection established for stream: " .. (stream_id or "default"), "success")
+			debug.debug_print_safe("✅ SSE connection established for temporary stream", "success")
 			
 			if client_state.callbacks.on_connect then
 				client_state.callbacks.on_connect(stream_id or "default")
@@ -257,10 +172,9 @@ function sse_client.connect(stream_id, callbacks)
 		else
 			-- For now, let's skip SSE connection if it fails and just return success
 			-- This allows the MCP transport to work without SSE for basic functionality
-			-- Use debug buffer instead of print to avoid blocking
 			local debug = require("paragonic.debug")
 			debug.debug_print_safe("⚠️ SSE connection failed, continuing without SSE: " .. (client_or_err or "unknown error"), "warning")
-			debug.debug_print_safe("🔧 Falling back to non-SSE mode for stream: " .. (stream_id or "default"), "info")
+			debug.debug_print_safe("🔧 Falling back to non-SSE mode", "info")
 			client_state.is_connected = true
 			
 			if client_state.callbacks.on_connect then
@@ -285,26 +199,12 @@ function sse_client._setup_async_reading(client)
 			if client_state.callbacks.on_error then
 				client_state.callbacks.on_error("SSE read error: " .. err, 0)
 			end
-			-- Check if streaming is active before disconnecting
-			local backend = require("paragonic.backend")
-			local rpc_client = backend._get_rpc_client()
-			if rpc_client and rpc_client.is_streaming then
-				debug.debug_print_safe("⚠️ SSE error during active streaming, not disconnecting", "warning")
-				return
-			end
 			sse_client.disconnect()
 			return
 		end
 		
 		if not data then
 			-- Connection closed
-			-- Check if streaming is active before disconnecting
-			local backend = require("paragonic.backend")
-			local rpc_client = backend._get_rpc_client()
-			if rpc_client and rpc_client.is_streaming then
-				debug.debug_print_safe("⚠️ SSE connection closed during active streaming, not disconnecting", "warning")
-				return
-			end
 			sse_client.disconnect()
 			return
 		end
@@ -444,8 +344,6 @@ function sse_client.disconnect()
 		client_state.connection_client:close()
 		client_state.connection_client = nil
 	end
-	
-	client_state.connection_thread = nil
 
 	if client_state.callbacks.on_disconnect then
 		client_state.callbacks.on_disconnect()
@@ -472,11 +370,6 @@ function sse_client._establish_connection()
 	-- Add session ID if available
 	if client_state.session_id then
 		table.insert(headers, "mcp-session-id: " .. client_state.session_id)
-	end
-
-	-- Add Last-Event-ID header for resumption
-	if client_state.last_event_id then
-		table.insert(headers, "Last-Event-ID: " .. client_state.last_event_id)
 	end
 
 	-- Use vim.uv for async HTTP request
@@ -538,39 +431,6 @@ function sse_client._establish_connection()
 	return client
 end
 
--- Process SSE stream
-function sse_client._process_stream(stream_data)
-	if not stream_data or type(stream_data) ~= "string" then
-		return
-	end
-
-	-- Split stream into events
-	local events = {}
-	local current_event = ""
-
-	for line in stream_data:gmatch("[^\r\n]*") do
-		if line == "" then
-			-- Empty line indicates end of event
-			if current_event ~= "" then
-				table.insert(events, current_event)
-				current_event = ""
-			end
-		else
-			current_event = current_event .. line .. "\n"
-		end
-	end
-
-	-- Process each event
-	for _, event_text in ipairs(events) do
-		local event, err = sse_client.parse_event(event_text)
-		if event then
-			sse_client._handle_event(event)
-		elseif client_state.callbacks.on_parse_error then
-			client_state.callbacks.on_parse_error(err, event_text)
-		end
-	end
-end
-
 -- Handle parsed SSE event
 function sse_client._handle_event(event)
 	-- Log event handling
@@ -579,53 +439,6 @@ function sse_client._handle_event(event)
 	
 	-- Log connection status
 	debug.debug_print_safe("🔗 SSE Connection status: " .. (client_state.is_connected and "connected" or "disconnected"), "debug")
-	
-	-- Update last event ID
-	if event.id then
-		client_state.last_event_id = event.id
-	end
-
-	-- Add to event buffer
-	table.insert(client_state.event_buffer, event)
-	if #client_state.event_buffer > client_state.event_buffer_size then
-		table.remove(client_state.event_buffer, 1)
-	end
-
-	-- Check for stream expiration notification
-	if event.event_type == "notification" and event.data then
-		local success, parsed_data = pcall(vim.json.decode, event.data)
-		if success and parsed_data and parsed_data.params and parsed_data.params.type == "stream_expired" then
-			debug.debug_print_safe("⚠️ Stream expired notification received: " .. (parsed_data.params.message or "Unknown"), "warning")
-			
-			-- Check if streaming is active before handling stream expiration
-			local backend = require("paragonic.backend")
-			local rpc_client = backend._get_rpc_client()
-			if rpc_client and rpc_client.is_streaming then
-				debug.debug_print_safe("⚠️ Stream expired during active streaming, deferring reconnection", "warning")
-				-- Don't disconnect during active streaming, just log the expiration
-				return
-			end
-			
-			-- Mark connection as expired
-			client_state.is_connected = false
-			client_state.stream_expired = true
-			
-			-- Trigger stream expiration callback
-			if client_state.callbacks.on_stream_expired then
-				client_state.callbacks.on_stream_expired(parsed_data.params)
-			end
-			
-			-- Auto-reconnect if enabled
-			if client_state.auto_reconnect then
-				debug.debug_print_safe("🔄 Auto-reconnecting to new stream...", "info")
-				vim.defer_fn(function()
-					sse_client._auto_reconnect()
-				end, 1000) -- Wait 1 second before reconnecting
-			end
-			
-			return
-		end
-	end
 
 	-- Trigger appropriate callback
 	if event.event_type == "message" or not event.event_type then
@@ -648,60 +461,6 @@ function sse_client._handle_event(event)
 	end
 end
 
--- Get event buffer
-function sse_client.get_event_buffer()
-	return client_state.event_buffer
-end
-
--- Clear event buffer
-function sse_client.clear_event_buffer()
-	client_state.event_buffer = {}
-end
-
--- Auto-reconnect to new stream
-function sse_client._auto_reconnect()
-	local debug = require("paragonic.debug")
-	
-	-- Reset expired flag
-	client_state.stream_expired = false
-	
-	-- Disconnect current connection
-	sse_client.disconnect()
-	
-	-- Try to reconnect with new stream
-	local success, err = sse_client.connect(nil, client_state.callbacks)
-	if success then
-		debug.debug_print_safe("✅ Auto-reconnected to new stream successfully", "success")
-		
-		-- Trigger reconnection callback
-		if client_state.callbacks.on_reconnected then
-			client_state.callbacks.on_reconnected()
-		end
-	else
-		debug.debug_print_safe("❌ Auto-reconnection failed: " .. (err or "unknown error"), "error")
-		
-		-- Trigger reconnection failure callback
-		if client_state.callbacks.on_reconnect_failed then
-			client_state.callbacks.on_reconnect_failed(err)
-		end
-	end
-end
-
--- Enable/disable auto-reconnect
-function sse_client.set_auto_reconnect(enabled)
-	client_state.auto_reconnect = enabled
-end
-
--- Get auto-reconnect status
-function sse_client.get_auto_reconnect()
-	return client_state.auto_reconnect
-end
-
--- Check if stream is expired
-function sse_client.is_stream_expired()
-	return client_state.stream_expired
-end
-
 -- Check if connected
 function sse_client.is_connected()
 	return client_state.is_connected
@@ -712,9 +471,6 @@ function sse_client.get_connection_status()
 	return {
 		is_connected = client_state.is_connected,
 		session_id = client_state.session_id,
-		stream_id = client_state.stream_id,
-		last_event_id = client_state.last_event_id,
-		event_buffer_size = #client_state.event_buffer,
 	}
 end
 
@@ -729,15 +485,11 @@ function sse_client.cleanup()
 	client_state = {
 		base_url = nil,
 		session_id = nil,
-		stream_id = nil,
-		last_event_id = nil,
-		is_connected = false,
-		reconnect_delay = DEFAULT_RECONNECT_DELAY,
-		max_reconnect_attempts = DEFAULT_MAX_RECONNECT_ATTEMPTS,
-		event_buffer_size = DEFAULT_EVENT_BUFFER_SIZE,
-		event_buffer = {},
+		timeout = DEFAULT_TIMEOUT,
 		callbacks = {},
-		connection_thread = nil,
+		connection_client = nil,
+		read_buffer = "",
+		is_connected = false,
 	}
 
 	-- Clean up HTTP client
