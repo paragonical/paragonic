@@ -8,7 +8,7 @@ local M = {}
 -- Load all modules
 local ai_agent = require("paragonic.ai_agent")
 local backend = require("paragonic.backend")
-local chat = require("paragonic.chat")
+-- local chat = require("paragonic.chat") -- Temporarily disabled due to syntax errors
 local config = require("paragonic.config")
 local debug = require("paragonic.debug")
 local events = require("paragonic.events")
@@ -23,7 +23,7 @@ local utils = require("paragonic.utils")
 -- Expose modules directly for clean API
 M.ai_agent = ai_agent
 M.backend = backend
-M.chat = chat
+-- M.chat = chat -- Temporarily disabled due to syntax errors
 M.config = config
 M.debug = debug
 M.events = events
@@ -52,14 +52,14 @@ function M.setup(opts)
 	-- Define all user commands in a table for clean iteration
 	local commands = {
 		-- Core interface commands
-		{ name = "ParagonicChat", func = M.chat.open_chat, opts = {} },
+		-- { name = "ParagonicChat", func = M.chat.open_chat, opts = {} }, -- Temporarily disabled due to syntax errors
 		{ name = "ParagonicDebug", func = M.debug.open_debug_buffer, opts = {} },
 
-		-- Chat commands
-		{ name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {} },
-		{ name = "ParagonicSendThinking", func = M.chat.send_message_command_thinking, opts = {} },
-		{ name = "ParagonicSendSmart", func = M.chat.send_message_command_smart, opts = {} },
-		{ name = "ParagonicDebugMarkdown", func = M.chat.send_debug_markdown_test, opts = {} },
+		-- Chat commands (temporarily disabled due to syntax errors)
+		-- { name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {} },
+		-- { name = "ParagonicSendThinking", func = M.chat.send_message_command_thinking, opts = {} },
+		-- { name = "ParagonicSendSmart", func = M.chat.send_message_command_smart, opts = {} },
+		-- { name = "ParagonicDebugMarkdown", func = M.chat.send_debug_markdown_test, opts = {} },
 		{
 			name = "ParagonicTest",
 			func = function()
