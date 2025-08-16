@@ -1297,10 +1297,10 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 				local chunk = chunks[chunk_index]
 				if on_chunk then
 					local chunk_type = chunk.chunk_type or "regular_content"
-					debug.debug_print("🔄 About to call on_chunk for chunk " .. chunk_index .. " with type: " .. chunk_type, "debug")
+					debug.debug_print("🔄 About to call on_chunk for chunk " .. tostring(chunk_index) .. " with type: " .. chunk_type, "debug")
 					debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
-					on_chunk(chunk.chunk, chunk.chunk_index, chunk.total_chunks, chunk_type)
-					debug.debug_print("🔄 on_chunk call completed for chunk " .. chunk_index, "debug")
+					on_chunk(chunk.chunk, chunk.chunk_index or 0, chunk.total_chunks or 1, chunk_type)
+					debug.debug_print("🔄 on_chunk call completed for chunk " .. tostring(chunk_index), "debug")
 				end
 				
 				-- Schedule next chunk processing with a small delay for smooth animation
@@ -1809,7 +1809,9 @@ function M.send_message_command_thinking()
 		-- Test if we can access the debug module
 		local ok, debug = pcall(require, "paragonic.debug")
 		if ok then
-			debug.debug_print("🔄 Processing chunk " .. chunk_index .. " of " .. total_chunks .. " (type: " .. chunk_type .. ")", "debug")
+			local chunk_index_str = chunk_index and tostring(chunk_index) or "unknown"
+			local total_chunks_str = total_chunks and tostring(total_chunks) or "unknown"
+			debug.debug_print("🔄 Processing chunk " .. chunk_index_str .. " of " .. total_chunks_str .. " (type: " .. chunk_type .. ")", "debug")
 		else
 			vim.notify("DEBUG ERROR: " .. tostring(debug), vim.log.levels.ERROR)
 		end

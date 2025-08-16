@@ -154,6 +154,7 @@ function M.wrap_text_with_glyph(text, max_width, glyph)
 					end
 				end
 			else
+				table.insert(lines, "")
 				-- Regular text - simple word wrapping with glyph prefix
 				local words = {}
 				for word in clean_line:gmatch("[^%s]+") do
