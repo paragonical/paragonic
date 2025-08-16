@@ -47,6 +47,10 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 					debug.debug_print("🧠 Added thinking_start line", "debug")
 				end
 			end
+			-- Debug notification to see if this chunk type is being processed
+			if enable_debug then
+				vim.notify("DEBUG: Processing thinking_start chunk", vim.log.levels.INFO)
+			end
 		elseif chunk_type == "thinking_content" then
 			-- Add thinking step with proper wrapping and zigzag prefix
 			local utils = require("paragonic.utils")
