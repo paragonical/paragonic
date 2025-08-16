@@ -1289,37 +1289,21 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		end
 	end
 
-	-- Process all chunks from SSE
-	local processed_chunks = 0
-	local total_chunks = #chunks
-	
-	-- Function to process chunks
-	local function process_chunks()
-		for i, chunk in ipairs(chunks) do
-			-- Process this chunk with thinking logic
-			if chunk.chunk then
-				process_thinking_content(chunk.chunk, false)
-				
-				-- Small delay for smooth animation
-				if i < #chunks then
-					vim.wait(50) -- 50ms delay between chunks
-				end
-			end
-		end
-		
-		-- Process any remaining content
-		if thinking_state.current_content ~= "" then
-			process_thinking_content(thinking_state.current_content, true)
-		end
-		
-		-- All chunks processed
-		if on_complete then
-			on_complete()
+	-- Collect all content from chunks first
+	local full_content = ""
+	for _, chunk in ipairs(chunks) do
+		if chunk.chunk then
+			full_content = full_content .. chunk.chunk
 		end
 	end
 	
-	-- Start processing chunks
-	vim.defer_fn(process_chunks, 100) -- Start after 100ms
+	-- Process the complete content with thinking logic
+	process_thinking_content(full_content, true)
+	
+	-- All chunks processed
+	if on_complete then
+		on_complete()
+	end
 
 	return true
 end
