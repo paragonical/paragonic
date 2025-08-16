@@ -404,6 +404,11 @@ function M.send_message_enhanced(message, model)
 		if type(response.result) == "table" and response.result.content then
 			return response.result.content
 		end
+
+		-- Check if result is a table with completion (MCP format)
+		if type(response.result) == "table" and response.result.completion then
+			return response.result.completion
+		end
 	end
 
 	if response.message then
