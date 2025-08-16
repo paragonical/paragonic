@@ -1,7 +1,7 @@
 # Non-Blocking Streaming Fix
 
 ## Problem
-The thinking streaming implementation in the Neovim client was blocking the UI during streaming requests, preventing users from doing any work while streaming was in progress. Additionally, when users switched to different buffers during streaming, the client would crash with "Cursor position outside buffer" errors. Debug notifications were also creating noise during normal operation.
+The thinking streaming implementation in the Neovim client was blocking the UI during streaming requests, preventing users from doing any work while streaming was in progress. Additionally, when users switched to different buffers during streaming, the client would crash with "Cursor position outside buffer" errors. Debug notifications were also creating noise during normal operation. Thinking content chunks were not being wrapped properly, making long thinking steps difficult to read.
 
 ## Root Cause
 The issue was caused by blocking `vim.wait()` calls in two streaming functions:
@@ -18,6 +18,10 @@ The issue was caused by blocking `vim.wait()` calls in two streaming functions:
 6. **Excessive noise**: Debug notifications were showing during normal operation
 7. **No configuration**: No way to disable debug notifications while keeping debug buffer functionality
 
+**Thinking Content Issues:**
+8. **No text wrapping**: Thinking content chunks were added directly without wrapping, making long thinking steps hard to read
+9. **Poor readability**: Long thinking steps would extend beyond the buffer width
+
 ## Solution
 Replaced the blocking polling approach with a non-blocking asynchronous implementation using:
 
@@ -27,6 +31,7 @@ Replaced the blocking polling approach with a non-blocking asynchronous implemen
 - **Window ID storage** - Store window ID at start to avoid current window issues
 - **Window validation** - Check if stored window still exists before using it
 - **Debug notification configuration** - Allow disabling notifications while keeping debug buffer
+- **Thinking content wrapping** - Use `wrap_text_with_zigzag()` for proper text wrapping of thinking steps
 
 ## Changes Made
 
@@ -36,6 +41,7 @@ Replaced the blocking polling approach with a non-blocking asynchronous implemen
 - Implemented recursive `process_chunk_async()` function for smooth chunk processing
 - Added proper timer cleanup on completion or timeout
 - **Window safety**: Store window ID and validate before use
+- **Thinking content wrapping**: Use `utils.wrap_text_with_zigzag()` for proper text wrapping
 
 ### 2. `send_message_streaming` function  
 - Applied the same non-blocking pattern
@@ -56,10 +62,18 @@ Replaced the blocking polling approach with a non-blocking asynchronous implemen
 - **Configuration functions**: `debug.configure_debug()`, `debug.disable_notifications()`, `debug.enable_notifications()`
 - **Debug buffer preserved**: All debug messages still go to debug buffer regardless of notification setting
 
-### 5. Test Implementation
+### 5. Thinking Content Wrapping
+- **Text wrapping**: Use `utils.wrap_text_with_zigzag()` for thinking content chunks
+- **Proper indentation**: First line starts with zigzag symbol (〻), continuation lines indented
+- **Width calculation**: Use stored window width with 70% buffer width limit
+- **Fallback width**: Default to 80 characters if window is unavailable
+- **Unicode handling**: Proper handling of zigzag symbol as single Unicode character
+
+### 6. Test Implementation
 - Created `test_non_blocking_streaming.lua` to verify the fix
 - Created `test_window_safety.lua` to verify window safety
 - Created `test_debug_notifications.lua` to verify debug notification configuration
+- Created `test_thinking_content_wrapping.lua` to verify thinking content wrapping
 - Tests confirm functions return immediately (0ms) instead of blocking
 - Uses mocked backend to avoid actual network calls during testing
 
@@ -73,6 +87,8 @@ Replaced the blocking polling approach with a non-blocking asynchronous implemen
 - ✅ **Robust error handling**: Graceful fallbacks when windows become invalid
 - ✅ **Reduced noise**: Debug notifications disabled by default
 - ✅ **Configurable debugging**: Users can enable notifications when needed for troubleshooting
+- ✅ **Better readability**: Thinking content is properly wrapped for easier reading
+- ✅ **Consistent formatting**: All content types (regular and thinking) use proper text wrapping
 
 ## Technical Details
 - **Polling interval**: 100ms (reduced from 100ms wait)
@@ -82,6 +98,8 @@ Replaced the blocking polling approach with a non-blocking asynchronous implemen
 - **Window validation**: `vim.api.nvim_win_is_valid()` checks before window operations
 - **Default width**: 80 characters when window is unavailable
 - **Debug configuration**: Centralized configuration system for debug settings
+- **Text wrapping**: 70% of buffer width for content wrapping
+- **Unicode handling**: Proper character counting for Unicode symbols
 
 ## Usage
 
@@ -107,6 +125,17 @@ local debug = require("paragonic.debug")
 debug.open_debug_buffer()
 ```
 
+### Thinking Content Formatting
+Thinking content is now properly wrapped with zigzag symbols:
+
+```
+🧠  <think>
+〻  This is a long thinking step that should be
+    wrapped to multiple lines when it exceeds the
+    maximum width limit for better readability.
+󱦟  </think>
+```
+
 ## Testing
 The fix has been verified with unit tests that confirm:
 - Functions return immediately (non-blocking)
@@ -116,3 +145,5 @@ The fix has been verified with unit tests that confirm:
 - Graceful handling of buffer switches during streaming
 - Debug notification configuration works correctly
 - Debug buffer functionality is preserved when notifications are disabled
+- Thinking content is properly wrapped with zigzag symbols
+- Unicode characters are handled correctly in text wrapping

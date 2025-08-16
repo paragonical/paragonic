@@ -835,8 +835,20 @@ function M.send_message_command_debug()
 			-- Start thinking section
 			table.insert(response_lines, "🧠  <think>")
 		elseif chunk_type == "thinking_content" then
-			-- Add thinking step with proper indentation
-			table.insert(response_lines, "〻  " .. chunk)
+			-- Add thinking step with proper wrapping and zigzag prefix
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
 		elseif chunk_type == "thinking_end" then
 			-- End thinking section
 			table.insert(response_lines, "󱦟  </think>")

@@ -160,7 +160,7 @@ function M.wrap_text_with_glyph(text, max_width, glyph)
 					table.insert(words, word)
 				end
 
-				local current_line = glyph .. "  "
+				local current_line = glyph .. " "
 				local current_length = #glyph + 2 -- Length of glyph + two spaces
 
 				for j, word in ipairs(words) do
@@ -169,12 +169,12 @@ function M.wrap_text_with_glyph(text, max_width, glyph)
 					-- If adding this word would exceed the line limit
 					if current_length + word_length > max_width then
 						-- Add current line to lines (if not empty)
-						if current_line ~= (glyph .. "  ") then
+						if current_line ~= (glyph .. " ") then
 							table.insert(lines, current_line)
 						end
-						-- Start new line with five spaces (2-space gutter + 3-space continuation)
-						current_line = "     " .. word
-						current_length = 5 + word_length
+						-- Start new line with same indentation as content part of first line
+						current_line = "    " .. word
+						current_length = 4 + word_length
 					else
 						-- Add word to current line (with space if not first word)
 						if current_line ~= (glyph .. "  ") then
