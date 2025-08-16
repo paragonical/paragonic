@@ -1729,6 +1729,9 @@ function M.send_message_command_thinking()
 
 	-- Set up chunk callback for thinking streaming
 	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
+		-- Simple test to see if callback is working
+		vim.notify("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
+		
 		local debug = require("paragonic.debug")
 		debug.debug_print("🔄 Processing chunk " .. chunk_index .. " of " .. total_chunks .. " (type: " .. chunk_type .. ")", "debug")
 		
