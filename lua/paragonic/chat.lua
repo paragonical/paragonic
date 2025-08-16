@@ -1188,6 +1188,11 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 				on_complete()
 			end
 			return true
+		elseif response.result.chunk_type == "thinking_start" then
+			-- For thinking_start, we need to wait for additional chunks, but set a shorter timeout
+			debug.debug_print("Thinking start detected, will wait for additional chunks", "debug")
+			-- Reduce the max wait time for thinking mode
+			max_wait_time = 10 -- seconds instead of 30
 		end
 	else
 		debug.debug_print("No first chunk found in response", "debug")
@@ -1206,6 +1211,13 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	local function check_for_chunks()
 		local chunks = rpc_client:get_streaming_chunks()
 		debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
+		
+		-- Debug: Check if we're receiving any SSE data
+		if rpc_client and rpc_client.is_connected then
+			debug.debug_print("RPC client is connected, checking for new data", "debug")
+		else
+			debug.debug_print("RPC client is not connected", "debug")
+		end
 		
 		if chunks and #chunks > 0 then
 			debug.debug_print("Found " .. #chunks .. " chunks, processing them", "debug")
@@ -1250,10 +1262,21 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		
 		-- Check if we should complete (either timeout or no more chunks expected)
 		if total_wait_time >= max_wait_time or completion_detected then
-			debug.debug_print("Completing streaming (timeout or completion detected)", "debug")
+			debug.debug_print("Completing streaming (timeout or completion detected) after " .. total_wait_time .. "s", "debug")
 			check_timer:stop()
 			check_timer:close()
 			if on_complete and not completion_detected then
+				on_complete()
+			end
+			return
+		end
+		
+		-- For thinking mode, if we've waited more than 5 seconds with no chunks, complete anyway
+		if total_wait_time > 5 and not chunks_processed then
+			debug.debug_print("No chunks received after 5s, completing thinking mode", "debug")
+			check_timer:stop()
+			check_timer:close()
+			if on_complete then
 				on_complete()
 			end
 			return
