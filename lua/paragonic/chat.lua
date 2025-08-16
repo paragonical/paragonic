@@ -1206,88 +1206,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	-- Clear chunks after retrieving them
 	rpc_client:clear_streaming_chunks()
 
-	-- Initialize thinking state
-	local thinking_state = {
-		in_thinking = false,
-		thinking_start_line = nil,
-		thinking_step_count = 0,
-		current_content = "",
-		final_content = "",
-	}
 
-	-- Function to process thinking content
-	local function process_thinking_content(content, is_final)
-		if is_final then
-			thinking_state.final_content = thinking_state.final_content .. content
-		else
-			thinking_state.current_content = thinking_state.current_content .. content
-		end
-
-		-- Check if we're entering thinking mode
-		if not thinking_state.in_thinking and thinking_state.current_content:match("<think>") then
-			thinking_state.in_thinking = true
-			thinking_state.thinking_step_count = 0
-			thinking_state.current_content = thinking_state.current_content:gsub("<think>", "")
-
-			-- Start thinking section with brain symbol
-			if on_chunk then
-				on_chunk("󰧑   <think>\n", 0, 1, "thinking_start")
-			end
-		end
-
-		-- Check if we're exiting thinking mode
-		if thinking_state.in_thinking and thinking_state.current_content:match("</think>") then
-			thinking_state.in_thinking = false
-			local before_end, after_end = thinking_state.current_content:match("(.*)</think>(.*)")
-			thinking_state.current_content = before_end or ""
-			thinking_state.final_content = (after_end or "") .. thinking_state.final_content
-
-			-- End thinking section
-			if on_chunk then
-				on_chunk("</think>\n", 0, 1, "thinking_end")
-			end
-		end
-
-		-- Process thinking content with step detection
-		if thinking_state.in_thinking then
-			-- Split content into lines to detect thinking steps
-			local lines = {}
-			for line in thinking_state.current_content:gmatch("[^\r\n]+") do
-				table.insert(lines, line)
-			end
-
-			-- Process each line for thinking steps
-			for i, line in ipairs(lines) do
-				-- Check if this is a new thinking step (starts with > or specific patterns)
-				if line:match("^%s*>%s*") or line:match("^%s*%d+%.") or line:match("^%s*%-%s*") then
-					thinking_state.thinking_step_count = thinking_state.thinking_step_count + 1
-
-					-- Use brain for first step, vertical ideographic iteration mark for others
-					local step_symbol = thinking_state.thinking_step_count == 1 and "󰧑" or "〻"
-
-					if on_chunk then
-						on_chunk(step_symbol .. "   " .. line .. "\n", 0, 1, "thinking_step")
-					end
-				else
-					-- Regular thinking content
-					if on_chunk then
-						on_chunk("   " .. line .. "\n", 0, 1, "thinking_content")
-					end
-				end
-			end
-
-			-- Clear processed content
-			thinking_state.current_content = ""
-		else
-			-- Regular content (not in thinking mode)
-			if thinking_state.current_content ~= "" then
-				if on_chunk then
-					on_chunk(thinking_state.current_content, 0, 1, "regular_content")
-				end
-				thinking_state.current_content = ""
-			end
-		end
-	end
 
 	-- Debug: Log chunk structure to see what we're receiving
 	local debug = require("paragonic.debug")
@@ -1297,22 +1216,17 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		debug.debug_print("Chunk " .. i .. " content: " .. (chunk.chunk or "no content"):sub(1, 100):gsub("\n", "\\n"), "debug")
 	end
 	
-	-- Collect all content from chunks first
-	local full_content = ""
-	for _, chunk in ipairs(chunks) do
-		if chunk.chunk then
-			full_content = full_content .. chunk.chunk
+	-- Iterate through chunks and call the on_chunk callback for each
+	for i, chunk in ipairs(chunks) do
+		if on_chunk then
+			local chunk_type = chunk.chunk_type or "regular_content"
+			on_chunk(chunk.chunk, chunk.chunk_index, chunk.total_chunks, chunk_type)
+		end
+		-- Small delay for smooth animation
+		if i < #chunks then
+			vim.wait(50) -- 50ms delay between chunks
 		end
 	end
-	
-	-- Debug: Log the content to see if it contains thinking tags
-	debug.debug_print("Full content length: " .. #full_content, "debug")
-	debug.debug_print("Content contains <think>: " .. tostring(full_content:find("<think>") ~= nil), "debug")
-	debug.debug_print("Content contains </think>: " .. tostring(full_content:find("</think>") ~= nil), "debug")
-	debug.debug_print("Content preview: " .. full_content:sub(1, 200):gsub("\n", "\\n"), "debug")
-	
-	-- Process the complete content with thinking logic
-	process_thinking_content(full_content, true)
 	
 	-- All chunks processed
 	if on_complete then
@@ -1781,38 +1695,18 @@ function M.send_message_command_thinking()
 	local response_line_start = line_num + 4
 
 	-- Initialize response buffer and thinking state
-	local response_buffer = ""
 	local thinking_start_line = nil
-	local thinking_end_line = nil
 	local fold_start_line = nil
-	local thinking_step_count = 0
 
 	-- Set up chunk callback for thinking streaming
 	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
 		if chunk_type == "thinking_start" then
-			-- Start thinking section - don't add anything visible yet
-			-- The brain symbol will be added with the first thinking step
+			-- Start thinking section with brain symbol
+			local lines = { "🧠   <think>" }
+			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
 			thinking_start_line = response_line_start
 				+ #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
 			fold_start_line = thinking_start_line
-		elseif chunk_type == "thinking_step" then
-			-- Add thinking step with brain symbol for first step, iteration mark for others
-			local lines = {}
-			for line in chunk:gmatch("[^\r\n]+") do
-				-- Use brain symbol for first thinking step, iteration mark for others
-				local symbol = "󰧑   " -- Brain symbol for first step
-				if thinking_step_count and thinking_step_count > 0 then
-					symbol = "〻   " -- Iteration mark for subsequent steps
-				end
-				table.insert(lines, symbol .. line)
-			end
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-
-			-- Track thinking step count
-			if not thinking_step_count then
-				thinking_step_count = 0
-			end
-			thinking_step_count = thinking_step_count + 1
 		elseif chunk_type == "thinking_content" then
 			-- Add thinking content with indentation
 			local lines = {}
@@ -1821,30 +1715,27 @@ function M.send_message_command_thinking()
 			end
 			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
 		elseif chunk_type == "thinking_end" then
-			-- End thinking section - don't add anything visible
-			-- The thinking process is complete, no need for fold markers
+			-- End thinking section
+			local lines = { "   </think>" }
+			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
 		elseif chunk_type == "regular_content" then
-			-- Add regular content with lozenge symbol
-			response_buffer = response_buffer .. chunk
-
-			-- Format and add to buffer with lozenge symbol
-			local lines = {}
-			for line in response_buffer:gmatch("[^\r\n]+") do
-				table.insert(lines, "◊   " .. line)
-			end
-
-			-- Replace or append to buffer
-			local current_lines = vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
-			if #current_lines > 0 and current_lines[#current_lines]:match("^◊") then
-				-- Replace existing lozenge content
-				vim.api.nvim_buf_set_lines(current_buf, response_line_start, -1, false, lines)
-			else
-				-- Add new lozenge content
-				vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-			end
+			-- Add regular content with diamond symbol
+			local utils = require("paragonic.utils")
+			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
 		else
-			-- Default chunk handling
-			response_buffer = response_buffer .. chunk
+			-- Default chunk handling - treat as regular content
+			local utils = require("paragonic.utils")
+			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
 		end
 
 		-- Move cursor to the end of the buffer
