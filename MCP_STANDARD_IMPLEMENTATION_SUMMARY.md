@@ -150,3 +150,29 @@ Client                    Server
 The implementation now correctly follows the MCP Streamable HTTP transport specification. The changes maintain backward compatibility while providing a more robust and standards-compliant foundation for MCP communication.
 
 The key insight was understanding that MCP uses **temporary SSE streams per request** rather than **persistent SSE connections**, which fundamentally changes how streaming should be implemented.
+
+## Streaming Fix
+
+### **Issue Identified**:
+The server logs showed "No streams found for session default-session", indicating that the client wasn't properly connecting to the SSE stream when the server initiated streaming.
+
+### **Root Cause**:
+The original implementation expected the server to return an SSE stream immediately in the HTTP response headers, but the MCP standard actually works as follows:
+
+1. **Client sends HTTP POST request**
+2. **Server returns JSON response** indicating streaming will start (`streaming: true`)
+3. **Client connects to separate SSE stream** for actual streaming data
+4. **Server sends chunks via SSE stream**
+5. **SSE stream closes** after completion
+
+### **Fix Applied**:
+- Updated `send_request()` to detect `response.body.result.streaming = true`
+- Added `_start_streaming_connection()` to handle the proper streaming flow
+- Removed incorrect SSE stream detection from HTTP response headers
+- Added mock modules for standalone testing
+
+### **Result**:
+✅ Streaming requests now properly detected  
+✅ SSE connections established correctly  
+✅ MCP standard flow implemented correctly  
+✅ Backward compatibility maintained
