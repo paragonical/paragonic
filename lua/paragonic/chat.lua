@@ -229,12 +229,12 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 		elseif chunk_type == "assistant_start" then
 			-- Add assistant start marker with lozenge icon after thinking section
 			local insert_line = thinking_end_line and thinking_end_line + 1 or start_line + 2
-			table.insert(lines, insert_line + 1, "⬬")
+			table.insert(lines, insert_line + 1, "◊")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_content" then
-			-- Add assistant content with proper wrapping
+			-- Add assistant content with proper wrapping (matching thinking content format)
 			local buffer_width = ui.get_buffer_width(buffer)
-			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
+			local wrapped_lines = M.wrap_thinking_content(chunk_content, buffer_width - 4, "◊")
 			-- Insert at the end of current content
 			local insert_line = #lines
 			-- Reverse the lines to fix the order issue (same as thinking content)
@@ -243,9 +243,9 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		else
-			-- Default: add as regular content with proper wrapping
+			-- Default: add as regular content with proper wrapping (matching thinking content format)
 			local buffer_width = ui.get_buffer_width(buffer)
-			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
+			local wrapped_lines = M.wrap_thinking_content(chunk_content, buffer_width - 4, "◊")
 			-- Insert at the end of current content
 			local insert_line = #lines
 			-- Reverse the lines to fix the order issue (same as thinking content)

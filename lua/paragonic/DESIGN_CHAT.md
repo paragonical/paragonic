@@ -16,3 +16,44 @@
 - When the model returns a thinking_end message, a completed hourglass icon is shown.
 - Now the client shows a lozenge icon and renders the post-thinking response.
 - The thinking content is now folded.
+
+Example Converstation:
+∎
+hello world
+↯ deepseek-r1:1.5b
+
+🧠 <think>
+⋮  Okay, so I just got this message from someone asking me
+   "hello world." Hmm, that seems pretty straightforward.
+   But wait, how do I respond? Let me think about this.
+
+⋮  First off, when you see something like "hello world,"
+   it's a common greeting in programming tutorials or coding
+   platforms. It helps people recognize where my response
+   should go. So maybe the assistant needs to acknowledge
+   their message and offer help.
+
+⋮  I remember that using step-by-step reasoning can make
+   responses clearer. Even though this is a simple message,
+   explaining my thought process might help them understand
+   why I'm doing it that way. But in this case, since the
+   answer is so basic, it might not be necessary unless
+   they're learning or debugging something.
+
+⋮  Wait, what exactly should the assistant do? They
+   mentioned using tags like [your reasoning] to show the
+   thinking process. So maybe after acknowledging their
+   greeting, I can explain how my response was designed and
+   what that purpose is in case they want more context later
+   on.
+
+⋮  I also need to keep it friendly but professional. Maybe
+   start with a "Hello! How can I assist you today?" Then
+   mention that this is a simple message and offer further
+   help. That should make the conversation smooth and open
+   for future interactions.
+⌛ </think>
+
+◊  Hello! It looks like your message came through as a
+   greeting. How can I assist you today?
+∎
