@@ -1479,7 +1479,7 @@ impl McpHttpServer {
                         "progressToken": progress_token
                     });
 
-                    info!("   📤 Sending all {} chunks in single response (MCP standard)");
+                    info!("   📤 Sending all {} chunks in single response (MCP standard)", chunks.len());
                     info!(
                         "   Response data: {}",
                         serde_json::to_string_pretty(&response_data).unwrap()
@@ -1488,25 +1488,6 @@ impl McpHttpServer {
                     Ok(response_data)
                 } else {
                     // Fallback to regular content if no thinking chunks found
-                    let chunk_data = serde_json::json!({
-                        "type": "streaming_chunk",
-                        "chunk": content,
-                        "chunk_type": "regular_content",
-                        "chunk_index": 0,
-                        "total_chunks": 1,
-                        "progressToken": progress_token
-                    });
-
-                    info!("   📤 Sending regular content to client:");
-                    info!(
-                        "   Chunk data: {}",
-                        serde_json::to_string_pretty(&chunk_data).unwrap()
-                    );
-
-                    Ok(chunk_data)
-                }
-            } else {
-                // Regular content for non-thinking models
                     let chunk_data = serde_json::json!({
                         "type": "streaming_chunk",
                         "chunk": content,
