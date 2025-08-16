@@ -817,28 +817,8 @@ function M.send_message_command_debug()
 			-- Start thinking section
 			table.insert(response_lines, "🧠  <think>")
 		elseif chunk_type == "thinking_content" then
-			-- Add thinking content with brain glyph and proper wrapping
-			local utils = require("paragonic.utils")
-			local full_buffer_width = vim.api.nvim_win_get_width(0)
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_brain(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-		elseif chunk_type == "thinking_step" then
 			-- Add thinking step with proper indentation
-			-- Add zigzag content with proper wrapping
-			local utils = require("paragonic.utils")
-			local full_buffer_width = vim.api.nvim_win_get_width(0)
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
+			table.insert(response_lines, "〻  " .. chunk)
 		elseif chunk_type == "thinking_end" then
 			-- End thinking section
 			table.insert(response_lines, "󱦟  </think>")
@@ -1112,19 +1092,18 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 		return nil, "Streaming error: " .. (response.error.message or "Unknown error")
 	end
 
-	-- The initial response should just confirm streaming started
-	-- All actual chunks will come via SSE notifications
-	-- Set up SSE notification handler for streaming chunks
-	local streaming_complete = false
+	-- Set up non-blocking streaming with timers
+	local max_wait_time = 30 -- seconds
+	local check_interval = 100 -- milliseconds
+	local total_wait_time = 0
 	local chunks_received = 0
 	local total_chunks = 0
-
-	-- Wait for streaming chunks to arrive via SSE
-	local max_wait_time = 30 -- seconds
-	local wait_interval = 0.1 -- seconds
-	local total_wait_time = 0
+	local streaming_complete = false
 	
-	while total_wait_time < max_wait_time do
+	-- Create a timer for non-blocking chunk checking
+	local check_timer = vim.loop.new_timer()
+	
+	local function check_for_chunks()
 		local chunks = rpc_client:get_streaming_chunks()
 		if chunks and #chunks > 0 then
 			-- Process all available chunks
@@ -1146,19 +1125,33 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 			-- Check if we've received all chunks
 			if total_chunks > 0 and chunks_received >= total_chunks then
 				streaming_complete = true
-				break
+				check_timer:stop()
+				check_timer:close()
+				if on_complete then
+					on_complete()
+				end
+				return
 			end
 		end
 		
-		-- Wait a bit before checking again
-		vim.wait(wait_interval * 1000)
-		total_wait_time = total_wait_time + wait_interval
+		total_wait_time = total_wait_time + (check_interval / 1000)
+		
+		if total_wait_time >= max_wait_time then
+			debug.debug_print("Timeout waiting for streaming chunks", "error")
+			check_timer:stop()
+			check_timer:close()
+			if on_complete then
+				on_complete()
+			end
+			return
+		end
+		
+		-- Schedule next check
+		check_timer:start(check_interval, 0, check_for_chunks)
 	end
 	
-	-- Call completion callback
-	if on_complete then
-		on_complete()
-	end
+	-- Start the non-blocking chunk checking
+	check_for_chunks()
 
 	return true
 end
@@ -1228,63 +1221,75 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		debug.debug_print("No first chunk found in response", "debug")
 	end
 
-	-- Wait for streaming chunks to arrive via SSE
+	-- Set up non-blocking streaming with timers
 	local max_wait_time = 30 -- seconds
-	local wait_interval = 0.1 -- seconds
+	local check_interval = 100 -- milliseconds
 	local total_wait_time = 0
+	local chunks_processed = 0
 	
-	while total_wait_time < max_wait_time do
+	-- Create a timer for non-blocking chunk checking
+	local check_timer = vim.loop.new_timer()
+	
+	local function check_for_chunks()
 		local chunks = rpc_client:get_streaming_chunks()
-		local debug = require("paragonic.debug")
 		debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
 		
 		if chunks and #chunks > 0 then
-			debug.debug_print("Found " .. #chunks .. " chunks, proceeding with processing", "debug")
-			break -- We have chunks, proceed with processing
+			debug.debug_print("Found " .. #chunks .. " chunks, processing them", "debug")
+			
+			-- Process chunks asynchronously
+			local function process_chunk_async(chunk_index)
+				if chunk_index > #chunks then
+					-- All chunks processed, call completion
+					if on_complete then
+						on_complete()
+					end
+					check_timer:stop()
+					check_timer:close()
+					return
+				end
+				
+				local chunk = chunks[chunk_index]
+				if on_chunk then
+					local chunk_type = chunk.chunk_type or "regular_content"
+					debug.debug_print("🔄 About to call on_chunk for chunk " .. chunk_index .. " with type: " .. chunk_type, "debug")
+					debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
+					on_chunk(chunk.chunk, chunk.chunk_index, chunk.total_chunks, chunk_type)
+					debug.debug_print("🔄 on_chunk call completed for chunk " .. chunk_index, "debug")
+				end
+				
+				-- Schedule next chunk processing with a small delay for smooth animation
+				vim.defer_fn(function()
+					process_chunk_async(chunk_index + 1)
+				end, 50) -- 50ms delay between chunks
+			end
+			
+			-- Start processing chunks
+			process_chunk_async(1)
+			
+			-- Clear chunks after retrieving them
+			rpc_client:clear_streaming_chunks()
+			return
 		end
 		
-		vim.wait(wait_interval * 1000) -- Convert to milliseconds
-		total_wait_time = total_wait_time + wait_interval
-	end
-	
-	-- Get all available chunks
-	local chunks = rpc_client:get_streaming_chunks()
-	if #chunks == 0 then
-		return nil, "No streaming chunks received"
-	end
-	
-	-- Clear chunks after retrieving them
-	rpc_client:clear_streaming_chunks()
-
-
-
-	-- Debug: Log chunk structure to see what we're receiving
-	local debug = require("paragonic.debug")
-	debug.debug_print("Number of chunks: " .. #chunks, "debug")
-	for i, chunk in ipairs(chunks) do
-		debug.debug_print("Chunk " .. i .. " type: " .. (chunk.chunk_type or "unknown"), "debug")
-		debug.debug_print("Chunk " .. i .. " content: " .. (chunk.chunk or "no content"):sub(1, 100):gsub("\n", "\\n"), "debug")
-	end
-	
-	-- Iterate through chunks and call the on_chunk callback for each
-	for i, chunk in ipairs(chunks) do
-		if on_chunk then
-			local chunk_type = chunk.chunk_type or "regular_content"
-			debug.debug_print("🔄 About to call on_chunk for chunk " .. i .. " with type: " .. chunk_type, "debug")
-			debug.debug_print("🔄 Chunk content preview: " .. (chunk.chunk or "no content"):sub(1, 50), "debug")
-			on_chunk(chunk.chunk, chunk.chunk_index, chunk.total_chunks, chunk_type)
-			debug.debug_print("🔄 on_chunk call completed for chunk " .. i, "debug")
+		total_wait_time = total_wait_time + (check_interval / 1000)
+		
+		if total_wait_time >= max_wait_time then
+			debug.debug_print("Timeout waiting for streaming chunks", "error")
+			check_timer:stop()
+			check_timer:close()
+			if on_complete then
+				on_complete()
+			end
+			return
 		end
-		-- Small delay for smooth animation
-		if i < #chunks then
-			vim.wait(50) -- 50ms delay between chunks
-		end
+		
+		-- Schedule next check
+		check_timer:start(check_interval, 0, check_for_chunks)
 	end
 	
-	-- All chunks processed
-	if on_complete then
-		on_complete()
-	end
+	-- Start the non-blocking chunk checking
+	check_for_chunks()
 
 	return true
 end
@@ -1755,7 +1760,6 @@ function M.send_message_command_thinking()
 	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
 		-- Simple test to see if callback is working
 		vim.notify("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
-		debug.debug_print("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", "debug")
 		
 		-- Test if we can access the debug module
 		local ok, debug = pcall(require, "paragonic.debug")
@@ -1774,21 +1778,13 @@ function M.send_message_command_thinking()
 			fold_start_line = thinking_start_line
 			debug.debug_print("🧠 Added thinking_start line", "debug")
 		elseif chunk_type == "thinking_content" then
-			-- Add thinking content with brain glyph and proper wrapping
-			local utils = require("paragonic.utils")
-			local full_buffer_width = vim.api.nvim_win_get_width(0)
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			debug.debug_print("🧠 Processing thinking_content chunk: '" .. chunk:sub(1, 50) .. "'", "debug")
-			local wrapped_lines = utils.wrap_text_with_brain(chunk, base_width)
-			debug.debug_print("🧠 Wrapped lines count: " .. #wrapped_lines, "debug")
-			for i, line in ipairs(wrapped_lines) do
-				debug.debug_print("🧠 Line " .. i .. ": '" .. line .. "'", "debug")
+			-- Add thinking content with indentation
+			local lines = {}
+			for line in chunk:gmatch("[^\r\n]+") do
+				table.insert(lines, "   " .. line)
 			end
-			
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
-			debug.debug_print("🧠 Added " .. #wrapped_lines .. " thinking_content lines", "debug")
+			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+			debug.debug_print("🧠 Added " .. #lines .. " thinking_content lines", "debug")
 		elseif chunk_type == "thinking_end" then
 			-- End thinking section
 			local lines = { "   </think>" }
