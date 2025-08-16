@@ -1387,25 +1387,39 @@ function M.fold_thinking_content(current_buf, start_line_num)
 		local fold_start = thinking_start_line
 		local fold_end = thinking_end_line
 		
-		-- Set fold level for the thinking section
-		for i = fold_start, fold_end do
-			vim.api.nvim_buf_set_extmark(current_buf, -1, i, 0, {
-				virt_text = {{"🧠 Thinking...", "Comment"}},
-				virt_text_pos = "eol"
-			})
+		-- Create the fold by modifying the existing lines to add fold markers
+		local start_line_content = all_lines[thinking_start_line + 1] -- Convert back to 1-indexed
+		local end_line_content = all_lines[thinking_end_line + 1] -- Convert back to 1-indexed
+		
+		-- Add fold markers to existing lines
+		if start_line_content and not start_line_content:match("{{{$") then
+			vim.api.nvim_buf_set_lines(current_buf, fold_start, fold_start + 1, false, {start_line_content .. " {{{"})
 		end
 		
-		-- Create the fold
-		vim.api.nvim_buf_set_lines(current_buf, fold_start, fold_start, false, {"🧠  <think> {{{"})
-		vim.api.nvim_buf_set_lines(current_buf, fold_end + 1, fold_end + 1, false, {"󱦟  </think> }}}"})
+		if end_line_content and not end_line_content:match("}}}$") then
+			vim.api.nvim_buf_set_lines(current_buf, fold_end, fold_end + 1, false, {end_line_content .. " }}}"})
+		end
 		
-		-- Close the fold
-		vim.api.nvim_command("normal! " .. (fold_start + 1) .. "G")
-		vim.api.nvim_command("foldclose")
+		-- Close the fold using a safer approach
+		vim.defer_fn(function()
+			-- Check if the buffer and lines still exist
+			if vim.api.nvim_buf_is_valid(current_buf) and 
+			   fold_start < vim.api.nvim_buf_line_count(current_buf) then
+				-- Use a more reliable way to close the fold
+				vim.api.nvim_buf_call(current_buf, function()
+					vim.cmd("normal! " .. (fold_start + 1) .. "G")
+					vim.cmd("foldclose")
+				end)
+			end
+		end, 100) -- Small delay to ensure buffer is ready
 		
 		-- Move cursor back to the end
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+		vim.defer_fn(function()
+			if vim.api.nvim_buf_is_valid(current_buf) then
+				local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+				vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+			end
+		end, 150)
 		
 		debug.debug_print("🧠 Created fold from line " .. fold_start .. " to " .. fold_end, "debug")
 	end
