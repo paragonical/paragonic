@@ -322,3 +322,5 @@ mod iragl_processor_tests;
 mod pattern_database_operations_tests;
 #[cfg(test)]
 mod pattern_database_tests;
+#[cfg(test)]
+mod embeddings_local_test;

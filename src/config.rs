@@ -18,6 +18,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub ollama: OllamaConfig,
     pub logging: LoggingConfig,
+    pub embeddings: EmbeddingConfig,
 }
 
 /// Database configuration
@@ -44,6 +45,16 @@ pub struct OllamaConfig {
 pub struct LoggingConfig {
     pub level: String,
     pub format: String,
+}
+
+/// Embedding configuration for local embedding generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingConfig {
+    pub model_type: String,
+    pub batch_size: usize,
+    pub show_download_progress: bool,
+    pub cache_dir: Option<String>,
+    pub enabled: bool,
 }
 
 impl Default for DatabaseConfig {
@@ -74,6 +85,18 @@ impl Default for LoggingConfig {
         Self {
             level: "info".to_string(),
             format: "json".to_string(),
+        }
+    }
+}
+
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            model_type: "BgeSmallEnV15".to_string(),
+            batch_size: 256,
+            show_download_progress: false,
+            cache_dir: None,
+            enabled: true,
         }
     }
 }

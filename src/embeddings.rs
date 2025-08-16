@@ -1,12 +1,14 @@
 //! Embedding service for Paragonic
 //!
 //! This module handles embedding generation, storage, and semantic search
-//! using Ollama for vector generation and PostgreSQL with pgvector for storage.
+//! using both Ollama and FastEmbed for vector generation and PostgreSQL with pgvector for storage.
 
 use crate::error::{ParagonicError, ParagonicResult};
 use crate::models::{CreateEmbeddingRequest, Embedding};
 use crate::ollama::OllamaClient;
 use crate::vector::Vector;
+use crate::embeddings_local::{LocalEmbeddingGenerator, EmbeddingModelType};
+use crate::config::ConfigManager;
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -40,6 +42,113 @@ pub async fn create_embedding(request: CreateEmbeddingRequest) -> ParagonicResul
     store_embedding(&embedding).await?;
 
     Ok(embedding)
+}
+
+/// Create an embedding using local FastEmbed generation
+///
+/// This function generates an embedding using FastEmbed locally and stores it in the database.
+pub async fn create_embedding_local(request: CreateEmbeddingRequest) -> ParagonicResult<Embedding> {
+    // Check if local embeddings are enabled
+    let config_manager = ConfigManager::new();
+    let config = config_manager.get_config();
+    
+    if !config.embeddings.enabled {
+        return Err(ParagonicError::Config("Local embeddings are disabled".to_string()));
+    }
+
+    // Parse model type from string
+    let model_type = match config.embeddings.model_type.as_str() {
+        "BgeSmallEnV15" => EmbeddingModelType::BgeSmallEnV15,
+        "AllMiniLML6V2" => EmbeddingModelType::AllMiniLML6V2,
+        "NomicEmbedTextV15" => EmbeddingModelType::NomicEmbedTextV15,
+        "BgeLargeEnV15" => EmbeddingModelType::BgeLargeEnV15,
+        _ => EmbeddingModelType::BgeSmallEnV15, // Default fallback
+    };
+
+    // Create local embedding generator
+    let mut generator = LocalEmbeddingGenerator::with_model(model_type)?;
+
+    // Generate embedding using FastEmbed
+    let embedding_vector = generator.generate_embedding(&request.content_text)?;
+
+    // Create embedding record
+    let embedding = Embedding {
+        id: Uuid::new_v4(),
+        content_type: request.content_type,
+        content_id: request.content_id,
+        content_text: request.content_text,
+        embedding_model: format!("fastembed-{}", model_type),
+        embedding_vector: Some(Vector::from_slice(&embedding_vector)),
+        metadata: request.metadata,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    // Store in database
+    store_embedding(&embedding).await?;
+
+    Ok(embedding)
+}
+
+/// Create embeddings in batch using local FastEmbed generation
+///
+/// This function generates embeddings for multiple texts using FastEmbed locally.
+pub async fn create_embeddings_batch_local(
+    requests: Vec<CreateEmbeddingRequest>,
+) -> ParagonicResult<Vec<Embedding>> {
+    // Check if local embeddings are enabled
+    let config_manager = ConfigManager::new();
+    let config = config_manager.get_config();
+    
+    if !config.embeddings.enabled {
+        return Err(ParagonicError::Config("Local embeddings are disabled".to_string()));
+    }
+
+    // Parse model type from string
+    let model_type = match config.embeddings.model_type.as_str() {
+        "BgeSmallEnV15" => EmbeddingModelType::BgeSmallEnV15,
+        "AllMiniLML6V2" => EmbeddingModelType::AllMiniLML6V2,
+        "NomicEmbedTextV15" => EmbeddingModelType::NomicEmbedTextV15,
+        "BgeLargeEnV15" => EmbeddingModelType::BgeLargeEnV15,
+        _ => EmbeddingModelType::BgeSmallEnV15, // Default fallback
+    };
+
+    // Create local embedding generator
+    let mut generator = LocalEmbeddingGenerator::with_model(model_type)?;
+
+    // Extract texts for batch processing
+    let texts: Vec<String> = requests.iter()
+        .map(|req| req.content_text.clone())
+        .collect();
+
+    // Generate embeddings in batch
+    let embedding_vectors = generator.generate_embeddings_batch(texts)?;
+
+    // Create embedding records
+    let mut embeddings = Vec::new();
+    for (i, request) in requests.iter().enumerate() {
+        if i < embedding_vectors.len() {
+            let embedding = Embedding {
+                id: Uuid::new_v4(),
+                content_type: request.content_type.clone(),
+                content_id: request.content_id,
+                content_text: request.content_text.clone(),
+                embedding_model: format!("fastembed-{}", model_type),
+                embedding_vector: Some(Vector::from_slice(&embedding_vectors[i])),
+                metadata: request.metadata.clone(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+            embeddings.push(embedding);
+        }
+    }
+
+    // Store embeddings in database
+    for embedding in &embeddings {
+        store_embedding(embedding).await?;
+    }
+
+    Ok(embeddings)
 }
 
 /// Store embedding in database
