@@ -170,7 +170,7 @@ local function create_mcp_client()
 		-- Mark as streaming
 		client.is_streaming = true
 		
-		local resp, err = mcp.send_request({
+		local request = {
 			jsonrpc = "2.0",
 			method = "streaming_chat_completion",
 			id = math.random(1000, 9999),
@@ -178,7 +178,15 @@ local function create_mcp_client()
 			_meta = {
 				progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999)
 			}
-		})
+		}
+		
+		-- Debug: Log the request being sent
+		debug.debug_print("📤 Sending streaming request:", "debug")
+		debug.debug_print("   Method: " .. request.method, "debug")
+		debug.debug_print("   ID: " .. tostring(request.id), "debug")
+		debug.debug_print("   Params: " .. (params and params.message and params.message:sub(1, 50) or "none"), "debug")
+		
+		local resp, err = mcp.send_request(request)
 		
 		if not resp then
 			client.is_streaming = false
