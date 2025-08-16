@@ -13,6 +13,27 @@ local config = {
 	log_level = "info",
 	backend_base_url = "http://127.0.0.1:3000", -- Default MCP HTTP server
 	allow_localhost = true, -- Allow localhost connections for development
+	
+	-- MCP Tool Awareness Prompts configuration
+	mcp_tool_prompts = {
+		enabled = true,
+		prompt_style = "contextual", -- "base", "contextual", "minimal"
+		include_pattern_context = true,
+		include_usage_guidance = true,
+		max_tools_per_prompt = 5,
+		intent_detection_threshold = 0.7,
+		cache_size = 100,
+		tool_filtering = {
+			exclude_tools = {}, -- Tools to exclude from prompts
+			include_only = {}, -- Only include specific tools
+			category_filters = { -- Filter by category
+				file_operations = true,
+				session_management = true,
+				pattern_execution = true,
+				search_navigation = false
+			}
+		}
+	}
 }
 
 -- Model capabilities configuration
@@ -266,6 +287,56 @@ function M.get_normal_models()
 	end
 	table.sort(normal_models)
 	return normal_models
+end
+
+-- MCP Tool Prompts Configuration Functions
+
+-- Get MCP tool prompts configuration
+function M.get_mcp_tool_prompts_config()
+	return config.mcp_tool_prompts or {}
+end
+
+-- Update MCP tool prompts configuration
+function M.update_mcp_tool_prompts_config(new_config)
+	if not config.mcp_tool_prompts then
+		config.mcp_tool_prompts = {}
+	end
+	
+	for key, value in pairs(new_config) do
+		config.mcp_tool_prompts[key] = value
+	end
+	
+	return true
+end
+
+-- Check if MCP tool prompts are enabled
+function M.mcp_tool_prompts_enabled()
+	return config.mcp_tool_prompts and config.mcp_tool_prompts.enabled or false
+end
+
+-- Get MCP tool prompts prompt style
+function M.get_mcp_tool_prompts_style()
+	return config.mcp_tool_prompts and config.mcp_tool_prompts.prompt_style or "contextual"
+end
+
+-- Get MCP tool prompts intent detection threshold
+function M.get_mcp_tool_prompts_threshold()
+	return config.mcp_tool_prompts and config.mcp_tool_prompts.intent_detection_threshold or 0.7
+end
+
+-- Get MCP tool prompts max tools per prompt
+function M.get_mcp_tool_prompts_max_tools()
+	return config.mcp_tool_prompts and config.mcp_tool_prompts.max_tools_per_prompt or 5
+end
+
+-- Get MCP tool prompts cache size
+function M.get_mcp_tool_prompts_cache_size()
+	return config.mcp_tool_prompts and config.mcp_tool_prompts.cache_size or 100
+end
+
+-- Get MCP tool prompts tool filtering
+function M.get_mcp_tool_prompts_tool_filtering()
+	return config.mcp_tool_prompts and config.mcp_tool_prompts.tool_filtering or {}
 end
 
 return M

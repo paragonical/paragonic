@@ -66,10 +66,10 @@ M.cache_misses = 0
 function M.init()
     debug.debug_print("🔧 Initializing MCP Tool Prompts module", "info")
     
-    -- Load configuration
-    local user_config = config.get_config()
-    if user_config.mcp_tool_prompts then
-        for key, value in pairs(user_config.mcp_tool_prompts) do
+    -- Load configuration from config module
+    local user_config = config.get_mcp_tool_prompts_config()
+    if user_config and type(user_config) == "table" then
+        for key, value in pairs(user_config) do
             M.config[key] = value
         end
     end
