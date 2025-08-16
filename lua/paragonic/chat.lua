@@ -1178,6 +1178,13 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		return nil, "Streaming error: " .. (response.error.message or "Unknown error")
 	end
 
+	-- Process the first chunk from the immediate response
+	if response.chunk and on_chunk then
+		local debug = require("paragonic.debug")
+		debug.debug_print("Processing first chunk from immediate response: " .. (response.chunk_type or "unknown"), "debug")
+		on_chunk(response.chunk, response.chunk_index or 0, response.total_chunks or 1, response.chunk_type or "regular_content")
+	end
+
 	-- Wait for streaming chunks to arrive via SSE
 	local max_wait_time = 30 -- seconds
 	local wait_interval = 0.1 -- seconds
