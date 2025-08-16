@@ -815,13 +815,22 @@ function M.send_message_command_debug()
 		-- Process thinking content with proper formatting
 		if chunk_type == "thinking_start" then
 			-- Start thinking section
-			table.insert(response_lines, "🧠   <think>")
+			table.insert(response_lines, "🧠  <think>")
 		elseif chunk_type == "thinking_step" then
 			-- Add thinking step with proper indentation
-			table.insert(response_lines, "   " .. chunk)
+			-- Add zigzag content with proper wrapping
+			local utils = require("paragonic.utils")
+			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
 		elseif chunk_type == "thinking_end" then
 			-- End thinking section
-			table.insert(response_lines, "   </think>")
+			table.insert(response_lines, "󱦟  </think>")
 		elseif chunk_type == "regular_content" then
 			-- Add regular content with diamond prefix
 			local utils = require("paragonic.utils")
@@ -842,9 +851,7 @@ function M.send_message_command_debug()
 		end
 		
 		-- Add timing placeholder
-		table.insert(current_response_lines, "")
 		table.insert(current_response_lines, " ⏱️   ...")
-		table.insert(current_response_lines, "")
 		table.insert(current_response_lines, "∎")
 		
 		-- Insert/update response in buffer
@@ -1755,13 +1762,15 @@ function M.send_message_command_thinking()
 			fold_start_line = thinking_start_line
 			debug.debug_print("🧠 Added thinking_start line", "debug")
 		elseif chunk_type == "thinking_content" then
-			-- Add thinking content with indentation
-			local lines = {}
-			for line in chunk:gmatch("[^\r\n]+") do
-				table.insert(lines, "   " .. line)
-			end
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-			debug.debug_print("🧠 Added " .. #lines .. " thinking_content lines", "debug")
+			-- Add thinking content with brain glyph and proper wrapping
+			local utils = require("paragonic.utils")
+			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_brain(chunk, base_width)
+			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
+			debug.debug_print("🧠 Added " .. #wrapped_lines .. " thinking_content lines", "debug")
 		elseif chunk_type == "thinking_end" then
 			-- End thinking section
 			local lines = { "   </think>" }

@@ -107,13 +107,16 @@ function M.wrap_text(text, max_width, indent)
 	return lines
 end
 
--- Format clean Markdown source with diamond prefix and 3-space gutter
-function M.wrap_text_with_diamond(text, max_width)
+-- Format clean Markdown source with custom glyph prefix and 2-space gutter
+function M.wrap_text_with_glyph(text, max_width, glyph)
 	-- Set default max_width if not provided
 	max_width = max_width or 80
+	
+	-- Set default glyph if not provided
+	glyph = glyph or "◊"
 
 	if not text or text == "" then
-		return { "◊   " }
+		return { glyph .. "  " }
 	end
 
 	local lines = {}
@@ -124,7 +127,7 @@ function M.wrap_text_with_diamond(text, max_width)
 		table.insert(text_lines, line)
 	end
 
-	-- Process each line with diamond prefix and proper indentation
+	-- Process each line with glyph prefix and proper indentation
 	for i, line in ipairs(text_lines) do
 		if line:match("%S") then -- Only process non-empty lines
 			-- Strip leading spaces from the line
@@ -136,8 +139,8 @@ function M.wrap_text_with_diamond(text, max_width)
 				local number = number_match
 				local content = clean_line:sub(#number + 3) -- Skip "number. "
 
-				-- Format numbered list item with lozenge prefix and proper indentation
-				local list_item = "◊   " .. number .. ". " .. content
+				-- Format numbered list item with glyph prefix and proper indentation
+				local list_item = glyph .. "  " .. number .. ". " .. content
 				table.insert(lines, list_item)
 
 				-- Add blank line after numbered list item if next line is not a list item
@@ -151,14 +154,14 @@ function M.wrap_text_with_diamond(text, max_width)
 					end
 				end
 			else
-				-- Regular text - simple word wrapping with diamond prefix
+				-- Regular text - simple word wrapping with glyph prefix
 				local words = {}
 				for word in clean_line:gmatch("[^%s]+") do
 					table.insert(words, word)
 				end
 
-				local current_line = "◊   "
-				local current_length = 4 -- Length of lozenge + three spaces
+				local current_line = glyph .. "  "
+				local current_length = #glyph + 2 -- Length of glyph + two spaces
 
 				for j, word in ipairs(words) do
 					local word_length = #word
@@ -166,15 +169,15 @@ function M.wrap_text_with_diamond(text, max_width)
 					-- If adding this word would exceed the line limit
 					if current_length + word_length > max_width then
 						-- Add current line to lines (if not empty)
-						if current_line ~= "◊   " then
+						if current_line ~= (glyph .. "  ") then
 							table.insert(lines, current_line)
 						end
-						-- Start new line with six spaces (3-space gutter + 3-space continuation)
-						current_line = "      " .. word
-						current_length = 6 + word_length
+						-- Start new line with five spaces (2-space gutter + 3-space continuation)
+						current_line = "     " .. word
+						current_length = 5 + word_length
 					else
 						-- Add word to current line (with space if not first word)
-						if current_line ~= "◊   " then
+						if current_line ~= (glyph .. "  ") then
 							current_line = current_line .. " " .. word
 							current_length = current_length + 1 + word_length
 						else
@@ -185,7 +188,7 @@ function M.wrap_text_with_diamond(text, max_width)
 				end
 
 				-- Add the last line if it has content
-				if current_line ~= "◊   " then
+				if current_line ~= (glyph .. "  ") then
 					table.insert(lines, current_line)
 				end
 			end
@@ -193,6 +196,24 @@ function M.wrap_text_with_diamond(text, max_width)
 	end
 
 	return lines
+end
+
+-- Format clean Markdown source with diamond prefix and 2-space gutter (backward compatibility)
+function M.wrap_text_with_diamond(text, max_width)
+	return M.wrap_text_with_glyph(text, max_width, "◊")
+end
+
+-- Convenience functions for common glyphs
+function M.wrap_text_with_brain(text, max_width)
+	return M.wrap_text_with_glyph(text, max_width, "🧠")
+end
+
+function M.wrap_text_with_iteration(text, max_width)
+	return M.wrap_text_with_glyph(text, max_width, "🔄")
+end
+
+function M.wrap_text_with_zigzag(text, max_width)
+	return M.wrap_text_with_glyph(text, max_width, "〻")
 end
 
 -- Parse JSON-RPC response
