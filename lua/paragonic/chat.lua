@@ -1405,17 +1405,17 @@ function M.send_message_command_smart()
 		return
 	end
 
-	-- Add immediate visual feedback (zigzag arrow) before any backend operations
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯" })
-	
-	-- Force buffer update to show zigzag immediately
-	vim.api.nvim_buf_call(current_buf, function()
-		vim.cmd("redraw!")
-	end)
-
 	-- Get current model and its capabilities
 	local config = require("paragonic.config")
 	local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+	
+	-- Add immediate visual feedback (zigzag arrow + model name) before any backend operations
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯ " .. current_model })
+	
+	-- Force buffer update to show zigzag and model name immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
 	local streaming_type = config.get_current_model_streaming_type()
 	local supports_thinking = config.current_model_supports_thinking()
 
