@@ -784,6 +784,14 @@ function mcp_http_transport.request_new_stream()
 		return false, MCPHTTPTransportError.NOT_INITIALIZED
 	end
 
+	-- Check if streaming is active - don't disconnect during streaming
+	local backend = require("paragonic.backend")
+	local rpc_client = backend._get_rpc_client()
+	if rpc_client and rpc_client.is_streaming then
+		debug.debug_print("⚠️ Stream renewal requested during active streaming, deferring", "warning")
+		return false, "Stream renewal deferred during active streaming"
+	end
+
 	-- Disconnect current SSE connection
 	sse_client.disconnect()
 	
