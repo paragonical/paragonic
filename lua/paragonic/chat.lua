@@ -1219,6 +1219,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 			local function process_chunk_async(chunk_index)
 				if chunk_index > #chunks then
 					-- All chunks processed, call completion
+					debug.debug_print("🔄 All chunks processed, calling completion", "debug")
 					if on_complete then
 						on_complete()
 					end
@@ -1248,7 +1249,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 			
 			-- Clear chunks after retrieving them
 			rpc_client:clear_streaming_chunks()
-			return
+			debug.debug_print("🔄 Chunks processed and cleared, continuing to check for more", "debug")
+			-- Don't return here - continue checking for more chunks
 		end
 		
 		total_wait_time = total_wait_time + (check_interval / 1000)
