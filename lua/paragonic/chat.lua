@@ -196,6 +196,9 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 		if enable_debug then
 			vim.notify("Thinking streaming completed successfully", vim.log.levels.INFO)
 		end
+		
+		-- Auto-fold thinking content when complete
+		M.fold_thinking_content(current_buf, line_num)
 	end
 end
 
@@ -1350,6 +1353,59 @@ function M.send_message_smart(message, model)
 		return M.send_message_thinking_streaming(message, target_model)
 	else
 		return M.send_message_streaming(message, target_model)
+	end
+end
+
+-- Function to auto-fold thinking content between brain and hourglass markers
+function M.fold_thinking_content(current_buf, start_line_num)
+	-- Enable folding for the buffer
+	vim.api.nvim_buf_set_option(current_buf, "foldmethod", "marker")
+	vim.api.nvim_buf_set_option(current_buf, "foldmarker", "🧠,󱦟")
+	
+	-- Get all lines in the buffer
+	local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	
+	-- Find the thinking section that starts after the given line number
+	local thinking_start_line = nil
+	local thinking_end_line = nil
+	
+	for i = start_line_num + 2, #all_lines do -- +2 to skip the user message and start looking after it
+		local line = all_lines[i]
+		if line and line:match("^🧠%s*<think>") then
+			thinking_start_line = i - 1 -- Convert to 0-indexed
+		elseif line and line:match("^󱦟%s*</think>") and thinking_start_line then
+			thinking_end_line = i - 1 -- Convert to 0-indexed
+			break
+		end
+	end
+	
+	-- If we found a thinking section, create a fold
+	if thinking_start_line and thinking_end_line and thinking_end_line > thinking_start_line then
+		-- Create a fold from thinking_start_line to thinking_end_line
+		local fold_start = thinking_start_line
+		local fold_end = thinking_end_line
+		
+		-- Set fold level for the thinking section
+		for i = fold_start, fold_end do
+			vim.api.nvim_buf_set_extmark(current_buf, -1, i, 0, {
+				virt_text = {{"🧠 Thinking...", "Comment"}},
+				virt_text_pos = "eol"
+			})
+		end
+		
+		-- Create the fold
+		vim.api.nvim_buf_set_lines(current_buf, fold_start, fold_start, false, {"🧠  <think> {{{"})
+		vim.api.nvim_buf_set_lines(current_buf, fold_end + 1, fold_end + 1, false, {"󱦟  </think> }}}"})
+		
+		-- Close the fold
+		vim.api.nvim_command("normal! " .. (fold_start + 1) .. "G")
+		vim.api.nvim_command("foldclose")
+		
+		-- Move cursor back to the end
+		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+		vim.api.nvim_win_set_cursor(0, {buffer_line_count, 0})
+		
+		debug.debug_print("🧠 Created fold from line " .. fold_start .. " to " .. fold_end, "debug")
 	end
 end
 
