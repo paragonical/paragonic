@@ -155,6 +155,10 @@ end
 
 -- Create shared chunk handler for UI updates
 local function create_shared_on_chunk_handler(buffer, start_line, window_id, enable_debug)
+	local utils = require("paragonic.utils")
+	local thinking_content_started = false
+	local thinking_lines = {}
+
 	return function(chunk_content, chunk_index, total_chunks, chunk_type)
 		if not buffer or not vim.api.nvim_buf_is_valid(buffer) then
 			return
@@ -173,45 +177,53 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 
 		-- Handle different chunk types
 		if chunk_type == "thinking_start" then
-			-- Add thinking start marker
+			-- Add thinking start marker with brain icon
 			table.insert(lines, current_line + 1, "🧠 <think>")
+			thinking_content_started = true
+			thinking_lines = {}
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "thinking_content" then
-			-- Add thinking content (handle newlines)
-			local content_lines = {}
-			for line in chunk_content:gmatch("[^\r\n]+") do
-				table.insert(content_lines, "   " .. line)
-			end
-			for i = #content_lines, 1, -1 do
-				table.insert(lines, current_line + 1, content_lines[i])
+			-- Add thinking content with proper wrapping and continuation icons
+			if not thinking_content_started then
+				-- First thinking content - add brain icon and wrap to buffer width
+				local buffer_width = ui.get_buffer_width(buffer)
+				local wrapped_lines = utils.wrap_text_with_brain(chunk_content, buffer_width - 4) -- Leave margin
+				for i = #wrapped_lines, 1, -1 do
+					table.insert(lines, current_line + 1, wrapped_lines[i])
+				end
+				thinking_content_started = true
+			else
+				-- Subsequent thinking content - add vertical continuation icon
+				local buffer_width = ui.get_buffer_width(buffer)
+				local wrapped_lines = utils.wrap_text_with_glyph(chunk_content, buffer_width - 4, "⋮")
+				for i = #wrapped_lines, 1, -1 do
+					table.insert(lines, current_line + 1, wrapped_lines[i])
+				end
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "thinking_end" then
-			-- Add thinking end marker
-			table.insert(lines, current_line + 1, "󱦟 </think>")
+			-- Add thinking end marker with completed hourglass
+			table.insert(lines, current_line + 1, "⌛ </think>")
+			thinking_content_started = false
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_start" then
-			-- Add assistant start marker
-			table.insert(lines, current_line + 1, "🮮")
+			-- Add assistant start marker with lozenge icon
+			table.insert(lines, current_line + 1, "⬬")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_content" then
-			-- Add assistant content (handle newlines)
-			local content_lines = {}
-			for line in chunk_content:gmatch("[^\r\n]+") do
-				table.insert(content_lines, "   " .. line)
-			end
-			for i = #content_lines, 1, -1 do
-				table.insert(lines, current_line + 1, content_lines[i])
+			-- Add assistant content with proper wrapping
+			local buffer_width = ui.get_buffer_width(buffer)
+			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
+			for i = #wrapped_lines, 1, -1 do
+				table.insert(lines, current_line + 1, wrapped_lines[i])
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		else
-			-- Default: add as regular content (handle newlines)
-			local content_lines = {}
-			for line in chunk_content:gmatch("[^\r\n]+") do
-				table.insert(content_lines, line)
-			end
-			for i = #content_lines, 1, -1 do
-				table.insert(lines, current_line + 1, content_lines[i])
+			-- Default: add as regular content with proper wrapping
+			local buffer_width = ui.get_buffer_width(buffer)
+			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
+			for i = #wrapped_lines, 1, -1 do
+				table.insert(lines, current_line + 1, wrapped_lines[i])
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		end
@@ -233,6 +245,11 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			table.insert(lines, "")
 			table.insert(lines, "∎")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+
+			-- Auto-fold thinking content if it exists
+			if thinking_content_started then
+				M.fold_thinking_content(buffer, start_line)
+			end
 
 			-- Scroll to bottom
 			local last_line = #lines
@@ -591,6 +608,72 @@ function M.send_message_smart(message, model)
 		return M.send_message_thinking_streaming(message, target_model)
 	else
 		return M.send_message_thinking_streaming(message, target_model)
+	end
+end
+
+-- Function to auto-fold thinking content between brain and hourglass markers
+function M.fold_thinking_content(current_buf, start_line_num)
+	-- Enable folding for the buffer
+	vim.api.nvim_buf_set_option(current_buf, "foldmethod", "marker")
+	vim.api.nvim_buf_set_option(current_buf, "foldmarker", "🧠,⌛")
+
+	-- Get all lines in the buffer
+	local all_lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+
+	-- Find the thinking section that starts after the given line number
+	local thinking_start_line = nil
+	local thinking_end_line = nil
+
+	for i = start_line_num + 2, #all_lines do -- +2 to skip the user message and start looking after it
+		local line = all_lines[i]
+		if line and line:match("^🧠%s*<think>") then
+			thinking_start_line = i - 1 -- Convert to 0-indexed
+		elseif line and line:match("^⌛%s*</think>") and thinking_start_line then
+			thinking_end_line = i - 1 -- Convert to 0-indexed
+			break
+		end
+	end
+
+	-- If we found a thinking section, create a fold
+	if thinking_start_line and thinking_end_line and thinking_end_line > thinking_start_line then
+		-- Create a fold from thinking_start_line to thinking_end_line
+		local fold_start = thinking_start_line
+		local fold_end = thinking_end_line
+
+		-- Create the fold by modifying the existing lines to add fold markers
+		local start_line_content = all_lines[thinking_start_line + 1] -- Convert back to 1-indexed
+		local end_line_content = all_lines[thinking_end_line + 1] -- Convert back to 1-indexed
+
+		-- Add fold markers to existing lines
+		if start_line_content and not start_line_content:match("{{{$") then
+			vim.api.nvim_buf_set_lines(current_buf, fold_start, fold_start + 1, false, { start_line_content .. " {{{" })
+		end
+
+		if end_line_content and not end_line_content:match("}}}$") then
+			vim.api.nvim_buf_set_lines(current_buf, fold_end, fold_end + 1, false, { end_line_content .. " }}}" })
+		end
+
+		-- Close the fold using a safer approach
+		vim.defer_fn(function()
+			-- Check if the buffer and lines still exist
+			if vim.api.nvim_buf_is_valid(current_buf) and fold_start < vim.api.nvim_buf_line_count(current_buf) then
+				-- Use a more reliable way to close the fold
+				vim.api.nvim_buf_call(current_buf, function()
+					vim.cmd("normal! " .. (fold_start + 1) .. "G")
+					vim.cmd("foldclose")
+				end)
+			end
+		end, 100) -- Small delay to ensure buffer is ready
+
+		-- Move cursor back to the end
+		vim.defer_fn(function()
+			if vim.api.nvim_buf_is_valid(current_buf) then
+				local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+				vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
+			end
+		end, 150)
+
+		debug.debug_print("🧠 Created fold from line " .. fold_start .. " to " .. fold_end, "debug")
 	end
 end
 
