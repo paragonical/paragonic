@@ -84,6 +84,15 @@ function M.stop_ai_agent_session()
 	return true
 end
 
+-- Get active AI agent session
+function M.get_active_session()
+	if not agent_collaboration_mode or not active_agent_id then
+		return nil
+	end
+
+	return ai_agent_sessions[active_agent_id]
+end
+
 -- Send message from AI agent to Neovim
 function M.send_ai_agent_message(message, message_type)
 	if not agent_collaboration_mode or not active_agent_id then

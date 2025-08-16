@@ -13,7 +13,7 @@ local config = {
 	log_level = "info",
 	backend_base_url = "http://127.0.0.1:3000", -- Default MCP HTTP server
 	allow_localhost = true, -- Allow localhost connections for development
-	
+
 	-- MCP Tool Awareness Prompts configuration
 	mcp_tool_prompts = {
 		enabled = true,
@@ -30,10 +30,10 @@ local config = {
 				file_operations = true,
 				session_management = true,
 				pattern_execution = true,
-				search_navigation = false
-			}
-		}
-	}
+				search_navigation = false,
+			},
+		},
+	},
 }
 
 -- Model capabilities configuration
@@ -301,11 +301,11 @@ function M.update_mcp_tool_prompts_config(new_config)
 	if not config.mcp_tool_prompts then
 		config.mcp_tool_prompts = {}
 	end
-	
+
 	for key, value in pairs(new_config) do
 		config.mcp_tool_prompts[key] = value
 	end
-	
+
 	return true
 end
 

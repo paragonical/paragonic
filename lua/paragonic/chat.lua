@@ -370,7 +370,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 
 	-- Extract conversation context for tool awareness
 	local context = mcp_tool_prompts and mcp_tool_prompts.extract_conversation_context() or {}
-	
+
 	-- Build tool awareness prompt
 	local tool_prompt = ""
 	if mcp_tool_prompts then
