@@ -507,6 +507,9 @@ end
 
 -- Send message command
 function M.send_message_command_legacy()
+	-- TEST: Add notification to see if this function is being called
+	vim.notify("TEST: send_message_command_legacy called", vim.log.levels.INFO)
+	
 	-- Immediate debugging at function entry
 	local debug = require("paragonic.debug")
 	debug.debug_print("🚀 send_message_command() called", "debug")
