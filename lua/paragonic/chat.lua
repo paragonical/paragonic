@@ -18,6 +18,7 @@ debug.disable_notifications()
 local function create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, enable_debug)
 	local response_content = ""
 	local response_lines = {}
+	local regular_content_chunks = {} -- Accumulate regular content chunks
 	local start_time = vim.uv.now()
 	
 	return function(chunk, chunk_index, total_chunks, chunk_type)
@@ -85,53 +86,24 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 				end
 			end
 		elseif chunk_type == "regular_content" then
-			-- Add regular content with single diamond prefix (only first line gets diamond)
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
+			-- Accumulate regular content chunks for unified formatting
+			table.insert(regular_content_chunks, chunk)
 			
 			-- Debug: Check if chunk is valid
 			if enable_debug then
 				local ok, debug = pcall(require, "paragonic.debug")
 				if ok then
-					debug.debug_print("◊ Processing regular_content chunk: " .. string.format("%q", chunk), "debug")
-				end
-			end
-			
-			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-			if enable_debug then
-				local ok, debug = pcall(require, "paragonic.debug")
-				if ok then
-					debug.debug_print("◊ Added " .. #wrapped_lines .. " regular_content lines", "debug")
+					debug.debug_print("◊ Accumulating regular_content chunk: " .. string.format("%q", chunk), "debug")
 				end
 			end
 		else
-			-- Default chunk handling - treat as regular content with single diamond
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
+			-- Default chunk handling - treat as regular content and accumulate
+			table.insert(regular_content_chunks, chunk)
 			
-			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
 			if enable_debug then
 				local ok, debug = pcall(require, "paragonic.debug")
 				if ok then
-					debug.debug_print("◊ Added " .. #wrapped_lines .. " default content lines", "debug")
+					debug.debug_print("◊ Accumulating default chunk: " .. string.format("%q", chunk), "debug")
 				end
 			end
 		end
@@ -170,6 +142,41 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
 		end
 	end, function() -- on_complete callback
+		-- Process accumulated regular content chunks with unified formatting
+		if #regular_content_chunks > 0 then
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			-- Combine all regular content chunks into one piece of text
+			local combined_content = table.concat(regular_content_chunks, "")
+			
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Processing combined regular content: " .. string.format("%q", combined_content), "debug")
+				end
+			end
+			
+			-- Format the combined content with single diamond prefix
+			local wrapped_lines = utils.wrap_text_with_single_diamond(combined_content, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+			
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Added " .. #wrapped_lines .. " combined regular content lines", "debug")
+				end
+			end
+		end
+		
 		-- Calculate timing information
 		local end_time = vim.uv.now()
 		local duration_ms = end_time - start_time
