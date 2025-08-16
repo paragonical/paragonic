@@ -523,203 +523,6 @@ function M.open_chat()
 	vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(0), 0 })
 end
 
--- Send message command
-function M.send_message_command_legacy()
-	-- TEST: Add notification to see if this function is being called
-	vim.notify("TEST: send_message_command_legacy called", vim.log.levels.INFO)
-	
-	-- Immediate debugging at function entry
-	local debug = require("paragonic.debug")
-	debug.debug_print("🚀 send_message_command() called", "debug")
-	debug.debug_print("📝 Starting send_message_command function", "debug")
-
-	local current_buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(current_buf)
-
-	debug.debug_print("📝 Current buffer: " .. buf_name, "debug")
-
-	-- Only work in chat buffer
-	if buf_name ~= "paragonic://chat" then
-		debug.debug_print("❌ This command only works in the chat buffer", "error")
-		return
-	end
-
-	debug.debug_print("✅ Buffer check passed", "debug")
-
-	-- Extract multi-line message from cursor to previous tombstone
-	local message, start_line = extract_backward_to_tombstone(current_buf)
-	local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1 -- Keep for insertion positioning
-
-	debug.debug_print("📝 Message: " .. message:sub(1, 50), "debug")
-
-	-- Skip empty lines or lines that start with #
-	if message == "" or message:match("^%s*#") then
-		debug.debug_print("❌ Please enter a message to send", "error")
-		return
-	end
-
-	debug.debug_print("✅ Message validation passed", "debug")
-	debug.debug_print("🔧 About to call append_debug_message...", "debug")
-
-	-- Add immediate visual feedback that the chat is being sent
-	debug.debug_print("🔧 Calling append_debug_message...", "debug")
-	local success, err = debug.append_debug_message(current_buf, "Sending message to AI...", "info")
-
-	if not success then
-		debug.debug_print("❌ append_debug_message failed: " .. tostring(err), "error")
-		return
-	else
-		debug.debug_print("✅ append_debug_message succeeded", "debug")
-	end
-
-	-- Initialize backend if not available
-	local backend = require("paragonic.backend")
-	if not backend._rpc_client then
-		debug.append_debug_message(current_buf, "🔧 Backend not available, starting initialization...", "info")
-		debug.append_debug_message(current_buf, "🔧 Step 1: Creating RPC client...", "debug")
-
-		local success = backend._initialize_backend()
-
-		if not success then
-			debug.append_debug_message(current_buf, "❌ Backend initialization failed", "error")
-			vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
-			return
-		else
-			debug.append_debug_message(current_buf, "✅ Backend initialization completed", "success")
-		end
-	else
-		debug.append_debug_message(current_buf, "✅ Backend already available", "info")
-	end
-
-	-- Start a progress indicator for long operations
-	local progress_timer = nil
-	local progress_count = 0
-	local function update_progress()
-		progress_count = progress_count + 1
-		local dots = string.rep(".", progress_count % 4)
-		debug.append_debug_message(current_buf, "Waiting for AI response" .. dots, "info")
-	end
-
-	-- Start progress updates every 5 seconds
-	progress_timer = vim.loop.new_timer()
-	progress_timer:start(5000, 5000, vim.schedule_wrap(update_progress))
-
-	-- Record start time for timing information
-	local start_time = vim.uv.now()
-
-	-- Add zigzag arrow to indicate request is being sent
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯" })
-
-	-- Force buffer update to show zigzag immediately
-	vim.api.nvim_buf_call(current_buf, function()
-		vim.cmd("redraw!")
-	end)
-
-	-- Set up retry callback for RPC client
-	if backend._rpc_client and backend._rpc_client.set_retry_callback then
-		backend._rpc_client:set_retry_callback(function(attempt, max_attempts)
-			-- Add retry notification to chat buffer
-			vim.api.nvim_buf_set_lines(
-				current_buf,
-				line_num + 2,
-				line_num + 2,
-				false,
-				{ "🔄 Retry attempt " .. attempt .. "/" .. max_attempts }
-			)
-		end)
-	end
-
-	-- Send the message using enhanced function
-	local config = require("paragonic.config")
-	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-	local response, err = M.send_message_enhanced(message, default_model)
-
-	-- Stop progress updates
-	if progress_timer then
-		progress_timer:stop()
-		progress_timer:close()
-	end
-
-	if not response then
-		-- Update the status message to show failure
-		debug.append_debug_message(current_buf, "Failed to send message: " .. (err or "unknown error"), "error")
-		vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
-
-		-- Add error message to chat buffer with error symbol
-		local error_lines = {
-			"🛔  " .. (err or "unknown error"),
-		}
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
-		return
-	end
-
-	-- Calculate timing information
-	local end_time = vim.uv.now()
-	local duration_ms = end_time - start_time
-	local duration_sec = duration_ms / 1000
-
-	-- Update the status message to show success
-	debug.append_debug_message(current_buf, "Message sent successfully, processing response...", "success")
-
-	-- Add the response to the buffer
-	-- Split response into lines to handle multi-line responses
-	local response_content_lines = {}
-	for line in response:gmatch("[^\r\n]+") do
-		if line:match("%S") then -- Only add non-empty lines
-			table.insert(response_content_lines, line)
-		end
-	end
-
-	-- If no lines were extracted, add the original response as a single line
-	if #response_content_lines == 0 then
-		table.insert(response_content_lines, response)
-	end
-
-	local response_lines = {}
-
-	-- Get buffer width for word wrapping (70% of buffer width after indentation)
-	local full_buffer_width = vim.api.nvim_win_get_width(0)
-	local base_width = math.floor(full_buffer_width * 0.7)
-	if base_width < 20 then
-		base_width = 20
-	end -- Minimum width
-
-	-- Add first line with diamond prefix and remaining lines with three-space indent
-	local utils = require("paragonic.utils")
-	if #response_content_lines > 0 then
-		local wrapped_first = utils.wrap_text_with_diamond(response_content_lines[1], base_width)
-		for _, line in ipairs(wrapped_first) do
-			table.insert(response_lines, line)
-		end
-
-		-- Add remaining lines with six spaces indentation (3-space gutter + 3-space continuation)
-		for i = 2, #response_content_lines do
-			local wrapped_lines = utils.wrap_text(response_content_lines[i], base_width, "      ")
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-		end
-	else
-		-- If no content, just add the diamond with proper gutter spacing
-		table.insert(response_lines, "🮮   ")
-	end
-
-	-- Add timing information
-	table.insert(response_lines, "")
-	table.insert(response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
-
-	-- Add closing lines
-	table.insert(response_lines, "")
-	table.insert(response_lines, "∎")
-
-	-- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
-
-	-- Move cursor to the end of the buffer (safe positioning)
-	local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-	vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-end
-
 -- Enhanced send message command with debug messages
 function M.send_message_command_debug()
 	local current_buf = vim.api.nvim_get_current_buf()
@@ -822,109 +625,8 @@ function M.send_message_command_debug()
 	local config = require("paragonic.config")
 	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
 	
-	-- Set up callbacks for streaming
-	local response_content = ""
-	local response_lines = {}
-	
-	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
-		-- Add chunk to response content
-		response_content = response_content .. chunk
-		
-		-- Process thinking content with proper formatting
-		if chunk_type == "thinking_start" then
-			-- Start thinking section
-			table.insert(response_lines, "🧠  <think>")
-		elseif chunk_type == "thinking_content" then
-			-- Add thinking step with proper wrapping and zigzag prefix
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-		elseif chunk_type == "thinking_end" then
-			-- End thinking section
-			table.insert(response_lines, "󱦟  </think>")
-		elseif chunk_type == "regular_content" then
-			-- Add regular content with diamond prefix
-			local utils = require("paragonic.utils")
-			-- Safely get buffer width from the stored window ID
-			local full_buffer_width = 80 -- Default width
-			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
-				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
-			end
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-		end
-		
-		-- Update the buffer in real-time
-		local current_response_lines = {}
-		for _, line in ipairs(response_lines) do
-			table.insert(current_response_lines, line)
-		end
-		
-		-- Add timing placeholder
-		table.insert(current_response_lines, " ⏱️   ...")
-		table.insert(current_response_lines, "∎")
-		
-		-- Insert/update response in buffer
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #current_response_lines, false, current_response_lines)
-		
-		-- Force redraw for smooth animation
-		vim.cmd("redraw!")
-	end
-	
-	local function on_complete()
-		-- Calculate timing information
-		local end_time = vim.uv.now()
-		local duration_ms = end_time - start_time
-		local duration_sec = duration_ms / 1000
-		
-		-- Update timing in the last response
-		local final_response_lines = {}
-		for _, line in ipairs(response_lines) do
-			table.insert(final_response_lines, line)
-		end
-		
-		-- Add timing information
-		table.insert(final_response_lines, "")
-		table.insert(final_response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
-		table.insert(final_response_lines, "")
-		table.insert(final_response_lines, "∎")
-		
-		-- Update buffer with final response
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #final_response_lines, false, final_response_lines)
-		
-		-- Move cursor to the end of the buffer (safely handle window changes)
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		-- Check if the chat window still exists and is valid
-		local window_exists = pcall(function()
-			return vim.api.nvim_win_is_valid(chat_window_id)
-		end)
-		
-		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
-			-- Check if the window is still showing the chat buffer
-			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
-			if window_buf == current_buf then
-				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
-			end
-		end
-		
-		-- Debug: Success
-		debug.append_debug_message(current_buf, "Message send process completed successfully", "success")
-	end
+	-- Use shared on_chunk handler with debug enabled
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, true)
 	
 	-- Use streaming thinking function
 	local success, err = M.send_message_thinking_streaming(message, default_model, on_chunk, on_complete)
@@ -1339,432 +1041,195 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	return true
 end
 
-
-
-function M.send_message_command()
-	local debug = require("paragonic.debug")
-	debug.debug_print("🚀 send_message_command() called", "debug")
-
-	local current_buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(current_buf)
-
-	debug.debug_print("🔍 Current buffer: " .. buf_name, "debug")
-
-	-- Only work in chat buffer
-	if buf_name ~= "paragonic://chat" then
-		debug.debug_print("❌ Not in chat buffer", "error")
-		vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
-		return
-	end
-
-	debug.debug_print("✅ In chat buffer, extracting message...", "debug")
-
-	-- Extract multi-line message from cursor to previous tombstone
-	local message, start_line = extract_backward_to_tombstone(current_buf)
-	local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1 -- Keep for insertion positioning
-
-	debug.debug_print("🔍 Extracted message: " .. string.format("%q", message), "debug")
-	debug.debug_print("🔍 Message length: " .. #message, "debug")
-
-	-- Debug: Show what was extracted
-	vim.notify("Extracted message: " .. string.format("%q", message), vim.log.levels.INFO)
-
-	-- Skip empty lines or lines that start with #
-	if message == "" or message:match("^%s*#") then
-		vim.notify("Please enter a message to send", vim.log.levels.INFO)
-		return
-	end
-
-	-- Initialize backend if not available
-	local backend = require("paragonic.backend")
-	debug.debug_print("🔍 Checking backend._rpc_client: " .. tostring(backend._rpc_client ~= nil), "debug")
-
-	if not backend._rpc_client then
-		debug.debug_print("🔧 Backend not available, initializing...", "debug")
-		local success = backend._initialize_backend()
-		debug.debug_print("🔧 Backend initialization result: " .. tostring(success), "debug")
-
-		if not success then
-			debug.debug_print("❌ Backend initialization failed", "error")
-			vim.notify("Failed to initialize backend", vim.log.levels.ERROR)
-			return
-		end
-	else
-		debug.debug_print("✅ Backend already available", "debug")
-	end
-
-	-- Get buffer width for formatting
-	local buffer_width = vim.api.nvim_win_get_width(0)
-	local format_width = math.floor(buffer_width * 0.7)
-	if format_width < 20 then
-		format_width = 20
-	end -- Minimum width
-
-	-- Configure formatting for server-side processing
-	local format_config = {
-		max_width = format_width,
-		include_diamond = true,
-		continuation_indent = 3,
-		format_markdown = true,
-		preserve_paragraphs = true,
-	}
-
-	-- Record start time for timing information
+-- Shared on_chunk handler for streaming responses
+-- @param current_buf number - The buffer to write to
+-- @param line_num number - The line number to start writing from
+-- @param chat_window_id number - The window ID for safe cursor positioning
+-- @param enable_debug boolean - Whether to enable debug output
+-- @return function - The on_chunk callback function
+local function create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, enable_debug)
+	local response_content = ""
+	local response_lines = {}
 	local start_time = vim.uv.now()
-
-	-- Add zigzag arrow to indicate request is being sent
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯" })
-
-	-- Force immediate buffer update to show zigzag arrow
-	vim.api.nvim_buf_call(current_buf, function()
-		vim.cmd("redraw!")
-	end)
-
-	-- Small delay to ensure zigzag arrow is visible
-	vim.defer_fn(function()
-		-- Send the message using server-side formatted function
-		local config = require("paragonic.config")
-		local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-
-		debug.debug_print("🔧 About to send message to model: " .. default_model, "debug")
-		debug.debug_print("🔧 Message to send: " .. string.format("%q", message), "debug")
-
-		local formatted_response, original_response, server_duration_sec, err =
-			M.send_message_formatted(message, default_model, format_config)
-
-		if not formatted_response then
-			vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
-
-			-- Add error message to chat buffer with error symbol
-			local error_lines = {
-				"🛔  " .. (err or "unknown error"),
-			}
-			vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
-			return
+	
+	return function(chunk, chunk_index, total_chunks, chunk_type)
+		-- Add chunk to response content
+		response_content = response_content .. chunk
+		
+		-- Debug output if enabled
+		if enable_debug then
+			local chunk_index_str = chunk_index and tostring(chunk_index) or "unknown"
+			local total_chunks_str = total_chunks and tostring(total_chunks) or "unknown"
+			vim.notify("CALLBACK: Processing chunk " .. chunk_index_str .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
+			
+			local ok, debug = pcall(require, "paragonic.debug")
+			if ok then
+				debug.debug_print("🔄 Processing chunk " .. chunk_index_str .. " of " .. total_chunks_str .. " (type: " .. chunk_type .. ")", "debug")
+			end
 		end
-
-		-- Since the response is already formatted by the server, we can add it directly
-		local response_lines = {}
-		for line in formatted_response:gmatch("[^\r\n]+") do
-			table.insert(response_lines, line)
-		end
-
-		-- Add closing line
-		table.insert(response_lines, "")
-		table.insert(response_lines, "∎")
-
-		-- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
-
-		-- Move cursor to the end of the buffer
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-
-		-- Notify success
-		vim.notify("Message sent successfully (server-formatted)", vim.log.levels.INFO)
-	end, 100) -- 100ms delay
-end
-
--- Send message with streaming updates using brain symbol
-function M.send_message_command_streaming()
-	local debug = require("paragonic.debug")
-	debug.debug_print("🚀 send_message_command_streaming() called", "debug")
-
-	-- Get current buffer and cursor position
-	local current_buf = vim.api.nvim_get_current_buf()
-	local cursor_pos = vim.api.nvim_win_get_cursor(0)
-	local line_num = cursor_pos[1] - 1 -- Convert to 0-based index
-
-	-- Extract message from current line
-	local line_content = vim.api.nvim_buf_get_lines(current_buf, line_num, line_num + 1, false)[1] or ""
-	local message = line_content:match("^%s*(.+)%s*$") -- Trim whitespace
-
-	if not message or message == "" then
-		vim.notify("No message to send", vim.log.levels.WARN)
-		return
-	end
-
-	-- Add immediate visual feedback that the chat is being sent
-	debug.debug_print("🔧 Calling append_debug_message...", "debug")
-	local success, err = debug.append_debug_message(current_buf, "Starting streaming message to AI...", "info")
-
-	if not success then
-		debug.debug_print("❌ append_debug_message failed: " .. tostring(err), "error")
-		return
-	else
-		debug.debug_print("✅ append_debug_message succeeded", "debug")
-	end
-
-	-- Initialize backend if not available
-	local backend = require("paragonic.backend")
-	if not backend._rpc_client then
-		debug.append_debug_message(current_buf, "🔧 Backend not available, starting initialization...", "info")
-
-		local success = backend._initialize_backend()
-
-		if not success then
-			debug.append_debug_message(current_buf, "❌ Backend initialization failed", "error")
-			vim.notify("Failed to send message: Backend initialization failed", vim.log.levels.ERROR)
-			return
-		else
-			debug.append_debug_message(current_buf, "✅ Backend initialization completed", "success")
-		end
-	else
-		debug.append_debug_message(current_buf, "✅ Backend already available", "info")
-	end
-
-	-- Record start time for timing information
-	local start_time = vim.uv.now()
-
-	-- Add brain symbol to indicate streaming is starting
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "󰧑" })
-
-	-- Force buffer update to show brain symbol immediately
-	vim.api.nvim_buf_call(current_buf, function()
-		vim.cmd("redraw!")
-	end)
-
-	-- Initialize response buffer
-	local response_buffer = ""
-	local response_line_start = line_num + 2
-
-	-- Callback for each chunk
-	local function on_chunk(chunk, chunk_index, total_chunks)
-		-- Append chunk to response buffer
-		response_buffer = response_buffer .. chunk
-
-		-- Update the response line with current content and brain symbol
-		local response_lines = {}
-		for line in response_buffer:gmatch("[^\r\n]+") do
-			if line:match("%S") then -- Only add non-empty lines
+		
+		-- Process thinking content with proper formatting
+		if chunk_type == "thinking_start" then
+			-- Start thinking section
+			table.insert(response_lines, "🧠  <think>")
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Added thinking_start line", "debug")
+				end
+			end
+		elseif chunk_type == "thinking_content" then
+			-- Add thinking step with proper wrapping and zigzag prefix
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_zigzag(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
 				table.insert(response_lines, line)
 			end
-		end
-
-		-- If no lines were extracted, add the current buffer as a single line
-		if #response_lines == 0 then
-			table.insert(response_lines, response_buffer)
-		end
-
-		-- Format with brain symbol for progress and diamond for final
-		local formatted_lines = {}
-		local utils = require("paragonic.utils")
-
-		-- Get buffer width for word wrapping
-		local full_buffer_width = vim.api.nvim_win_get_width(0)
-		local base_width = math.floor(full_buffer_width * 0.7)
-		if base_width < 20 then
-			base_width = 20
-		end
-
-		if #response_lines > 0 then
-			-- First line with brain symbol (progress indicator)
-			local wrapped_first = utils.wrap_text_with_diamond(response_lines[1], base_width)
-			for _, line in ipairs(wrapped_first) do
-				-- Replace diamond with brain symbol for progress
-				line = line:gsub("🮮", "󰧑")
-				table.insert(formatted_lines, line)
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Added " .. #wrapped_lines .. " thinking_content lines", "debug")
+				end
 			end
-
-			-- Remaining lines with six spaces indentation
-			for i = 2, #response_lines do
-				local wrapped_lines = utils.wrap_text(response_lines[i], base_width, "      ")
-				for _, line in ipairs(wrapped_lines) do
-					table.insert(formatted_lines, line)
+		elseif chunk_type == "thinking_end" then
+			-- End thinking section
+			table.insert(response_lines, "󱦟  </think>")
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("🧠 Added thinking_end line", "debug")
+				end
+			end
+		elseif chunk_type == "regular_content" then
+			-- Add regular content with diamond prefix
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Added " .. #wrapped_lines .. " regular_content lines", "debug")
 				end
 			end
 		else
-			-- If no content, just add the brain symbol with proper gutter spacing
-			table.insert(formatted_lines, "󰧑   ")
+			-- Default chunk handling - treat as regular content
+			local utils = require("paragonic.utils")
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+			if enable_debug then
+				local ok, debug = pcall(require, "paragonic.debug")
+				if ok then
+					debug.debug_print("◊ Added " .. #wrapped_lines .. " default content lines", "debug")
+				end
+			end
 		end
-
-		-- Update the buffer with current progress
-		vim.api.nvim_buf_set_lines(
-			current_buf,
-			response_line_start,
-			response_line_start + #formatted_lines,
-			false,
-			formatted_lines
-		)
-
-		-- Force buffer update
-		vim.api.nvim_buf_call(current_buf, function()
-			vim.cmd("redraw!")
+		
+		-- Update the buffer in real-time
+		local current_response_lines = {}
+		for _, line in ipairs(response_lines) do
+			table.insert(current_response_lines, line)
+		end
+		
+		-- Add timing placeholder
+		table.insert(current_response_lines, " ⏱️   ...")
+		table.insert(current_response_lines, "∎")
+		
+		-- Insert/update response in buffer
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #current_response_lines, false, current_response_lines)
+		
+		-- Force redraw for smooth animation
+		vim.cmd("redraw!")
+		
+		-- Move cursor to the end of the buffer (safely handle window changes)
+		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+		-- Check if the chat window still exists and is valid
+		local window_exists = pcall(function()
+			return vim.api.nvim_win_is_valid(chat_window_id)
 		end)
-	end
-
-	-- Callback for completion
-	local function on_complete()
+		
+		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
+			-- Check if the window is still showing the chat buffer
+			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
+			if window_buf == current_buf then
+				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
+			end
+		else
+			-- Fallback to current window
+			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
+		end
+	end, function() -- on_complete callback
 		-- Calculate timing information
 		local end_time = vim.uv.now()
 		local duration_ms = end_time - start_time
 		local duration_sec = duration_ms / 1000
-
-		-- Replace brain symbol with diamond for final result
-		local final_lines = {}
-		for line in response_buffer:gmatch("[^\r\n]+") do
-			if line:match("%S") then
-				table.insert(final_lines, line)
-			end
+		
+		-- Update timing in the last response
+		local final_response_lines = {}
+		for _, line in ipairs(response_lines) do
+			table.insert(final_response_lines, line)
 		end
-
-		if #final_lines == 0 then
-			table.insert(final_lines, response_buffer)
-		end
-
-		-- Format with diamond symbol for final result
-		local utils = require("paragonic.utils")
-		local full_buffer_width = vim.api.nvim_win_get_width(0)
-		local base_width = math.floor(full_buffer_width * 0.7)
-		if base_width < 20 then
-			base_width = 20
-		end
-
-		local formatted_lines = {}
-		if #final_lines > 0 then
-			-- First line with diamond symbol (final result)
-			local wrapped_first = utils.wrap_text_with_diamond(final_lines[1], base_width)
-			for _, line in ipairs(wrapped_first) do
-				table.insert(formatted_lines, line)
-			end
-
-			-- Remaining lines with six spaces indentation
-			for i = 2, #final_lines do
-				local wrapped_lines = utils.wrap_text(final_lines[i], base_width, "      ")
-				for _, line in ipairs(wrapped_lines) do
-					table.insert(formatted_lines, line)
-				end
+		
+		-- Add timing information
+		table.insert(final_response_lines, "")
+		table.insert(final_response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
+		table.insert(final_response_lines, "")
+		table.insert(final_response_lines, "∎")
+		
+		-- Update buffer with final response
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #final_response_lines, false, final_response_lines)
+		
+		-- Move cursor to the end of the buffer (safely handle window changes)
+		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+		-- Check if the chat window still exists and is valid
+		local window_exists = pcall(function()
+			return vim.api.nvim_win_is_valid(chat_window_id)
+		end)
+		
+		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
+			-- Check if the window is still showing the chat buffer
+			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
+			if window_buf == current_buf then
+				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
 			end
 		else
-			table.insert(formatted_lines, "🮮   ")
+			-- Fallback to current window
+			vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
 		end
-
-		-- Add timing information
-		table.insert(formatted_lines, "")
-		table.insert(formatted_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
-
-		-- Add closing lines
-		table.insert(formatted_lines, "")
-		table.insert(formatted_lines, "∎")
-
-		-- Update the buffer with final result
-		vim.api.nvim_buf_set_lines(
-			current_buf,
-			response_line_start,
-			response_line_start + #formatted_lines,
-			false,
-			formatted_lines
-		)
-
-		-- Move cursor to the end of the buffer
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-
-		-- Notify success
-		vim.notify("Streaming message completed successfully", vim.log.levels.INFO)
-		debug.append_debug_message(current_buf, "✅ Streaming message completed", "success")
-	end
-
-	-- Send the streaming message
-	local config = require("paragonic.config")
-	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-	local success, err = M.send_message_streaming(message, default_model, on_chunk, on_complete)
-
-	if not success then
-		debug.append_debug_message(current_buf, "Failed to start streaming: " .. (err or "unknown error"), "error")
-		vim.notify("Failed to start streaming: " .. (err or "unknown error"), vim.log.levels.ERROR)
-
-		-- Add error message to chat buffer
-		local error_lines = {
-			"🛔  " .. (err or "unknown error"),
-		}
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
+		
+		-- Debug success notification
+		if enable_debug then
+			vim.notify("Thinking streaming completed successfully", vim.log.levels.INFO)
+		end
 	end
 end
-
--- Alternative send functions for different extraction modes
-function M.send_message_backward_only()
-	local current_buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(current_buf)
-
-	if buf_name ~= "paragonic://chat" then
-		vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
-		return
-	end
-
-	-- Extract only backward from cursor to previous tombstone
-	local message, start_line = extract_backward_to_tombstone(current_buf)
-	local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
-
-	if message == "" or message:match("^%s*#") then
-		vim.notify("Please enter a message to send", vim.log.levels.INFO)
-		return
-	end
-
-	vim.notify(
-		"📤 Sending (backward only): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""),
-		vim.log.levels.INFO
-	)
-
-	-- Get and send to backend
-	local backend = require("paragonic.backend")
-	local config = require("paragonic.config")
-	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-	local success, response = backend.send_message(message, default_model)
-
-	if success then
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "", "∎" })
-		local new_line_num = line_num + 3
-		vim.api.nvim_win_set_cursor(0, { new_line_num, 0 })
-		vim.notify("Message sent successfully (backward extraction)", vim.log.levels.INFO)
-	else
-		vim.notify("Failed to send message: " .. (response or "unknown error"), vim.log.levels.ERROR)
-	end
-end
-
-function M.send_message_forward_only()
-	local current_buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(current_buf)
-
-	if buf_name ~= "paragonic://chat" then
-		vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
-		return
-	end
-
-	-- Extract only forward from cursor to next tombstone or end
-	local message = extract_forward_to_tombstone(current_buf)
-	local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
-
-	if message == "" or message:match("^%s*#") then
-		vim.notify("Please enter a message to send", vim.log.levels.INFO)
-		return
-	end
-
-	vim.notify(
-		"📤 Sending (forward only): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""),
-		vim.log.levels.INFO
-	)
-
-	-- Get and send to backend
-	local backend = require("paragonic.backend")
-	local config = require("paragonic.config")
-	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-	local success, response = backend.send_message(message, default_model)
-
-	if success then
-		vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "", "∎" })
-		local new_line_num = line_num + 3
-		vim.api.nvim_win_set_cursor(0, { new_line_num, 0 })
-		vim.notify("Message sent successfully (forward extraction)", vim.log.levels.INFO)
-	else
-		vim.notify("Failed to send message: " .. (response or "unknown error"), vim.log.levels.ERROR)
-	end
-end
-
--- Test functions for unit testing (only expose when testing)
-M._test_extract_backward_to_tombstone = extract_backward_to_tombstone
-M._test_extract_forward_to_tombstone = extract_forward_to_tombstone
-M._test_extract_complete_range = extract_complete_range
 
 -- Send message command with thinking model support and folding
 function M.send_message_command_thinking()
@@ -1794,103 +1259,15 @@ function M.send_message_command_thinking()
 	local user_lines = { "", "↯   " .. message, "" }
 	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
 
-	-- Calculate response line start
-	local response_line_start = line_num + 4
+	-- Store the current window ID for later use in callbacks
+	local chat_window_id = vim.api.nvim_get_current_win()
 
-	-- Initialize response buffer and thinking state
-	local thinking_start_line = nil
-	local fold_start_line = nil
-
-	-- Set up chunk callback for thinking streaming
-	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
-		-- Simple test to see if callback is working
-		vim.notify("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
-		
-		-- Test if we can access the debug module
-		local ok, debug = pcall(require, "paragonic.debug")
-		if ok then
-			local chunk_index_str = chunk_index and tostring(chunk_index) or "unknown"
-			local total_chunks_str = total_chunks and tostring(total_chunks) or "unknown"
-			debug.debug_print("🔄 Processing chunk " .. chunk_index_str .. " of " .. total_chunks_str .. " (type: " .. chunk_type .. ")", "debug")
-		else
-			vim.notify("DEBUG ERROR: " .. tostring(debug), vim.log.levels.ERROR)
-		end
-		
-		if chunk_type == "thinking_start" then
-			-- Start thinking section with brain symbol
-			local lines = { "🧠   <think>" }
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-			thinking_start_line = response_line_start
-				+ #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
-			fold_start_line = thinking_start_line
-			debug.debug_print("🧠 Added thinking_start line", "debug")
-		elseif chunk_type == "thinking_content" then
-			-- Add thinking content with indentation
-			local lines = {}
-			for line in chunk:gmatch("[^\r\n]+") do
-				table.insert(lines, "   " .. line)
-			end
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-			debug.debug_print("🧠 Added " .. #lines .. " thinking_content lines", "debug")
-		elseif chunk_type == "thinking_end" then
-			-- End thinking section
-			local lines = { "   </think>" }
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
-			debug.debug_print("🧠 Added thinking_end line", "debug")
-		elseif chunk_type == "regular_content" then
-			-- Add regular content with diamond symbol
-			local utils = require("paragonic.utils")
-			local full_buffer_width = vim.api.nvim_win_get_width(0)
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
-			debug.debug_print("◊ Added " .. #wrapped_lines .. " regular_content lines", "debug")
-		else
-			-- Default chunk handling - treat as regular content
-			local utils = require("paragonic.utils")
-			local full_buffer_width = vim.api.nvim_win_get_width(0)
-			local base_width = math.floor(full_buffer_width * 0.7)
-			if base_width < 20 then base_width = 20 end
-			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
-			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
-			debug.debug_print("◊ Added " .. #wrapped_lines .. " default content lines", "debug")
-		end
-
-		-- Move cursor to the end of the buffer
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-	end
-
-	-- Set up completion callback
-	local function on_complete()
-		local duration_sec = 0 -- TODO: Calculate actual duration
-
-		-- Add timing information
-		local timing_lines = {
-			"",
-			" ⏱️   " .. string.format("%.2fs", duration_sec),
-			"",
-			"∎",
-		}
-		vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, timing_lines)
-
-		-- Move cursor to the end of the buffer
-		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-
-		-- Notify success
-		vim.notify("Thinking streaming completed successfully", vim.log.levels.INFO)
-	end
+	-- Use shared on_chunk handler with debug disabled for normal operation
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, false)
 
 	-- Send the thinking streaming message
 	local config = require("paragonic.config")
 	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-	
-	-- Test if on_chunk is the correct callback
-	vim.notify("TEST: on_chunk callback type: " .. type(on_chunk), vim.log.levels.INFO)
 	
 	local success, err = M.send_message_thinking_streaming(message, default_model, on_chunk, on_complete)
 
@@ -1901,7 +1278,7 @@ function M.send_message_command_thinking()
 		local error_lines = {
 			"🛔  " .. (err or "unknown error"),
 		}
-		vim.api.nvim_buf_set_lines(current_buf, response_line_start, response_line_start, false, error_lines)
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
 	end
 end
 

@@ -793,7 +793,10 @@ function M.ai_agent_get_state()
 			local buf = vim.api.nvim_win_get_buf(win)
 			local cursor = vim.api.nvim_win_get_cursor(win)
 			local pos = vim.api.nvim_win_get_position(win)
-			local size = vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win)
+			local size = { 
+				width = vim.api.nvim_win_get_width(win),
+				height = vim.api.nvim_win_get_height(win)
+			}
 
 			table.insert(state.windows, {
 				id = win,
@@ -801,7 +804,7 @@ function M.ai_agent_get_state()
 				cursor_line = cursor[1],
 				cursor_column = cursor[2],
 				position = { row = pos[1], col = pos[2] },
-				size = { width = size, height = size },
+				size = size,
 				is_current = (win == state.current_window),
 			})
 		end
