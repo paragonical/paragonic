@@ -1419,6 +1419,53 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 				end
 				return true
 			end
+		elseif response.result and response.result.chunks then
+			-- New MCP standard: all chunks in single response
+			debug.debug_print("📝 Found chunks array in response result (MCP standard)", "debug")
+			local chunks = response.result.chunks
+			if type(chunks) == "table" and #chunks > 0 then
+				debug.debug_print("📝 Processing " .. #chunks .. " chunks from single response", "debug")
+				
+				-- Process all chunks asynchronously
+				local function process_chunk_async(chunk_index)
+					if chunk_index > #chunks then
+						-- All chunks processed, complete
+						debug.debug_print("📝 All chunks processed, completing", "debug")
+						if on_complete then
+							on_complete()
+						end
+						return
+					end
+					
+					local chunk = chunks[chunk_index]
+					if on_chunk and chunk then
+						local chunk_type = chunk.chunk_type or "regular_content"
+						local chunk_content = chunk.chunk or ""
+						local chunk_idx = chunk.chunk_index or (chunk_index - 1)
+						local total_chunks = chunk.total_chunks or #chunks
+						
+						debug.debug_print("📝 Processing chunk " .. tostring(chunk_index) .. " with type: " .. chunk_type, "debug")
+						debug.debug_print("📝 Chunk content preview: " .. chunk_content:sub(1, 50), "debug")
+						
+						on_chunk(chunk_content, chunk_idx, total_chunks, chunk_type)
+					end
+					
+					-- Schedule next chunk processing with a small delay for smooth animation
+					vim.defer_fn(function()
+						process_chunk_async(chunk_index + 1)
+					end, 50) -- 50ms delay between chunks
+				end
+				
+				-- Start processing chunks
+				process_chunk_async(1)
+				return true
+			else
+				debug.debug_print("📝 No valid chunks found in response", "debug")
+				if on_complete then
+					on_complete()
+				end
+				return true
+			end
 		elseif response.result and response.result.content then
 			debug.debug_print("📝 Found content in response result", "debug")
 			-- Process the content as a single chunk
