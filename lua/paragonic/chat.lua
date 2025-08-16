@@ -159,6 +159,7 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 	local thinking_content_started = false
 	local thinking_end_line = nil -- Track where thinking content ends
 	local has_thinking_content = false -- Track if any thinking content was processed
+	local assistant_content_started = false -- Track if assistant content has started
 
 	return function(chunk_content, chunk_index, total_chunks, chunk_type)
 		if not buffer or not vim.api.nvim_buf_is_valid(buffer) then
@@ -238,6 +239,15 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			-- Add assistant content with proper wrapping (no indentation for responses)
 			local buffer_width = ui.get_buffer_width(buffer)
 			local wrapped_lines = M.wrap_response_content(chunk_content, buffer_width - 4)
+
+			-- Add lozenge icon for first assistant content chunk
+			if not assistant_content_started then
+				-- Insert lozenge icon before the first assistant content
+				local insert_line = #lines
+				table.insert(lines, insert_line + 1, "◊")
+				assistant_content_started = true
+			end
+
 			-- Insert at the end of current content
 			local insert_line = #lines
 			-- Reverse the lines to fix the order issue (same as thinking content)
@@ -252,13 +262,18 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			end
 
 			-- Skip if this looks like the user's message being repeated
-			-- Check if the chunk content matches the original message (case-insensitive)
+			-- Check if the chunk content matches the original message (case-insensitive, more flexible)
 			if
 				chunk_content
-				and message
-				and chunk_content
-					:lower()
-					:match("^%s*" .. message:lower():gsub("[%-%.%+%*%?%[%]%^%$%(%)%%]", "%%%1") .. "%s*$")
+				and original_message
+				and (
+										-- Exact match (case-insensitive)
+chunk_content
+						:lower()
+						:match("^%s*" .. original_message:lower():gsub("[%-%.%+%*%?%[%]%^%$%(%)%%]", "%%%1") .. "%s*$")
+					-- Or contains the message as a substring (more flexible)
+					or chunk_content:lower():find(original_message:lower(), 1, true)
+				)
 			then
 				if enable_debug then
 					debug.debug_print("🚫 Skipping repeated user message: " .. chunk_content, "debug")
@@ -268,6 +283,15 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 
 			local buffer_width = ui.get_buffer_width(buffer)
 			local wrapped_lines = M.wrap_response_content(chunk_content, buffer_width - 4)
+
+			-- Add lozenge icon for first response content chunk (if not already added)
+			if not assistant_content_started then
+				-- Insert lozenge icon before the first response content
+				local insert_line = #lines
+				table.insert(lines, insert_line + 1, "◊")
+				assistant_content_started = true
+			end
+
 			-- Insert at the end of current content
 			local insert_line = #lines
 			-- Reverse the lines to fix the order issue (same as thinking content)
