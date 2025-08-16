@@ -1726,6 +1726,9 @@ function M.send_message_command_thinking()
 
 	-- Set up chunk callback for thinking streaming
 	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔄 Processing chunk " .. chunk_index .. " of " .. total_chunks .. " (type: " .. chunk_type .. ")", "debug")
+		
 		if chunk_type == "thinking_start" then
 			-- Start thinking section with brain symbol
 			local lines = { "🧠   <think>" }
@@ -1733,6 +1736,7 @@ function M.send_message_command_thinking()
 			thinking_start_line = response_line_start
 				+ #vim.api.nvim_buf_get_lines(current_buf, response_line_start, -1, false)
 			fold_start_line = thinking_start_line
+			debug.debug_print("🧠 Added thinking_start line", "debug")
 		elseif chunk_type == "thinking_content" then
 			-- Add thinking content with indentation
 			local lines = {}
@@ -1740,10 +1744,12 @@ function M.send_message_command_thinking()
 				table.insert(lines, "   " .. line)
 			end
 			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+			debug.debug_print("🧠 Added " .. #lines .. " thinking_content lines", "debug")
 		elseif chunk_type == "thinking_end" then
 			-- End thinking section
 			local lines = { "   </think>" }
 			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, lines)
+			debug.debug_print("🧠 Added thinking_end line", "debug")
 		elseif chunk_type == "regular_content" then
 			-- Add regular content with diamond symbol
 			local utils = require("paragonic.utils")
@@ -1753,6 +1759,7 @@ function M.send_message_command_thinking()
 			
 			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
 			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
+			debug.debug_print("◊ Added " .. #wrapped_lines .. " regular_content lines", "debug")
 		else
 			-- Default chunk handling - treat as regular content
 			local utils = require("paragonic.utils")
@@ -1762,6 +1769,7 @@ function M.send_message_command_thinking()
 			
 			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
 			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
+			debug.debug_print("◊ Added " .. #wrapped_lines .. " default content lines", "debug")
 		end
 
 		-- Move cursor to the end of the buffer
