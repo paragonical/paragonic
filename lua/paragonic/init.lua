@@ -53,8 +53,6 @@ function M.setup(opts)
 	local commands = {
 		-- Core interface commands
 		{ name = "ParagonicChat", func = M.chat.open_chat, opts = {} },
-		{ name = "ParagonicProjects", func = M.ui.open_projects, opts = {} },
-		{ name = "ParagonicConfig", func = M.ui.open_config, opts = {} },
 		{ name = "ParagonicDebug", func = M.debug.open_debug_buffer, opts = {} },
 
 		-- Chat commands
@@ -94,9 +92,9 @@ function M.setup(opts)
 			opts = {},
 		},
 
-		-- Project and config commands
-		{ name = "ParagonicCreateProject", func = M.ui.create_project_command, opts = {} },
-		{ name = "ParagonicSaveConfig", func = M.ui.save_config_command, opts = {} },
+		-- Project and config commands (temporarily disabled during architecture migration)
+		-- { name = "ParagonicCreateProject", func = M.ui.create_project_command, opts = {} },
+		-- { name = "ParagonicSaveConfig", func = M.ui.save_config_command, opts = {} },
 
 		-- Search commands
 		{ name = "ParagonicSearch", func = M.search.search_command, opts = { nargs = "*" } },
