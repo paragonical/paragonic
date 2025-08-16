@@ -170,8 +170,11 @@ local function create_mcp_client()
 
 	function client:get_streaming_chunks()
 		local chunks = client.streaming_chunks or {}
-		client.streaming_chunks = {} -- Clear after retrieving
 		return chunks
+	end
+
+	function client:clear_streaming_chunks()
+		client.streaming_chunks = {}
 	end
 
 	function client:get_next_chunk(params)

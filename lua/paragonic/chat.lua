@@ -1185,7 +1185,11 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	
 	while total_wait_time < max_wait_time do
 		local chunks = rpc_client:get_streaming_chunks()
+		local debug = require("paragonic.debug")
+		debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
+		
 		if chunks and #chunks > 0 then
+			debug.debug_print("Found " .. #chunks .. " chunks, proceeding with processing", "debug")
 			break -- We have chunks, proceed with processing
 		end
 		
@@ -1198,6 +1202,9 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	if #chunks == 0 then
 		return nil, "No streaming chunks received"
 	end
+	
+	-- Clear chunks after retrieving them
+	rpc_client:clear_streaming_chunks()
 
 	-- Initialize thinking state
 	local thinking_state = {
