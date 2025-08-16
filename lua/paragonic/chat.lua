@@ -63,10 +63,61 @@ function M.open_chat()
 	vim.api.nvim_command("split")
 	vim.api.nvim_win_set_buf(0, chat_buffer)
 
-	-- Add welcome message
-	ui.append_message(chat_buffer, "Welcome to Paragonic Chat! Type your message and press Enter to send.", "system")
+	-- Add initial chat content with instructions and tombstone
+	local initial_content = {
+		"# Paragonic Chat",
+		"Multi-line input extraction modes:",
+		"• <CR>: Send message (smart - auto-detects model capabilities)",
+		"• <leader>b: Send backward only (cursor to previous ∎)",
+		"• <leader>f: Send forward only (cursor to next ∎ or end)",
+		"• <leader><CR>: Send with debug output",
+		"∎",
+		"",
+	}
 
-	debug.debug_print("📝 Chat buffer opened", "debug")
+	-- Set initial content
+	vim.api.nvim_buf_set_lines(chat_buffer, 0, -1, false, initial_content)
+
+	-- Set filetype for syntax highlighting
+	vim.api.nvim_buf_set_option(chat_buffer, "filetype", "markdown")
+
+	-- Set up buffer-local keymaps for different extraction modes
+	vim.api.nvim_buf_set_keymap(
+		chat_buffer,
+		"n",
+		"<CR>",
+		":ParagonicSendSmart<CR>",
+		{ noremap = true, silent = true, desc = "Send message (smart - auto-detects model capabilities)" }
+	)
+
+	vim.api.nvim_buf_set_keymap(
+		chat_buffer,
+		"n",
+		"<leader>b",
+		":ParagonicSendBackward<CR>",
+		{ noremap = true, silent = true, desc = "Send backward to tombstone" }
+	)
+
+	vim.api.nvim_buf_set_keymap(
+		chat_buffer,
+		"n",
+		"<leader>f",
+		":ParagonicSendForward<CR>",
+		{ noremap = true, silent = true, desc = "Send forward to tombstone" }
+	)
+
+	vim.api.nvim_buf_set_keymap(
+		chat_buffer,
+		"n",
+		"<leader><CR>",
+		":ParagonicSendDebug<CR>",
+		{ noremap = true, silent = true, desc = "Send with debug output" }
+	)
+
+	-- Move cursor to the end of the buffer
+	vim.api.nvim_win_set_cursor(0, { #initial_content, 0 })
+
+	debug.debug_print("📝 Chat buffer opened with instructions and tombstone", "debug")
 end
 
 -- Extract message from cursor position backwards to tombstone
@@ -149,6 +200,20 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 		-- Completion callback
 		if enable_debug then
 			debug.debug_print("✅ Streaming completed", "success")
+		end
+
+		-- Add tombstone marker after completion
+		if buffer and vim.api.nvim_buf_is_valid(buffer) then
+			local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+			table.insert(lines, "")
+			table.insert(lines, "∎")
+			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+
+			-- Scroll to bottom
+			local last_line = #lines
+			if window_id and vim.api.nvim_win_is_valid(window_id) then
+				vim.api.nvim_win_set_cursor(window_id, { last_line, 0 })
+			end
 		end
 	end
 end
@@ -304,6 +369,102 @@ function M.send_message_command_smart()
 		-- For non-thinking models, use regular streaming
 		M.send_message_thinking_streaming(message, model, on_chunk, on_complete)
 	end
+end
+
+-- Send message command (backward extraction)
+function M.send_message_command_backward()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local buf_name = vim.api.nvim_buf_get_name(current_buf)
+
+	if buf_name ~= "paragonic://chat" then
+		vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+		return
+	end
+
+	-- Extract message from cursor position backwards to tombstone
+	local message, start_line = extract_backward_to_tombstone(current_buf)
+	local line_num = vim.api.nvim_win_get_cursor(0)[1] - 1
+
+	if message == "" or message:match("^%s*#") then
+		vim.notify("Please enter a message to send", vim.log.levels.INFO)
+		return
+	end
+
+	vim.notify(
+		"📤 Sending (backward): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""),
+		vim.log.levels.INFO
+	)
+
+	-- Add user message to buffer
+	local user_lines = { "", message, "" }
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
+
+	-- Store the current window ID for later use in callbacks
+	local chat_window_id = vim.api.nvim_get_current_win()
+
+	-- Use shared on_chunk handler with debug disabled for normal operation
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, false)
+
+	-- Send message with thinking streaming
+	M.send_message_thinking_streaming(message, nil, on_chunk, on_complete)
+end
+
+-- Send message command (forward extraction)
+function M.send_message_command_forward()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local buf_name = vim.api.nvim_buf_get_name(current_buf)
+
+	if buf_name ~= "paragonic://chat" then
+		vim.notify("This command only works in the chat buffer", vim.log.levels.WARN)
+		return
+	end
+
+	-- Extract message from cursor position forwards to tombstone or end
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	local cursor_line = vim.api.nvim_win_get_cursor(0)[1] - 1
+	local total_lines = #lines
+
+	-- Find the next tombstone (∎) after cursor
+	local end_line = total_lines
+	for i = cursor_line + 1, total_lines do
+		if lines[i + 1] and lines[i + 1]:match("^%s*∎") then
+			end_line = i - 1
+			break
+		end
+	end
+
+	-- Extract message from cursor_line to end_line
+	local message_lines = {}
+	for i = cursor_line, end_line do
+		if lines[i + 1] then
+			table.insert(message_lines, lines[i + 1])
+		end
+	end
+
+	local message = table.concat(message_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+
+	if message == "" or message:match("^%s*#") then
+		vim.notify("Please enter a message to send", vim.log.levels.INFO)
+		return
+	end
+
+	vim.notify(
+		"📤 Sending (forward): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""),
+		vim.log.levels.INFO
+	)
+
+	-- Add user message to buffer
+	local user_lines = { "", message, "" }
+	vim.api.nvim_buf_set_lines(current_buf, cursor_line + 1, cursor_line + 1, false, user_lines)
+
+	-- Store the current window ID for later use in callbacks
+	local chat_window_id = vim.api.nvim_get_current_win()
+
+	-- Use shared on_chunk handler with debug disabled for normal operation
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, cursor_line, chat_window_id, false)
+
+	-- Send message with thinking streaming
+	M.send_message_thinking_streaming(message, nil, on_chunk, on_complete)
 end
 
 -- Send message command (debug mode)
