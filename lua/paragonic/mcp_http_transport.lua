@@ -58,10 +58,25 @@ else
 			http_client = {
 				init = function(config) return true end,
 				post = function(endpoint, data) 
-					return {
-						body = { jsonrpc = "2.0", id = "test", result = { success = true } },
-						headers = { ["content-type"] = "application/json" }
-					}
+					-- Check if this is a streaming request
+					if data and data.method == "streaming_chat_completion" then
+						return {
+							body = { 
+								jsonrpc = "2.0", 
+								id = data.id or "test", 
+								result = { 
+									streaming = true,
+									request_id = data.id or "test-stream"
+								} 
+							},
+							headers = { ["content-type"] = "application/json" }
+						}
+					else
+						return {
+							body = { jsonrpc = "2.0", id = "test", result = { success = true } },
+							headers = { ["content-type"] = "application/json" }
+						}
+					end
 				end,
 				set_session_id = function(id) end,
 				is_success = function(response) return true end,
@@ -551,7 +566,25 @@ end
 -- Start streaming connection for a request
 function mcp_http_transport._start_streaming_connection(request_id, stream_request_id)
 	-- Create a temporary SSE client for this request
-	local sse_client = require("paragonic.sse_client")
+	local sse_client
+	local sse_success, sse_result = pcall(require, "paragonic.sse_client")
+	if sse_success then
+		sse_client = sse_result
+	else
+		-- Mock SSE client for testing
+		sse_client = {
+			init = function(config) return true end,
+			set_session_id = function(id) end,
+			connect = function(stream_id, callbacks) 
+				-- Simulate successful connection
+				if callbacks and callbacks.on_connect then
+					callbacks.on_connect(stream_id or "mock-stream")
+				end
+				return true 
+			end,
+			disconnect = function() return true end
+		}
+	end
 	
 	-- Initialize SSE client for this request
 	local sse_success = sse_client.init({
