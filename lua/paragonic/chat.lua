@@ -638,7 +638,7 @@ function M.send_message_smart(message, model)
 	end
 end
 
--- Custom wrapping function for thinking content with consistent indentation
+-- Custom wrapping function for thinking content with continuation marker only on first line
 function M.wrap_thinking_content(text, max_width, glyph)
 	-- Set default max_width if not provided
 	max_width = max_width or 80
@@ -658,20 +658,22 @@ function M.wrap_thinking_content(text, max_width, glyph)
 		table.insert(text_lines, line)
 	end
 
-	-- Process each line with consistent indentation
+	-- Process each line with continuation marker only on first line
 	for i, line in ipairs(text_lines) do
 		if line:match("%S") then -- Only process non-empty lines
 			-- Strip leading spaces from the line
 			local clean_line = line:match("^%s*(.+)$")
 
-			-- Word wrapping with consistent indentation
+			-- Word wrapping with continuation marker only on first line
 			local words = {}
 			for word in clean_line:gmatch("[^%s]+") do
 				table.insert(words, word)
 			end
 
-			local current_line = glyph .. "  " -- Consistent indentation: glyph + 2 spaces
-			local current_length = #glyph + 2
+			local is_first_line = true
+			local current_line = ""
+			local current_length = 0
+			local text_start_pos = #glyph + 2 -- Position where text content starts on first line
 
 			for j, word in ipairs(words) do
 				local word_length = #word
@@ -679,26 +681,33 @@ function M.wrap_thinking_content(text, max_width, glyph)
 				-- If adding this word would exceed the line limit
 				if current_length + word_length > max_width then
 					-- Add current line to lines (if not empty)
-					if current_line ~= (glyph .. "  ") then
+					if current_line ~= "" then
 						table.insert(lines, current_line)
 					end
-					-- Start new line with same indentation (not extra spaces)
-					current_line = glyph .. "  " .. word
-					current_length = #glyph + 2 + word_length
+					-- Start new line with indentation that aligns with text content start
+					current_line = string.rep(" ", text_start_pos) .. word
+					current_length = text_start_pos + word_length
 				else
 					-- Add word to current line (with space if not first word)
-					if current_line ~= (glyph .. "  ") then
+					if current_line ~= "" then
 						current_line = current_line .. " " .. word
 						current_length = current_length + 1 + word_length
 					else
-						current_line = current_line .. word
-						current_length = current_length + word_length
+						-- First word on the line - only add glyph to the very first line
+						if is_first_line then
+							current_line = glyph .. "  " .. word
+							current_length = #glyph + 2 + word_length
+							is_first_line = false
+						else
+							current_line = string.rep(" ", text_start_pos) .. word
+							current_length = text_start_pos + word_length
+						end
 					end
 				end
 			end
 
 			-- Add the last line if it has content
-			if current_line ~= (glyph .. "  ") then
+			if current_line ~= "" then
 				table.insert(lines, current_line)
 			end
 		end
