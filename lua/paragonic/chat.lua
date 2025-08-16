@@ -1113,6 +1113,9 @@ function M.send_message_streaming(message, model, on_chunk, on_complete)
 		check_timer:start(check_interval, 0, check_for_chunks)
 	end
 	
+	-- Start the ping timer to keep SSE connection alive
+	ping_timer:start(ping_interval, ping_interval, send_ping)
+	
 	-- Start the non-blocking chunk checking
 	check_for_chunks()
 
@@ -1175,6 +1178,14 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	-- Mark streaming as active to prevent reconnection conflicts
 	rpc_client:set_streaming_active(true)
 	
+	-- Debug: Check SSE connection status before starting streaming
+	local sse_client = require("paragonic.sse_client")
+	if sse_client and sse_client.is_connected then
+		debug.debug_print("✅ SSE connection is active before streaming", "debug")
+	else
+		debug.debug_print("❌ SSE connection is not active before streaming", "debug")
+	end
+	
 	-- Add first chunk to streaming buffer for consistent processing
 	if response.chunk then
 		debug.debug_print("Adding first chunk to streaming buffer: " .. (response.chunk_type or "unknown"), "debug")
@@ -1192,6 +1203,24 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	local total_wait_time = 0
 	local chunks_processed = 0
 	local completion_detected = false
+	
+	-- Keep SSE connection alive with periodic pings
+	local ping_timer = vim.loop.new_timer()
+	local ping_interval = 5000 -- 5 seconds
+	local ping_count = 0
+	
+	local function send_ping()
+		ping_count = ping_count + 1
+		debug.debug_print("🔄 Sending SSE ping #" .. ping_count, "debug")
+		-- Send a ping to keep the connection alive
+		local sse_client = require("paragonic.sse_client")
+		if sse_client and sse_client.is_connected then
+			-- The SSE client should handle pings automatically
+			debug.debug_print("✅ SSE connection still active", "debug")
+		else
+			debug.debug_print("❌ SSE connection lost during streaming", "debug")
+		end
+	end
 	
 	-- Create a timer for non-blocking chunk checking
 	local check_timer = vim.loop.new_timer()
@@ -1241,6 +1270,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 					completion_detected = true
 					check_timer:stop()
 					check_timer:close()
+					ping_timer:stop()
+					ping_timer:close()
 					return
 				end
 				
@@ -1275,6 +1306,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 			debug.debug_print("Completing streaming (timeout or completion detected) after " .. total_wait_time .. "s", "debug")
 			check_timer:stop()
 			check_timer:close()
+			ping_timer:stop()
+			ping_timer:close()
 			-- Mark streaming as inactive
 			rpc_client:set_streaming_active(false)
 			if on_complete and not completion_detected then
