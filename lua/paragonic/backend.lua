@@ -58,12 +58,15 @@ local function create_mcp_client()
 					if params.type == "streaming_chunk" then
 						-- Forward streaming chunk to chat system
 						debug.debug_print("📥 Received streaming chunk: " .. (params.chunk or "no content"), "debug")
+						debug.debug_print("📥 Chunk type: " .. (params.chunk_type or "unknown"), "debug")
+						debug.debug_print("📥 Chunk index: " .. (params.chunk_index or "unknown"), "debug")
 						
 						-- Store the chunk for the chat system to retrieve
 						if not client.streaming_chunks then
 							client.streaming_chunks = {}
 						end
 						table.insert(client.streaming_chunks, params)
+						debug.debug_print("📥 Total chunks stored: " .. #client.streaming_chunks, "debug")
 					end
 				end
 			end,
