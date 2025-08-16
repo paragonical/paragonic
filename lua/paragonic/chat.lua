@@ -1204,10 +1204,20 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 				debug.debug_print("RPC client is not connected", "debug")
 			end
 			
-			-- Debug: Check SSE connection status
+			-- Debug: Check SSE connection status and events
 			local sse_client = require("paragonic.sse_client")
 			if sse_client and sse_client.is_connected then
 				debug.debug_print("SSE client is connected", "debug")
+				-- Check if there are any SSE events in the buffer
+				local events = sse_client.get_event_buffer()
+				if events and #events > 0 then
+					debug.debug_print("SSE event buffer has " .. #events .. " events", "debug")
+					for i, event in ipairs(events) do
+						debug.debug_print("SSE Event " .. i .. ": " .. (event.event_type or "unknown") .. " - " .. (event.data and event.data:sub(1, 50) or "no data"), "debug")
+					end
+				else
+					debug.debug_print("SSE event buffer is empty", "debug")
+				end
 			else
 				debug.debug_print("SSE client is not connected", "debug")
 			end
