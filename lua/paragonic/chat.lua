@@ -355,7 +355,9 @@ function M.send_message_enhanced(message, model)
 			end
 		end
 	end
-	debug.debug_print("Response preview: " .. tostring(response):sub(1, 200), "debug")
+	-- Sanitize response preview to avoid newlines
+	local response_str = tostring(response):gsub("\n", "\\n"):gsub("\r", "\\r")
+	debug.debug_print("Response preview: " .. response_str:sub(1, 200), "debug")
 
 	-- Check for error in response (response is already a parsed Lua table)
 	if response.error then
