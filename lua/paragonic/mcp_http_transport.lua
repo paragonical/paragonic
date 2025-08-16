@@ -189,6 +189,8 @@ function mcp_http_transport.init(config)
 		request_timeout = config.request_timeout or 60,
 		is_initialized = false,
 		session_id = nil,
+		callbacks = {},
+		message_id_counter = 0,
 		active_streams = {},
 		transport_type = nil, -- "new" or "old"
 	}
