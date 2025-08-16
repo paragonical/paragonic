@@ -285,12 +285,26 @@ function sse_client._setup_async_reading(client)
 			if client_state.callbacks.on_error then
 				client_state.callbacks.on_error("SSE read error: " .. err, 0)
 			end
+			-- Check if streaming is active before disconnecting
+			local backend = require("paragonic.backend")
+			local rpc_client = backend._get_rpc_client()
+			if rpc_client and rpc_client.is_streaming then
+				debug.debug_print_safe("⚠️ SSE error during active streaming, not disconnecting", "warning")
+				return
+			end
 			sse_client.disconnect()
 			return
 		end
 		
 		if not data then
 			-- Connection closed
+			-- Check if streaming is active before disconnecting
+			local backend = require("paragonic.backend")
+			local rpc_client = backend._get_rpc_client()
+			if rpc_client and rpc_client.is_streaming then
+				debug.debug_print_safe("⚠️ SSE connection closed during active streaming, not disconnecting", "warning")
+				return
+			end
 			sse_client.disconnect()
 			return
 		end
