@@ -1,322 +1,317 @@
---[[
-Paragonic UI Module
-Handles user interface functionality like opening projects and config buffers
---]]
+-- UI Layer: Neovim-specific UI operations, buffer management, visual feedback
+-- Provides clean UI interface for buffer management, visual feedback, and user interaction
 
 local M = {}
 
--- Open projects interface
-function M.open_projects()
-	-- Check if projects buffer already exists
-	local projects_buf = nil
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		local name = vim.api.nvim_buf_get_name(buf)
-		if name == "paragonic://projects" then
-			projects_buf = buf
-			break
-		end
-	end
+-- Dependencies
+local debug = require("paragonic.debug")
 
-	-- Create new buffer if it doesn't exist
-	if not projects_buf then
-		projects_buf = vim.api.nvim_create_buf(true, true)
+-- UI state
+local ui_state = {
+    chat_buffer_name = "paragonic://chat",
+    active_buffers = {},
+}
 
-		-- Set buffer name
-		vim.api.nvim_buf_set_name(projects_buf, "paragonic://projects")
+-- Create or get chat buffer
+function M.create_chat_buffer()
+    local buf_name = ui_state.chat_buffer_name
+    
+    -- Check if buffer already exists
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_get_name(buf) == buf_name then
+            debug.debug_print("📄 Using existing chat buffer: " .. buf, "debug")
+            return buf
+        end
+    end
 
-		-- Set buffer options
-		vim.api.nvim_buf_set_option(projects_buf, "buftype", "nofile")
-		vim.api.nvim_buf_set_option(projects_buf, "swapfile", false)
-		vim.api.nvim_buf_set_option(projects_buf, "modifiable", true)
+    -- Create new buffer
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(buf, buf_name)
+    vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(buf, "swapfile", false)
+    vim.api.nvim_buf_set_option(buf, "modifiable", true)
+    vim.api.nvim_buf_set_option(buf, "readonly", false)
 
-		-- Get projects from backend
-		local projects_content = {
-			"# Paragonic Projects",
-			"",
-			"Loading projects...",
-		}
+    -- Set buffer options for better chat experience
+    vim.api.nvim_buf_set_option(buf, "wrap", true)
+    vim.api.nvim_buf_set_option(buf, "linebreak", true)
+    vim.api.nvim_buf_set_option(buf, "breakindent", true)
 
-		local backend = require("paragonic.backend")
-		local projects_response = backend.get_projects()
-		if projects_response then
-			-- Display actual projects from parsed response
-			projects_content = {
-				"# Paragonic Projects",
-				"",
-				"Projects loaded from backend:",
-				"",
-			}
-
-			for _, project in ipairs(projects_response) do
-				table.insert(projects_content, "## " .. project.name)
-				if project.description and project.description ~= "" then
-					table.insert(projects_content, project.description)
-				end
-				table.insert(projects_content, "")
-			end
-
-			table.insert(projects_content, "---")
-		else
-			projects_content = {
-				"# Paragonic Projects",
-				"",
-				"No projects found or backend unavailable.",
-				"",
-				"Use :ParagonicCreateProject to create a new project.",
-				"",
-				"---",
-			}
-		end
-
-		-- Add content to buffer
-		vim.api.nvim_buf_set_lines(projects_buf, 0, -1, false, projects_content)
-
-		-- Set filetype for syntax highlighting
-		vim.api.nvim_buf_set_option(projects_buf, "filetype", "markdown")
-
-		-- Set up buffer-local commands
-		vim.api.nvim_buf_set_keymap(
-			projects_buf,
-			"n",
-			"<CR>",
-			":ParagonicCreateProject<CR>",
-			{ noremap = true, silent = true }
-		)
-	end
-
-	-- Open the buffer in a new window
-	vim.api.nvim_command("split")
-	vim.api.nvim_set_current_buf(projects_buf)
+    debug.debug_print("📄 Created new chat buffer: " .. buf, "success")
+    return buf
 end
 
--- Open configuration
-function M.open_config()
-	-- Check if config buffer already exists
-	local config_buf = nil
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		local name = vim.api.nvim_buf_get_name(buf)
-		if name == "paragonic://config" then
-			config_buf = buf
-			break
-		end
-	end
-
-	-- Create new buffer if it doesn't exist
-	if not config_buf then
-		config_buf = vim.api.nvim_create_buf(true, true)
-
-		-- Set buffer name
-		vim.api.nvim_buf_set_name(config_buf, "paragonic://config")
-
-		-- Set buffer options
-		vim.api.nvim_buf_set_option(config_buf, "buftype", "nofile")
-		vim.api.nvim_buf_set_option(config_buf, "swapfile", false)
-		vim.api.nvim_buf_set_option(config_buf, "modifiable", true)
-
-		-- Load configuration from backend
-		local config_content = {
-			"# Paragonic Configuration",
-			"",
-			"Loading configuration...",
-		}
-
-		local backend = require("paragonic.backend")
-		local config_response = backend.get_config()
-		if config_response then
-			-- Display actual configuration from parsed response
-			config_content = {
-				"# Paragonic Configuration",
-				"",
-				"Current configuration loaded from backend:",
-				"",
-				"## Ollama Settings",
-				"- Host: " .. (config_response.ollama_host or "127.0.0.1:11434"),
-				"- Model: " .. (config_response.ollama_model or "deepseek-r1:1.5b"),
-				"",
-				"## Database Settings",
-				"- Path: " .. (config_response.database_path or "/tmp/paragonic.db"),
-				"",
-				"## Logging Settings",
-				"- Level: " .. (config_response.log_level or "info"),
-				"",
-				"---",
-				"",
-				"Edit the configuration above and use :ParagonicSaveConfig to save changes.",
-			}
-		else
-			config_content = {
-				"# Paragonic Configuration",
-				"",
-				"Configuration not available or backend unavailable.",
-				"",
-				"Use :ParagonicSaveConfig to save configuration changes.",
-				"",
-				"---",
-			}
-		end
-
-		-- Add content to buffer
-		vim.api.nvim_buf_set_lines(config_buf, 0, -1, false, config_content)
-
-		-- Set filetype for syntax highlighting
-		vim.api.nvim_buf_set_option(config_buf, "filetype", "markdown")
-
-		-- Set up buffer-local commands
-		vim.api.nvim_buf_set_keymap(
-			config_buf,
-			"n",
-			"<CR>",
-			":ParagonicSaveConfig<CR>",
-			{ noremap = true, silent = true }
-		)
-	end
-
-	-- Open the buffer in a new window
-	vim.api.nvim_command("split")
-	vim.api.nvim_set_current_buf(config_buf)
+-- Get current buffer if it's a chat buffer
+function M.get_chat_buffer()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    
+    if buf_name == ui_state.chat_buffer_name then
+        return current_buf
+    end
+    
+    return nil
 end
 
--- Create project command
-function M.create_project_command()
-	local current_buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(current_buf)
+-- Append message to buffer
+function M.append_message(buffer, message, message_type)
+    if not buffer then
+        debug.debug_print("❌ No buffer provided for message", "error")
+        return false
+    end
 
-	-- Only work in projects buffer
-	if buf_name ~= "paragonic://projects" then
-		vim.notify("This command only works in the projects buffer", vim.log.levels.WARN)
-		return
-	end
+    message_type = message_type or "user"
+    
+    -- Format message based on type
+    local formatted_message = ""
+    if message_type == "user" then
+        formatted_message = "👤 " .. message
+    elseif message_type == "assistant" then
+        formatted_message = "🮮 " .. message
+    elseif message_type == "thinking" then
+        formatted_message = "🧠 " .. message
+    elseif message_type == "error" then
+        formatted_message = "❌ " .. message
+    elseif message_type == "system" then
+        formatted_message = "⚙️ " .. message
+    else
+        formatted_message = message
+    end
 
-	-- Get project name from user input
-	local project_name = vim.fn.input("Project name: ")
-	if project_name == "" then
-		vim.notify("Project name cannot be empty", vim.log.levels.WARN)
-		return
-	end
+    -- Get current buffer lines
+    local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    
+    -- Add message
+    table.insert(lines, formatted_message)
+    table.insert(lines, "") -- Empty line for spacing
+    
+    -- Update buffer
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+    
+    -- Scroll to bottom
+    local last_line = #lines
+    vim.api.nvim_buf_call(buffer, function()
+        vim.api.nvim_win_set_cursor(0, {last_line, 0})
+    end)
 
-	-- Get project description from user input
-	local project_description = vim.fn.input("Project description: ")
-
-	-- Create the project
-	local backend = require("paragonic.backend")
-	local response, err = backend.create_project(project_name, project_description)
-	if not response then
-		vim.notify("Failed to create project: " .. (err or "unknown error"), vim.log.levels.ERROR)
-		return
-	end
-
-	-- Add the new project to the buffer
-	local project_lines = {
-		"",
-		"## " .. project_name,
-		project_description ~= "" and project_description or "No description provided",
-		"",
-		"---",
-	}
-
-	-- Insert project at the end of the buffer
-	local last_line = vim.api.nvim_buf_line_count(current_buf)
-	vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, project_lines)
-
-	vim.notify("Project '" .. project_name .. "' created successfully", vim.log.levels.INFO)
+    debug.debug_print("📝 Appended " .. message_type .. " message to buffer", "debug")
+    return true
 end
 
--- Save configuration command
-function M.save_config_command()
-	local current_buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(current_buf)
+-- Show progress indicator
+function M.show_progress(buffer, message)
+    if not buffer then
+        return false
+    end
 
-	-- Only work in config buffer
-	if buf_name ~= "paragonic://config" then
-		vim.notify("This command only works in the config buffer", vim.log.levels.WARN)
-		return
-	end
+    local progress_message = "⏳ " .. (message or "Processing...")
+    
+    -- Get current buffer lines
+    local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    
+    -- Add progress indicator
+    table.insert(lines, progress_message)
+    
+    -- Update buffer
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+    
+    -- Scroll to bottom
+    local last_line = #lines
+    vim.api.nvim_buf_call(buffer, function()
+        vim.api.nvim_win_set_cursor(0, {last_line, 0})
+    end)
 
-	-- Get all lines from the buffer
-	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
-
-	-- Parse configuration from buffer content
-	local config_data = {}
-
-	for _, line in ipairs(lines) do
-		-- Parse Ollama settings
-		if line:match("^%- Host: (.+)$") then
-			config_data.ollama_host = line:match("^%- Host: (.+)$")
-		elseif line:match("^%- Model: (.+)$") then
-			config_data.ollama_model = line:match("^%- Model: (.+)$")
-		elseif line:match("^%- Path: (.+)$") then
-			config_data.database_path = line:match("^%- Path: (.+)$")
-		elseif line:match("^%- Level: (.+)$") then
-			config_data.log_level = line:match("^%- Level: (.+)$")
-		end
-	end
-
-	-- Save the configuration
-	local backend = require("paragonic.backend")
-	local response, err = backend.save_config(config_data)
-	if not response then
-		vim.notify("Failed to save configuration: " .. (err or "unknown error"), vim.log.levels.ERROR)
-		return
-	end
-
-	-- Add confirmation message to buffer
-	local confirmation_lines = {
-		"",
-		"**Configuration saved successfully!**",
-		"",
-		"---",
-	}
-
-	-- Insert confirmation at the end of the buffer
-	local last_line = vim.api.nvim_buf_line_count(current_buf)
-	vim.api.nvim_buf_set_lines(current_buf, last_line, last_line, false, confirmation_lines)
-
-	vim.notify("Configuration saved successfully", vim.log.levels.INFO)
+    debug.debug_print("⏳ Showing progress: " .. message, "debug")
+    return true
 end
 
--- Display AI agent status
-function M.display_ai_agent_status(status)
-	-- Create buffer for status
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-	vim.api.nvim_buf_set_option(buf, "swapfile", false)
-	vim.api.nvim_buf_set_option(buf, "modifiable", true)
+-- Clear progress indicator
+function M.clear_progress(buffer)
+    if not buffer then
+        return false
+    end
 
-	-- Format status
-	local lines = {
-		"# AI Agent Status",
-		"",
-		"**Active:** " .. (status.active and "Yes" or "No"),
-		"",
-	}
+    -- Get current buffer lines
+    local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    
+    -- Remove last line if it's a progress indicator
+    if #lines > 0 and lines[#lines]:match("^⏳ ") then
+        table.remove(lines)
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+        debug.debug_print("🧹 Cleared progress indicator", "debug")
+    end
 
-	if status.active then
-		table.insert(lines, "**Session ID:** " .. status.session_id)
-		table.insert(lines, "**Agent Name:** " .. status.agent_name)
-		table.insert(lines, "**Start Time:** " .. os.date("%Y-%m-%d %H:%M:%S", status.start_time))
-		table.insert(lines, "**Duration:** " .. status.duration .. " seconds")
-		table.insert(lines, "**Interaction Count:** " .. status.interaction_count)
-		table.insert(lines, "")
-		table.insert(lines, "## Current Context")
-		table.insert(lines, "")
-		table.insert(lines, "**Current File:** " .. status.context.current_file)
-		table.insert(lines, "**Current Directory:** " .. status.context.current_directory)
-		table.insert(lines, "**Buffer Count:** " .. status.context.buffer_count)
-		table.insert(lines, "**Mode:** " .. status.context.mode)
-	else
-		table.insert(lines, "**Message:** " .. status.message)
-	end
+    return true
+end
 
-	-- Set buffer content
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+-- Show error message
+function M.show_error(buffer, error_message)
+    if not buffer then
+        debug.debug_print("❌ No buffer provided for error", "error")
+        return false
+    end
 
-	-- Open buffer in split
-	vim.api.nvim_command("split")
-	vim.api.nvim_set_current_buf(buf)
+    local error_line = "🛔 " .. (error_message or "Unknown error")
+    
+    -- Get current buffer lines
+    local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    
+    -- Add error message
+    table.insert(lines, error_line)
+    table.insert(lines, "") -- Empty line for spacing
+    
+    -- Update buffer
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+    
+    -- Scroll to bottom
+    local last_line = #lines
+    vim.api.nvim_buf_call(buffer, function()
+        vim.api.nvim_win_set_cursor(0, {last_line, 0})
+    end)
 
-	-- Set buffer options
-	vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
-	vim.api.nvim_buf_set_option(buf, "modifiable", false)
+    debug.debug_print("❌ Showed error: " .. error_message, "debug")
+    return true
+end
+
+-- Show success message
+function M.show_success(buffer, message)
+    if not buffer then
+        return false
+    end
+
+    local success_line = "✅ " .. (message or "Success")
+    
+    -- Get current buffer lines
+    local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    
+    -- Add success message
+    table.insert(lines, success_line)
+    table.insert(lines, "") -- Empty line for spacing
+    
+    -- Update buffer
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+    
+    -- Scroll to bottom
+    local last_line = #lines
+    vim.api.nvim_buf_call(buffer, function()
+        vim.api.nvim_win_set_cursor(0, {last_line, 0})
+    end)
+
+    debug.debug_print("✅ Showed success: " .. message, "debug")
+    return true
+end
+
+-- Update line in buffer
+function M.update_line(buffer, line_number, new_content)
+    if not buffer then
+        return false
+    end
+
+    -- Ensure line number is within bounds
+    local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    if line_number < 0 or line_number >= #lines then
+        debug.debug_print("❌ Line number out of bounds: " .. line_number, "error")
+        return false
+    end
+
+    -- Update the line
+    vim.api.nvim_buf_set_lines(buffer, line_number, line_number + 1, false, {new_content})
+    
+    debug.debug_print("📝 Updated line " .. line_number .. " in buffer", "debug")
+    return true
+end
+
+-- Get buffer width
+function M.get_buffer_width(buffer)
+    if not buffer then
+        return 80 -- Default width
+    end
+
+    -- Get window that displays this buffer
+    local windows = vim.api.nvim_list_wins()
+    for _, win in ipairs(windows) do
+        if vim.api.nvim_win_get_buf(win) == buffer then
+            return vim.api.nvim_win_get_width(win)
+        end
+    end
+
+    return 80 -- Default width if no window found
+end
+
+-- Format text for buffer width
+function M.format_text_for_width(text, width)
+    width = width or 80
+    
+    if #text <= width then
+        return {text}
+    end
+
+    local lines = {}
+    local current_line = ""
+    local words = vim.split(text, " ")
+    
+    for _, word in ipairs(words) do
+        if #current_line + #word + 1 <= width then
+            if current_line ~= "" then
+                current_line = current_line .. " " .. word
+            else
+                current_line = word
+            end
+        else
+            if current_line ~= "" then
+                table.insert(lines, current_line)
+            end
+            current_line = word
+        end
+    end
+    
+    if current_line ~= "" then
+        table.insert(lines, current_line)
+    end
+    
+    return lines
+end
+
+-- Show notification
+function M.show_notification(message, level)
+    level = level or vim.log.levels.INFO
+    
+    vim.notify(message, level)
+    debug.debug_print("📢 Notification: " .. message, "debug")
+end
+
+-- Get UI status
+function M.get_status()
+    local chat_buffer = M.get_chat_buffer()
+    return {
+        chat_buffer_exists = chat_buffer ~= nil,
+        chat_buffer_id = chat_buffer,
+        active_buffers_count = #ui_state.active_buffers,
+    }
+end
+
+-- Initialize UI layer
+function M.init()
+    debug.debug_print("🔧 Initializing UI layer", "info")
+    
+    -- Create chat buffer if it doesn't exist
+    local chat_buffer = M.create_chat_buffer()
+    if chat_buffer then
+        ui_state.active_buffers[chat_buffer] = true
+    end
+    
+    debug.debug_print("✅ UI layer initialized", "success")
+    return true
+end
+
+-- Cleanup UI layer
+function M.cleanup()
+    debug.debug_print("🔧 Cleaning up UI layer", "info")
+    
+    -- Clear active buffers
+    ui_state.active_buffers = {}
+    
+    debug.debug_print("✅ UI layer cleaned up", "success")
 end
 
 return M
