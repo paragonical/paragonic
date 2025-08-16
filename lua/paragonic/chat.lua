@@ -1180,6 +1180,15 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		-- Try result.chunk if direct chunk is not available
 		debug.debug_print("Processing first chunk from result: " .. (response.result.chunk_type or "unknown"), "debug")
 		on_chunk(response.result.chunk, response.result.chunk_index or 0, response.result.total_chunks or 1, response.result.chunk_type or "regular_content")
+		
+		-- Check if this is the final chunk (no more streaming expected)
+		if response.result.chunk_type == "thinking_end" or response.result.chunk_type == "regular_content" then
+			debug.debug_print("Final chunk detected, completing immediately", "debug")
+			if on_complete then
+				on_complete()
+			end
+			return true
+		end
 	else
 		debug.debug_print("No first chunk found in response", "debug")
 	end
@@ -1189,6 +1198,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	local check_interval = 100 -- milliseconds
 	local total_wait_time = 0
 	local chunks_processed = 0
+	local completion_detected = false
 	
 	-- Create a timer for non-blocking chunk checking
 	local check_timer = vim.loop.new_timer()
@@ -1207,6 +1217,7 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 					if on_complete then
 						on_complete()
 					end
+					completion_detected = true
 					check_timer:stop()
 					check_timer:close()
 					return
@@ -1237,11 +1248,12 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		
 		total_wait_time = total_wait_time + (check_interval / 1000)
 		
-		if total_wait_time >= max_wait_time then
-			debug.debug_print("Timeout waiting for streaming chunks", "error")
+		-- Check if we should complete (either timeout or no more chunks expected)
+		if total_wait_time >= max_wait_time or completion_detected then
+			debug.debug_print("Completing streaming (timeout or completion detected)", "debug")
 			check_timer:stop()
 			check_timer:close()
-			if on_complete then
+			if on_complete and not completion_detected then
 				on_complete()
 			end
 			return
