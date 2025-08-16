@@ -59,9 +59,16 @@ function M.open_chat()
 		return
 	end
 
-	-- Open the buffer in a new window
-	vim.api.nvim_command("split")
+	-- Get the width of the current window before splitting
+	local original_width = vim.api.nvim_win_get_width(0)
+
+	-- Open the buffer in a vertical split
+	vim.api.nvim_command("vsplit")
 	vim.api.nvim_win_set_buf(0, chat_buffer)
+
+	-- Set the width to 1/3 of the original window width
+	local chat_width = math.floor(original_width / 3)
+	vim.api.nvim_win_set_width(0, chat_width)
 
 	-- Add initial chat content with instructions and tombstone
 	local initial_content = {
@@ -170,8 +177,14 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			table.insert(lines, current_line + 1, "🧠 <think>")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "thinking_content" then
-			-- Add thinking content
-			table.insert(lines, current_line + 1, "   " .. chunk_content)
+			-- Add thinking content (handle newlines)
+			local content_lines = {}
+			for line in chunk_content:gmatch("[^\r\n]+") do
+				table.insert(content_lines, "   " .. line)
+			end
+			for i = #content_lines, 1, -1 do
+				table.insert(lines, current_line + 1, content_lines[i])
+			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "thinking_end" then
 			-- Add thinking end marker
@@ -182,12 +195,24 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			table.insert(lines, current_line + 1, "🮮")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_content" then
-			-- Add assistant content
-			table.insert(lines, current_line + 1, "   " .. chunk_content)
+			-- Add assistant content (handle newlines)
+			local content_lines = {}
+			for line in chunk_content:gmatch("[^\r\n]+") do
+				table.insert(content_lines, "   " .. line)
+			end
+			for i = #content_lines, 1, -1 do
+				table.insert(lines, current_line + 1, content_lines[i])
+			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		else
-			-- Default: add as regular content
-			table.insert(lines, current_line + 1, chunk_content)
+			-- Default: add as regular content (handle newlines)
+			local content_lines = {}
+			for line in chunk_content:gmatch("[^\r\n]+") do
+				table.insert(content_lines, line)
+			end
+			for i = #content_lines, 1, -1 do
+				table.insert(lines, current_line + 1, content_lines[i])
+			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		end
 
@@ -306,18 +331,29 @@ function M.send_message_command_thinking()
 		vim.log.levels.INFO
 	)
 
+	-- Get current model for display
+	local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+
+	-- Add zigzag arrow and model name to indicate request is being sent
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯ " .. current_model })
+
+	-- Force buffer update to show zigzag and model name immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
+
 	-- Add user message to buffer
 	local user_lines = { "", message, "" }
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, user_lines)
 
 	-- Store the current window ID for later use in callbacks
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, false)
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false)
 
 	-- Send message with thinking streaming
-	M.send_message_thinking_streaming(message, nil, on_chunk, on_complete)
+	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
 end
 
 -- Send message command (smart - auto-detects thinking support)
@@ -352,15 +388,23 @@ function M.send_message_command_smart()
 		vim.log.levels.INFO
 	)
 
+	-- Add zigzag arrow and model name to indicate request is being sent
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯ " .. model })
+
+	-- Force buffer update to show zigzag and model name immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
+
 	-- Add user message to buffer
 	local user_lines = { "", message, "" }
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, user_lines)
 
 	-- Store the current window ID for later use in callbacks
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, false)
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false)
 
 	-- Send message with appropriate method
 	if supports_thinking then
@@ -395,18 +439,29 @@ function M.send_message_command_backward()
 		vim.log.levels.INFO
 	)
 
+	-- Get current model for display
+	local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+
+	-- Add zigzag arrow and model name to indicate request is being sent
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯ " .. current_model })
+
+	-- Force buffer update to show zigzag and model name immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
+
 	-- Add user message to buffer
 	local user_lines = { "", message, "" }
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, user_lines)
 
 	-- Store the current window ID for later use in callbacks
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, false)
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false)
 
 	-- Send message with thinking streaming
-	M.send_message_thinking_streaming(message, nil, on_chunk, on_complete)
+	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
 end
 
 -- Send message command (forward extraction)
@@ -453,18 +508,29 @@ function M.send_message_command_forward()
 		vim.log.levels.INFO
 	)
 
+	-- Get current model for display
+	local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+
+	-- Add zigzag arrow and model name to indicate request is being sent
+	vim.api.nvim_buf_set_lines(current_buf, cursor_line + 1, cursor_line + 1, false, { "↯ " .. current_model })
+
+	-- Force buffer update to show zigzag and model name immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
+
 	-- Add user message to buffer
 	local user_lines = { "", message, "" }
-	vim.api.nvim_buf_set_lines(current_buf, cursor_line + 1, cursor_line + 1, false, user_lines)
+	vim.api.nvim_buf_set_lines(current_buf, cursor_line + 2, cursor_line + 2, false, user_lines)
 
 	-- Store the current window ID for later use in callbacks
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, cursor_line, chat_window_id, false)
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, cursor_line + 1, chat_window_id, false)
 
 	-- Send message with thinking streaming
-	M.send_message_thinking_streaming(message, nil, on_chunk, on_complete)
+	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
 end
 
 -- Send message command (debug mode)
@@ -491,18 +557,29 @@ function M.send_message_command_debug()
 		vim.log.levels.INFO
 	)
 
+	-- Get current model for display
+	local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+
+	-- Add zigzag arrow and model name to indicate request is being sent
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯ " .. current_model })
+
+	-- Force buffer update to show zigzag and model name immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
+
 	-- Add user message to buffer
 	local user_lines = { "", message, "" }
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, user_lines)
 
 	-- Store the current window ID for later use in callbacks
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug enabled
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, true)
+	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, true)
 
 	-- Send message with thinking streaming
-	M.send_message_thinking_streaming(message, nil, on_chunk, on_complete)
+	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
 end
 
 -- Smart send message function (for programmatic use)
