@@ -74,6 +74,22 @@ function M.setup(opts)
 			end,
 			opts = {},
 		},
+		{
+			name = "ParagonicTestThinkingCallback",
+			func = function()
+				local test_suite = require("tests.unit.chat.test_thinking_callback_automation")
+				test_suite.quick_diagnostic()
+			end,
+			opts = {},
+		},
+		{
+			name = "ParagonicTestThinkingCallbackFull",
+			func = function()
+				local test_suite = require("tests.unit.chat.test_thinking_callback_automation")
+				test_suite.run_all_tests()
+			end,
+			opts = {},
+		},
 
 		-- Project and config commands
 		{ name = "ParagonicCreateProject", func = M.ui.create_project_command, opts = {} },
