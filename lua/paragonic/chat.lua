@@ -232,9 +232,9 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			table.insert(lines, insert_line + 1, "◊")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_content" then
-			-- Add assistant content with proper wrapping (matching thinking content format)
+			-- Add assistant content with proper wrapping (no indentation for responses)
 			local buffer_width = ui.get_buffer_width(buffer)
-			local wrapped_lines = M.wrap_thinking_content(chunk_content, buffer_width - 4, "◊")
+			local wrapped_lines = M.wrap_response_content(chunk_content, buffer_width - 4)
 			-- Insert at the end of current content
 			local insert_line = #lines
 			-- Reverse the lines to fix the order issue (same as thinking content)
@@ -243,7 +243,7 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		else
-			-- Default: add as regular content with proper wrapping (matching thinking content format)
+			-- Default: add as regular content with proper wrapping (no indentation for responses)
 			if enable_debug then
 				debug.debug_print("📝 Default chunk content: " .. chunk_content, "debug")
 			end
@@ -264,7 +264,7 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			end
 
 			local buffer_width = ui.get_buffer_width(buffer)
-			local wrapped_lines = M.wrap_thinking_content(chunk_content, buffer_width - 4, "◊")
+			local wrapped_lines = M.wrap_response_content(chunk_content, buffer_width - 4)
 			-- Insert at the end of current content
 			local insert_line = #lines
 			-- Reverse the lines to fix the order issue (same as thinking content)
@@ -660,6 +660,72 @@ function M.send_message_smart(message, model)
 	else
 		return M.send_message_thinking_streaming(message, target_model)
 	end
+end
+
+-- Custom wrapping function for response content (no indentation)
+function M.wrap_response_content(text, max_width)
+	-- Set default max_width if not provided
+	max_width = max_width or 80
+
+	if not text or text == "" then
+		return { "" }
+	end
+
+	local lines = {}
+
+	-- Split text into lines
+	local text_lines = {}
+	for line in text:gmatch("[^\r\n]+") do
+		table.insert(text_lines, line)
+	end
+
+	-- Process each line with simple word wrapping (no indentation)
+	for i, line in ipairs(text_lines) do
+		if line:match("%S") then -- Only process non-empty lines
+			-- Strip leading spaces from the line
+			local clean_line = line:match("^%s*(.+)$")
+
+			-- Word wrapping without any indentation
+			local words = {}
+			for word in clean_line:gmatch("[^%s]+") do
+				table.insert(words, word)
+			end
+
+			local current_line = ""
+			local current_length = 0
+
+			for j, word in ipairs(words) do
+				local word_length = #word
+
+				-- If adding this word would exceed the line limit
+				if current_length + word_length > max_width then
+					-- Add current line to lines (if not empty)
+					if current_line ~= "" then
+						table.insert(lines, current_line)
+					end
+					-- Start new line with no indentation
+					current_line = word
+					current_length = word_length
+				else
+					-- Add word to current line (with space if not first word)
+					if current_line ~= "" then
+						current_line = current_line .. " " .. word
+						current_length = current_length + 1 + word_length
+					else
+						current_line = word
+						current_length = word_length
+					end
+				end
+			end
+
+			-- Add the last line if it has content
+			if current_line ~= "" then
+				table.insert(lines, current_line)
+			end
+		end
+	end
+
+	return lines
 end
 
 -- Custom wrapping function for thinking content with continuation marker only on first line
