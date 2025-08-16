@@ -1812,6 +1812,10 @@ function M.send_message_command_thinking()
 	-- Send the thinking streaming message
 	local config = require("paragonic.config")
 	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
+	
+	-- Test if on_chunk is the correct callback
+	vim.notify("TEST: on_chunk callback type: " .. type(on_chunk), vim.log.levels.INFO)
+	
 	local success, err = M.send_message_thinking_streaming(message, default_model, on_chunk, on_complete)
 
 	if not success then
