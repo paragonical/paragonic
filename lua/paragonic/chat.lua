@@ -1744,6 +1744,7 @@ function M.send_message_command_thinking()
 	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
 		-- Simple test to see if callback is working
 		vim.notify("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", vim.log.levels.INFO)
+		debug.debug_print("CALLBACK: Processing chunk " .. chunk_index .. " (type: " .. chunk_type .. ")", "debug")
 		
 		-- Test if we can access the debug module
 		local ok, debug = pcall(require, "paragonic.debug")
@@ -1768,7 +1769,13 @@ function M.send_message_command_thinking()
 			local base_width = math.floor(full_buffer_width * 0.7)
 			if base_width < 20 then base_width = 20 end
 			
+			debug.debug_print("🧠 Processing thinking_content chunk: '" .. chunk:sub(1, 50) .. "'", "debug")
 			local wrapped_lines = utils.wrap_text_with_brain(chunk, base_width)
+			debug.debug_print("🧠 Wrapped lines count: " .. #wrapped_lines, "debug")
+			for i, line in ipairs(wrapped_lines) do
+				debug.debug_print("🧠 Line " .. i .. ": '" .. line .. "'", "debug")
+			end
+			
 			vim.api.nvim_buf_set_lines(current_buf, -1, -1, false, wrapped_lines)
 			debug.debug_print("🧠 Added " .. #wrapped_lines .. " thinking_content lines", "debug")
 		elseif chunk_type == "thinking_end" then
