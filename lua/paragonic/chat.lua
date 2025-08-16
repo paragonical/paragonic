@@ -1172,6 +1172,9 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	end
 
 	-- Process the first chunk from the immediate response
+	-- Mark streaming as active to prevent reconnection conflicts
+	rpc_client:set_streaming_active(true)
+	
 	-- Add first chunk to streaming buffer for consistent processing
 	if response.chunk then
 		debug.debug_print("Adding first chunk to streaming buffer: " .. (response.chunk_type or "unknown"), "debug")
@@ -1230,6 +1233,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 				if chunk_index > #chunks then
 					-- All chunks processed, call completion
 					debug.debug_print("🔄 All chunks processed, calling completion", "debug")
+					-- Mark streaming as inactive
+					rpc_client:set_streaming_active(false)
 					if on_complete then
 						on_complete()
 					end
@@ -1270,6 +1275,8 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 			debug.debug_print("Completing streaming (timeout or completion detected) after " .. total_wait_time .. "s", "debug")
 			check_timer:stop()
 			check_timer:close()
+			-- Mark streaming as inactive
+			rpc_client:set_streaming_active(false)
 			if on_complete and not completion_detected then
 				on_complete()
 			end

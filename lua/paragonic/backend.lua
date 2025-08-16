@@ -188,6 +188,16 @@ local function create_mcp_client()
 		client.streaming_chunks = {}
 	end
 
+	function client:set_streaming_active(active)
+		client.is_streaming = active
+		local debug = require("paragonic.debug")
+		if active then
+			debug.debug_print("🔄 Streaming marked as active", "debug")
+		else
+			debug.debug_print("🔄 Streaming marked as inactive", "debug")
+		end
+	end
+
 	function client:get_next_chunk(params)
 		local resp, err = mcp.send_request({
 			jsonrpc = "2.0",
@@ -323,7 +333,8 @@ function M._get_rpc_client()
 	end
 
 	-- Check if the client is still connected and try to reconnect if needed
-	if not M._rpc_client:is_connected() then
+	-- Don't reconnect during active streaming to avoid stream conflicts
+	if not M._rpc_client:is_connected() and not M._rpc_client.is_streaming then
 		local debug = require("paragonic.debug")
 		debug.debug_print("🔧 Client disconnected, attempting reconnection...", "info")
 		local success = M._rpc_client:reconnect()
@@ -332,6 +343,9 @@ function M._get_rpc_client()
 			return nil
 		end
 		debug.debug_print("✅ Client reconnected successfully", "success")
+	elseif not M._rpc_client:is_connected() and M._rpc_client.is_streaming then
+		local debug = require("paragonic.debug")
+		debug.debug_print("⚠️ Client disconnected during streaming, not reconnecting to preserve stream", "warning")
 	end
 
 	return M._rpc_client
