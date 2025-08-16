@@ -157,7 +157,7 @@ end
 local function create_shared_on_chunk_handler(buffer, start_line, window_id, enable_debug)
 	local utils = require("paragonic.utils")
 	local thinking_content_started = false
-	local thinking_lines = {}
+	local thinking_end_line = nil -- Track where thinking content ends
 
 	return function(chunk_content, chunk_index, total_chunks, chunk_type)
 		if not buffer or not vim.api.nvim_buf_is_valid(buffer) then
@@ -173,57 +173,68 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 
 		-- Get current buffer lines
 		local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
-		local current_line = start_line + 2 -- Start after user message
 
 		-- Handle different chunk types
 		if chunk_type == "thinking_start" then
-			-- Add thinking start marker with brain icon
-			table.insert(lines, current_line + 1, "🧠 <think>")
+			-- Add thinking start marker with brain icon after user message
+			local insert_line = start_line + 2 -- After user message
+			table.insert(lines, insert_line + 1, "🧠 <think>")
 			thinking_content_started = true
-			thinking_lines = {}
+			thinking_end_line = insert_line + 1 -- Track the line after brain icon
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "thinking_content" then
 			-- Add thinking content with proper wrapping and continuation icons
+			local buffer_width = ui.get_buffer_width(buffer)
+			local wrapped_lines
+
 			if not thinking_content_started then
 				-- First thinking content - add brain icon and wrap to buffer width
-				local buffer_width = ui.get_buffer_width(buffer)
-				local wrapped_lines = utils.wrap_text_with_brain(chunk_content, buffer_width - 4) -- Leave margin
-				for i = #wrapped_lines, 1, -1 do
-					table.insert(lines, current_line + 1, wrapped_lines[i])
-				end
+				wrapped_lines = utils.wrap_text_with_brain(chunk_content, buffer_width - 4) -- Leave margin
 				thinking_content_started = true
+				-- Insert after the brain icon line
+				local insert_line = start_line + 2
+				for i = 1, #wrapped_lines do
+					table.insert(lines, insert_line + 1, wrapped_lines[i])
+				end
+				thinking_end_line = insert_line + #wrapped_lines
 			else
 				-- Subsequent thinking content - add vertical continuation icon
-				local buffer_width = ui.get_buffer_width(buffer)
-				local wrapped_lines = utils.wrap_text_with_glyph(chunk_content, buffer_width - 4, "⋮")
-				for i = #wrapped_lines, 1, -1 do
-					table.insert(lines, current_line + 1, wrapped_lines[i])
+				wrapped_lines = utils.wrap_text_with_glyph(chunk_content, buffer_width - 4, "⋮")
+				-- Insert at the end of current thinking content
+				for i = 1, #wrapped_lines do
+					table.insert(lines, thinking_end_line + 1, wrapped_lines[i])
 				end
+				thinking_end_line = thinking_end_line + #wrapped_lines
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "thinking_end" then
-			-- Add thinking end marker with completed hourglass
-			table.insert(lines, current_line + 1, "⌛ </think>")
+			-- Add thinking end marker with completed hourglass after thinking content
+			table.insert(lines, thinking_end_line + 1, "⌛ </think>")
 			thinking_content_started = false
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_start" then
-			-- Add assistant start marker with lozenge icon
-			table.insert(lines, current_line + 1, "⬬")
+			-- Add assistant start marker with lozenge icon after thinking section
+			local insert_line = thinking_end_line and thinking_end_line + 1 or start_line + 2
+			table.insert(lines, insert_line + 1, "⬬")
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		elseif chunk_type == "assistant_content" then
 			-- Add assistant content with proper wrapping
 			local buffer_width = ui.get_buffer_width(buffer)
 			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
-			for i = #wrapped_lines, 1, -1 do
-				table.insert(lines, current_line + 1, wrapped_lines[i])
+			-- Insert at the end of current content
+			local insert_line = #lines
+			for i = 1, #wrapped_lines do
+				table.insert(lines, insert_line + 1, wrapped_lines[i])
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		else
 			-- Default: add as regular content with proper wrapping
 			local buffer_width = ui.get_buffer_width(buffer)
 			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
-			for i = #wrapped_lines, 1, -1 do
-				table.insert(lines, current_line + 1, wrapped_lines[i])
+			-- Insert at the end of current content
+			local insert_line = #lines
+			for i = 1, #wrapped_lines do
+				table.insert(lines, insert_line + 1, wrapped_lines[i])
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		end

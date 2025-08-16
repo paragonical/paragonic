@@ -9,7 +9,8 @@
   sent to the server.
 - When this is a thinking model, the server returns a thinking_start message.
   The client shows a brain icon on the next line and indents and wraps the first
-  thinking content, wrapped to the width of buffer.  
+  thinking content, wrapped to the width of buffer.  Thinking content must be before any response content or the folding will not make any sense.
+- When this is just a completion model, the server returns the response and 
 - As the model returns thinking content, the client shows a vertical continuation icon 
   with the content wrapped to the width of the window.
 - When the model returns a thinking_end message, a completed hourglass icon is shown.
