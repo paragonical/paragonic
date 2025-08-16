@@ -2369,11 +2369,43 @@ impl McpHttpServer {
         let mut in_thinking = false;
         let mut thinking_step_count = 0;
 
+        // Debug: Log the full content to see what we're parsing
+        info!("🔍 Parsing thinking content ({} chars):", content.len());
+        info!("🔍 Content preview: {}", content.chars().take(200).collect::<String>());
+        info!("🔍 Contains <think>: {}", content.contains("<think>"));
+        info!("🔍 Contains </think>: {}", content.contains("</think>"));
+
+        // Check if content contains thinking patterns (even without tags)
+        let has_thinking_content = content.contains("Okay,") || 
+                                  content.contains("Hmm,") || 
+                                  content.contains("But") || 
+                                  content.contains("Wait,") ||
+                                  content.contains("Let me") ||
+                                  content.contains("I should") ||
+                                  content.contains("Maybe") ||
+                                  content.contains("Perhaps") ||
+                                  content.contains("Alternatively,") ||
+                                  content.contains("But hold on,") ||
+                                  content.contains("But if I consider");
+
+        info!("🔍 Has thinking patterns: {}", has_thinking_content);
+
+        // If we have thinking content but no <think> tags, add them automatically
+        if has_thinking_content && !content.contains("<think>") {
+            info!("🔍 Auto-adding <think> tags for thinking content");
+            chunks.push(ThinkingChunk {
+                chunk_type: "thinking_start".to_string(),
+                content: "Starting thinking process...".to_string(),
+            });
+            in_thinking = true;
+        }
+
         for line in content.lines() {
             let line = line.trim();
 
             if line.contains("<think>") {
                 in_thinking = true;
+                info!("🔍 Found <think> tag, starting thinking section");
                 // Start thinking section
                 chunks.push(ThinkingChunk {
                     chunk_type: "thinking_start".to_string(),
@@ -2384,6 +2416,7 @@ impl McpHttpServer {
 
             if line.contains("</think>") {
                 in_thinking = false;
+                info!("🔍 Found </think> tag, ending thinking section");
                 // End thinking section
                 chunks.push(ThinkingChunk {
                     chunk_type: "thinking_end".to_string(),
@@ -2416,12 +2449,26 @@ impl McpHttpServer {
             }
         }
 
+        // If we started thinking but didn't find </think>, add it
+        if in_thinking {
+            info!("🔍 Auto-adding </think> tag to end thinking section");
+            chunks.push(ThinkingChunk {
+                chunk_type: "thinking_end".to_string(),
+                content: "".to_string(),
+            });
+        }
+
         // Add any remaining regular content
         if !current_chunk.trim().is_empty() {
             chunks.push(ThinkingChunk {
                 chunk_type: "regular_content".to_string(),
                 content: current_chunk.trim().to_string(),
             });
+        }
+
+        info!("🔍 Parsed {} chunks", chunks.len());
+        for (i, chunk) in chunks.iter().enumerate() {
+            info!("🔍 Chunk {}: type={}, content={}", i, chunk.chunk_type, chunk.content.chars().take(50).collect::<String>());
         }
 
         chunks
