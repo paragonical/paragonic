@@ -343,6 +343,20 @@ function M.send_message_enhanced(message, model)
 		return nil, "Failed to get response from AI: no response"
 	end
 
+	-- Debug: Log the actual response structure
+	local debug = require("paragonic.debug")
+	debug.debug_print("Response type: " .. type(response), "debug")
+	if type(response) == "table" then
+		debug.debug_print("Response keys: " .. table.concat(vim.tbl_keys(response), ", "), "debug")
+		if response.result then
+			debug.debug_print("Result type: " .. type(response.result), "debug")
+			if type(response.result) == "table" then
+				debug.debug_print("Result keys: " .. table.concat(vim.tbl_keys(response.result), ", "), "debug")
+			end
+		end
+	end
+	debug.debug_print("Response preview: " .. tostring(response):sub(1, 200), "debug")
+
 	-- Check for error in response (response is already a parsed Lua table)
 	if response.error then
 		return nil, "AI error: " .. (response.error.message or "Unknown error")
