@@ -794,28 +794,102 @@ function M.send_message_command_debug()
 		end)
 	end
 
-	-- Send the message using enhanced function
+	-- Send the message using streaming thinking function for proper formatting
 	local config = require("paragonic.config")
 	local default_model = config.get("ollama_model") or "deepseek-r1:1.5b"
-	local response, err = M.send_message_enhanced(message, default_model)
-
-	-- Debug: Log response structure
-	debug.append_debug_message(current_buf, "Response type: " .. type(response), "debug")
-	if response then
-		debug.append_debug_message(current_buf, "Response keys: " .. (type(response) == "table" and table.concat(vim.tbl_keys(response), ", ") or "not a table"), "debug")
-		debug.append_debug_message(current_buf, "Response preview: " .. tostring(response):sub(1, 100), "debug")
+	
+	-- Set up callbacks for streaming
+	local response_content = ""
+	local response_lines = {}
+	
+	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
+		-- Add chunk to response content
+		response_content = response_content .. chunk
+		
+		-- Process thinking content with proper formatting
+		if chunk_type == "thinking_start" then
+			-- Start thinking section
+			table.insert(response_lines, "🧠   <think>")
+		elseif chunk_type == "thinking_step" then
+			-- Add thinking step with proper indentation
+			table.insert(response_lines, "   " .. chunk)
+		elseif chunk_type == "thinking_end" then
+			-- End thinking section
+			table.insert(response_lines, "   </think>")
+		elseif chunk_type == "regular_content" then
+			-- Add regular content with diamond prefix
+			local utils = require("paragonic.utils")
+			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			local base_width = math.floor(full_buffer_width * 0.7)
+			if base_width < 20 then base_width = 20 end
+			
+			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			for _, line in ipairs(wrapped_lines) do
+				table.insert(response_lines, line)
+			end
+		end
+		
+		-- Update the buffer in real-time
+		local current_response_lines = {}
+		for _, line in ipairs(response_lines) do
+			table.insert(current_response_lines, line)
+		end
+		
+		-- Add timing placeholder
+		table.insert(current_response_lines, "")
+		table.insert(current_response_lines, " ⏱️   ...")
+		table.insert(current_response_lines, "")
+		table.insert(current_response_lines, "∎")
+		
+		-- Insert/update response in buffer
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #current_response_lines, false, current_response_lines)
+		
+		-- Force redraw for smooth animation
+		vim.cmd("redraw!")
 	end
-
+	
+	local function on_complete()
+		-- Calculate timing information
+		local end_time = vim.uv.now()
+		local duration_ms = end_time - start_time
+		local duration_sec = duration_ms / 1000
+		
+		-- Update timing in the last response
+		local final_response_lines = {}
+		for _, line in ipairs(response_lines) do
+			table.insert(final_response_lines, line)
+		end
+		
+		-- Add timing information
+		table.insert(final_response_lines, "")
+		table.insert(final_response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
+		table.insert(final_response_lines, "")
+		table.insert(final_response_lines, "∎")
+		
+		-- Update buffer with final response
+		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #final_response_lines, false, final_response_lines)
+		
+		-- Move cursor to the end of the buffer
+		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
+		vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
+		
+		-- Debug: Success
+		debug.append_debug_message(current_buf, "Message send process completed successfully", "success")
+	end
+	
+	-- Use streaming thinking function
+	local success, err = M.send_message_thinking_streaming(message, default_model, on_chunk, on_complete)
+	
 	-- Stop progress updates
 	if progress_timer then
 		progress_timer:stop()
 		progress_timer:close()
 	end
-
-	if not response then
+	
+	if not success then
 		debug.append_debug_message(current_buf, "Failed to send message: " .. tostring(err), "error")
 		vim.notify("Failed to send message: " .. (err or "unknown error"), vim.log.levels.ERROR)
-
+		
 		-- Add error message to chat buffer with error symbol
 		local error_lines = {
 			"🛔  " .. (err or "unknown error"),
@@ -823,98 +897,6 @@ function M.send_message_command_debug()
 		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, error_lines)
 		return
 	end
-
-	-- Calculate timing information
-	local end_time = vim.uv.now()
-	local duration_ms = end_time - start_time
-	local duration_sec = duration_ms / 1000
-
-	debug.append_debug_message(current_buf, "✅ Successfully received response from AI", "success")
-
-	-- Debug: Processing response
-	debug.append_debug_message(current_buf, "Processing response for buffer insertion", "debug")
-
-	-- Add the response to the buffer
-	-- Split response into lines to handle multi-line responses
-	local response_content_lines = {}
-	
-	-- Handle different response types
-	if type(response) == "string" then
-		for line in response:gmatch("[^\r\n]+") do
-			if line:match("%S") then -- Only add non-empty lines
-				table.insert(response_content_lines, line)
-			end
-		end
-	elseif type(response) == "table" then
-		-- Handle table response - extract content from common fields
-		local content = response.content or response.message or response.result or tostring(response)
-		if type(content) == "string" then
-			for line in content:gmatch("[^\r\n]+") do
-				if line:match("%S") then -- Only add non-empty lines
-					table.insert(response_content_lines, line)
-				end
-			end
-		else
-			table.insert(response_content_lines, tostring(response))
-		end
-	else
-		table.insert(response_content_lines, tostring(response))
-	end
-
-	-- If no lines were extracted, add the original response as a single line
-	if #response_content_lines == 0 then
-		table.insert(response_content_lines, tostring(response))
-	end
-
-	local response_lines = {}
-
-	-- Get buffer width for word wrapping (70% of buffer width after indentation)
-	local full_buffer_width = vim.api.nvim_win_get_width(0)
-	local base_width = math.floor(full_buffer_width * 0.7)
-	if base_width < 20 then
-		base_width = 20
-	end -- Minimum width
-
-	-- Add first line with diamond prefix and remaining lines with three-space indent
-	local utils = require("paragonic.utils")
-	if #response_content_lines > 0 then
-		local wrapped_first = utils.wrap_text_with_diamond(response_content_lines[1], base_width)
-		for _, line in ipairs(wrapped_first) do
-			table.insert(response_lines, line)
-		end
-
-		-- Add remaining lines with six spaces indentation (3-space gutter + 3-space continuation)
-		for i = 2, #response_content_lines do
-			local wrapped_lines = utils.wrap_text(response_content_lines[i], base_width, "      ")
-			for _, line in ipairs(wrapped_lines) do
-				table.insert(response_lines, line)
-			end
-		end
-	else
-		-- If no content, just add the diamond with proper gutter spacing
-		table.insert(response_lines, "🮮   ")
-	end
-
-	-- Add timing information
-	table.insert(response_lines, "")
-	table.insert(response_lines, " ⏱️   " .. string.format("%.2fs", duration_sec))
-
-	-- Add closing lines
-	table.insert(response_lines, "")
-	table.insert(response_lines, "∎")
-
-	-- Debug: Inserting response
-	debug.append_debug_message(current_buf, "Inserting " .. #response_lines .. " lines into buffer", "debug")
-
-	-- Insert response after the zigzag arrow (line_num + 2 since zigzag is at line_num + 1)
-	vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2, false, response_lines)
-
-	-- Move cursor to the end of the buffer (safe positioning)
-	local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-	vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
-
-	-- Debug: Success
-	debug.append_debug_message(current_buf, "Message send process completed successfully", "success")
 end
 
 -- Send message command with server-side formatting
