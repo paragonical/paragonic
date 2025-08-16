@@ -509,10 +509,6 @@ function mcp_http_transport.send_request(request)
 	local start_time = os.clock()
 	local success = false
 
-	-- Check if this is a streaming request
-	local is_streaming_request = request.method == "streaming_chat_completion" or 
-		(request.params and request.params._meta and request.params._meta.progressToken)
-
 	-- Send HTTP POST request
 	local response, err = http_client.post("/mcp", request)
 	if not response then
@@ -537,22 +533,23 @@ function mcp_http_transport.send_request(request)
 		return nil, http_client.get_error_message(response)
 	end
 
-	-- Check if response is SSE stream
-	if response.headers and response.headers["content-type"] and 
-	   response.headers["content-type"]:find("text/event%-stream") then
-		-- This is a streaming response, handle SSE
-		return mcp_http_transport._handle_sse_response(request.id, response)
+	-- This is a regular JSON response
+	if not response.body or type(response.body) ~= "table" then
+		return nil, MCPHTTPTransportError.INVALID_MESSAGE
+	end
+	
+	-- Check if the response indicates streaming will start
+	if response.body.result and response.body.result.streaming then
+		-- Server indicates streaming will start, connect to SSE stream
+		return mcp_http_transport._start_streaming_connection(request.id, response.body.result.request_id)
 	else
-		-- This is a regular JSON response
-		if not response.body or type(response.body) ~= "table" then
-			return nil, MCPHTTPTransportError.INVALID_MESSAGE
-		end
+		-- Regular response
 		return response.body
 	end
 end
 
--- Handle SSE response for streaming
-function mcp_http_transport._handle_sse_response(request_id, response)
+-- Start streaming connection for a request
+function mcp_http_transport._start_streaming_connection(request_id, stream_request_id)
 	-- Create a temporary SSE client for this request
 	local sse_client = require("paragonic.sse_client")
 	
@@ -577,6 +574,7 @@ function mcp_http_transport._handle_sse_response(request_id, response)
 		chunks = {},
 		completed = false,
 		error = nil,
+		stream_request_id = stream_request_id,
 	}
 	
 	-- Set up SSE callbacks for this stream
@@ -657,6 +655,8 @@ function mcp_http_transport._handle_sse_response(request_id, response)
 		}
 	}
 end
+
+
 
 -- Send MCP notification
 function mcp_http_transport.send_notification(notification)
