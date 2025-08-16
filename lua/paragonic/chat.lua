@@ -77,7 +77,7 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 				end
 			end
 		elseif chunk_type == "regular_content" then
-			-- Add regular content with diamond prefix
+			-- Add regular content with single diamond prefix (only first line gets diamond)
 			local utils = require("paragonic.utils")
 			-- Safely get buffer width from the stored window ID
 			local full_buffer_width = 80 -- Default width
@@ -87,7 +87,7 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 			local base_width = math.floor(full_buffer_width * 0.7)
 			if base_width < 20 then base_width = 20 end
 			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk, base_width)
 			for _, line in ipairs(wrapped_lines) do
 				table.insert(response_lines, line)
 			end
@@ -98,7 +98,7 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 				end
 			end
 		else
-			-- Default chunk handling - treat as regular content
+			-- Default chunk handling - treat as regular content with single diamond
 			local utils = require("paragonic.utils")
 			-- Safely get buffer width from the stored window ID
 			local full_buffer_width = 80 -- Default width
@@ -108,7 +108,7 @@ local function create_shared_on_chunk_handler(current_buf, line_num, chat_window
 			local base_width = math.floor(full_buffer_width * 0.7)
 			if base_width < 20 then base_width = 20 end
 			
-			local wrapped_lines = utils.wrap_text_with_diamond(chunk, base_width)
+			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk, base_width)
 			for _, line in ipairs(wrapped_lines) do
 				table.insert(response_lines, line)
 			end

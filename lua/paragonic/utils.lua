@@ -199,9 +199,120 @@ function M.wrap_text_with_glyph(text, max_width, glyph)
 	return lines
 end
 
+-- Format text with single glyph prefix (only first line gets glyph, continuation lines are indented)
+function M.wrap_text_with_single_glyph(text, max_width, glyph)
+	-- Set default max_width if not provided
+	max_width = max_width or 80
+	
+	-- Set default glyph if not provided
+	glyph = glyph or "◊"
+
+	if not text or text == "" then
+		return { glyph .. "  " }
+	end
+
+	local lines = {}
+
+	-- Split text into lines
+	local text_lines = {}
+	for line in text:gmatch("[^\r\n]+") do
+		table.insert(text_lines, line)
+	end
+
+	-- Process each line with single glyph prefix and proper indentation
+	for i, line in ipairs(text_lines) do
+		if line:match("%S") then -- Only process non-empty lines
+			-- Strip leading spaces from the line
+			local clean_line = line:match("^%s*(.+)$")
+
+			-- Check if this is a numbered list item
+			local number_match = clean_line:match("^(%d+)%.%s*(.+)")
+			if number_match then
+				local number = number_match
+				local content = clean_line:sub(#number + 3) -- Skip "number. "
+
+				-- Format numbered list item with glyph prefix and proper indentation
+				local list_item = glyph .. "  " .. number .. ". " .. content
+				table.insert(lines, list_item)
+
+				-- Add blank line after numbered list item if next line is not a list item
+				if i < #text_lines then
+					local next_line = text_lines[i + 1]
+					if next_line and next_line:match("%S") then
+						local next_clean = next_line:match("^%s*(.+)$")
+						if not next_clean:match("^%d+%.") then
+							table.insert(lines, "")
+						end
+					end
+				end
+			else
+				table.insert(lines, "")
+				-- Regular text - word wrapping with single glyph prefix
+				local words = {}
+				for word in clean_line:gmatch("[^%s]+") do
+					table.insert(words, word)
+				end
+
+				local is_first_line = true
+				local current_line = ""
+				local current_length = 0
+
+				for j, word in ipairs(words) do
+					local word_length = #word
+
+					-- If adding this word would exceed the line limit
+					if current_length + word_length > max_width then
+						-- Add current line to lines (if not empty)
+						if current_line ~= "" then
+							table.insert(lines, current_line)
+						end
+						-- Start new line with proper indentation
+						if is_first_line then
+							current_line = glyph .. "  " .. word
+							current_length = #glyph + 2 + word_length
+							is_first_line = false
+						else
+							current_line = "    " .. word
+							current_length = 4 + word_length
+						end
+					else
+						-- Add word to current line (with space if not first word)
+						if current_line ~= "" then
+							current_line = current_line .. " " .. word
+							current_length = current_length + 1 + word_length
+						else
+							-- First word on the line
+							if is_first_line then
+								current_line = glyph .. "  " .. word
+								current_length = #glyph + 2 + word_length
+								is_first_line = false
+							else
+								current_line = "    " .. word
+								current_length = 4 + word_length
+							end
+						end
+					end
+				end
+
+				-- Add the last line if it has content
+				if current_line ~= "" then
+					table.insert(lines, current_line)
+				end
+			end
+		end
+	end
+
+	return lines
+end
+
 -- Format clean Markdown source with diamond prefix and 2-space gutter (backward compatibility)
 function M.wrap_text_with_diamond(text, max_width)
 	return M.wrap_text_with_glyph(text, max_width, "◊")
+end
+
+-- Format text with single diamond prefix (only first line gets diamond, continuation lines are indented)
+function M.wrap_text_with_single_diamond(text, max_width)
+	return M.wrap_text_with_single_glyph(text, max_width, "◊")
 end
 
 -- Convenience functions for common glyphs
