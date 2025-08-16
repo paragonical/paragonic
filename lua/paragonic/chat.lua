@@ -211,8 +211,8 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 				end
 				thinking_end_line = insert_line + #wrapped_lines
 			else
-				-- Subsequent thinking content - add vertical continuation icon
-				wrapped_lines = utils.wrap_text_with_glyph(chunk_content, buffer_width - 4, "⋮")
+				-- Subsequent thinking content - add vertical continuation icon with consistent indentation
+				wrapped_lines = M.wrap_thinking_content(chunk_content, buffer_width - 4, "⋮")
 				-- Insert at the end of current thinking content
 				-- Reverse the lines to fix the order issue
 				for i = #wrapped_lines, 1, -1 do
@@ -237,7 +237,8 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
 			-- Insert at the end of current content
 			local insert_line = #lines
-			for i = 1, #wrapped_lines do
+			-- Reverse the lines to fix the order issue (same as thinking content)
+			for i = #wrapped_lines, 1, -1 do
 				table.insert(lines, insert_line + 1, wrapped_lines[i])
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
@@ -247,7 +248,8 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			local wrapped_lines = utils.wrap_text_with_single_diamond(chunk_content, buffer_width - 4)
 			-- Insert at the end of current content
 			local insert_line = #lines
-			for i = 1, #wrapped_lines do
+			-- Reverse the lines to fix the order issue (same as thinking content)
+			for i = #wrapped_lines, 1, -1 do
 				table.insert(lines, insert_line + 1, wrapped_lines[i])
 			end
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
@@ -634,6 +636,75 @@ function M.send_message_smart(message, model)
 	else
 		return M.send_message_thinking_streaming(message, target_model)
 	end
+end
+
+-- Custom wrapping function for thinking content with consistent indentation
+function M.wrap_thinking_content(text, max_width, glyph)
+	-- Set default max_width if not provided
+	max_width = max_width or 80
+
+	-- Set default glyph if not provided
+	glyph = glyph or "⋮"
+
+	if not text or text == "" then
+		return { glyph .. "  " }
+	end
+
+	local lines = {}
+
+	-- Split text into lines
+	local text_lines = {}
+	for line in text:gmatch("[^\r\n]+") do
+		table.insert(text_lines, line)
+	end
+
+	-- Process each line with consistent indentation
+	for i, line in ipairs(text_lines) do
+		if line:match("%S") then -- Only process non-empty lines
+			-- Strip leading spaces from the line
+			local clean_line = line:match("^%s*(.+)$")
+
+			-- Word wrapping with consistent indentation
+			local words = {}
+			for word in clean_line:gmatch("[^%s]+") do
+				table.insert(words, word)
+			end
+
+			local current_line = glyph .. "  " -- Consistent indentation: glyph + 2 spaces
+			local current_length = #glyph + 2
+
+			for j, word in ipairs(words) do
+				local word_length = #word
+
+				-- If adding this word would exceed the line limit
+				if current_length + word_length > max_width then
+					-- Add current line to lines (if not empty)
+					if current_line ~= (glyph .. "  ") then
+						table.insert(lines, current_line)
+					end
+					-- Start new line with same indentation (not extra spaces)
+					current_line = glyph .. "  " .. word
+					current_length = #glyph + 2 + word_length
+				else
+					-- Add word to current line (with space if not first word)
+					if current_line ~= (glyph .. "  ") then
+						current_line = current_line .. " " .. word
+						current_length = current_length + 1 + word_length
+					else
+						current_line = current_line .. word
+						current_length = current_length + word_length
+					end
+				end
+			end
+
+			-- Add the last line if it has content
+			if current_line ~= (glyph .. "  ") then
+				table.insert(lines, current_line)
+			end
+		end
+	end
+
+	return lines
 end
 
 -- Function to auto-fold thinking content between brain and hourglass markers
