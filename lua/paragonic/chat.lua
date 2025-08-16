@@ -8,6 +8,7 @@ local debug = require("paragonic.debug")
 local config = require("paragonic.config")
 local streaming = require("paragonic.streaming")
 local ui = require("paragonic.ui")
+local mcp_tool_prompts = require("paragonic.mcp_tool_prompts")
 
 -- Chat state
 local chat_state = {
@@ -362,8 +363,31 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 
 	debug.debug_print("🧠 Starting thinking streaming session", "info")
 
-	-- Start streaming session
-	local session_id = streaming.start_session(message, model, {
+	-- Initialize MCP tool prompts if not already done
+	if mcp_tool_prompts then
+		mcp_tool_prompts.init()
+	end
+
+	-- Extract conversation context for tool awareness
+	local context = mcp_tool_prompts and mcp_tool_prompts.extract_conversation_context() or {}
+	
+	-- Build tool awareness prompt
+	local tool_prompt = ""
+	if mcp_tool_prompts then
+		tool_prompt = mcp_tool_prompts.build_tool_awareness_prompt(message, context)
+		if tool_prompt and tool_prompt ~= "" then
+			debug.debug_print("🔧 Added tool awareness prompt (" .. #tool_prompt .. " chars)", "debug")
+		end
+	end
+
+	-- Combine tool prompt with user message
+	local enhanced_message = message
+	if tool_prompt and tool_prompt ~= "" then
+		enhanced_message = tool_prompt .. "\n\n" .. message
+	end
+
+	-- Start streaming session with enhanced message
+	local session_id = streaming.start_session(enhanced_message, model, {
 		thinking_enabled = true,
 		streaming_enabled = true,
 	})
@@ -696,6 +720,7 @@ function M.send_message_smart(message, model)
 	local target_model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
 	local supports_thinking = config.model_supports_thinking(target_model)
 
+	-- Tool awareness is automatically included in send_message_thinking_streaming
 	if supports_thinking then
 		return M.send_message_thinking_streaming(message, target_model)
 	else
