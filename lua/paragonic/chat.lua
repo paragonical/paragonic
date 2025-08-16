@@ -1260,8 +1260,8 @@ function M.send_message_command_thinking()
 		vim.log.levels.INFO
 	)
 
-	-- Add user message to buffer
-	local user_lines = { "", "↯   " .. message, "" }
+	-- Add user message to buffer (without zigzag since it's already added by smart function)
+	local user_lines = { "", message, "" }
 	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, user_lines)
 
 	-- Store the current window ID for later use in callbacks
@@ -1306,6 +1306,14 @@ function M.send_message_command_smart()
 		return
 	end
 
+	-- Add immediate visual feedback (zigzag arrow) before any backend operations
+	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯" })
+	
+	-- Force buffer update to show zigzag immediately
+	vim.api.nvim_buf_call(current_buf, function()
+		vim.cmd("redraw!")
+	end)
+
 	-- Get current model and its capabilities
 	local config = require("paragonic.config")
 	local current_model = config.get("ollama_model") or "deepseek-r1:1.5b"
@@ -1327,7 +1335,8 @@ function M.send_message_command_smart()
 			"🮮 Sending (normal mode): " .. message:sub(1, 50) .. (message:len() > 50 and "..." or ""),
 			vim.log.levels.INFO
 		)
-		M.send_message_command_streaming()
+		-- For non-thinking models, use the thinking command as well since it handles streaming properly
+		M.send_message_command_thinking()
 	end
 end
 
