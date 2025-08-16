@@ -777,6 +777,9 @@ function M.send_message_command_debug()
 
 	-- Record start time for timing information
 	local start_time = vim.uv.now()
+	
+	-- Store the current window ID for later use in callbacks
+	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Add zigzag arrow to indicate request is being sent
 	vim.api.nvim_buf_set_lines(current_buf, line_num + 1, line_num + 1, false, { "↯" })
@@ -825,7 +828,11 @@ function M.send_message_command_debug()
 		elseif chunk_type == "regular_content" then
 			-- Add regular content with diamond prefix
 			local utils = require("paragonic.utils")
-			local full_buffer_width = vim.api.nvim_win_get_width(0)
+			-- Safely get buffer width from the stored window ID
+			local full_buffer_width = 80 -- Default width
+			if chat_window_id and vim.api.nvim_win_is_valid(chat_window_id) then
+				full_buffer_width = vim.api.nvim_win_get_width(chat_window_id)
+			end
 			local base_width = math.floor(full_buffer_width * 0.7)
 			if base_width < 20 then base_width = 20 end
 			
@@ -873,9 +880,20 @@ function M.send_message_command_debug()
 		-- Update buffer with final response
 		vim.api.nvim_buf_set_lines(current_buf, line_num + 2, line_num + 2 + #final_response_lines, false, final_response_lines)
 		
-		-- Move cursor to the end of the buffer
+		-- Move cursor to the end of the buffer (safely handle window changes)
 		local buffer_line_count = vim.api.nvim_buf_line_count(current_buf)
-		vim.api.nvim_win_set_cursor(0, { buffer_line_count, 0 })
+		-- Check if the chat window still exists and is valid
+		local window_exists = pcall(function()
+			return vim.api.nvim_win_is_valid(chat_window_id)
+		end)
+		
+		if window_exists and vim.api.nvim_win_is_valid(chat_window_id) then
+			-- Check if the window is still showing the chat buffer
+			local window_buf = vim.api.nvim_win_get_buf(chat_window_id)
+			if window_buf == current_buf then
+				vim.api.nvim_win_set_cursor(chat_window_id, { buffer_line_count, 0 })
+			end
+		end
 		
 		-- Debug: Success
 		debug.append_debug_message(current_buf, "Message send process completed successfully", "success")
