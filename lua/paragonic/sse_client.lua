@@ -5,6 +5,10 @@
 -- per request as specified in the MCP standard.
 
 local sse_client = {}
+
+-- Check if we're in a Neovim environment
+local is_neovim = _G.vim ~= nil
+
 -- Try to load http_client with different paths
 local http_client
 local success, result = pcall(require, "paragonic.http_client")
@@ -137,7 +141,7 @@ function sse_client.connect(stream_id, callbacks)
 	client_state.callbacks = callbacks or {}
 
 	-- Check if we're in a test environment (no real Neovim)
-	local is_test_environment = not pcall(function() return vim.api end)
+	local is_test_environment = not is_neovim
 	
 	if is_test_environment then
 		-- In test environment, mark as connected
@@ -372,8 +376,14 @@ function sse_client._establish_connection()
 		table.insert(headers, "mcp-session-id: " .. client_state.session_id)
 	end
 
-	-- Use vim.uv for async HTTP request
-	local client = vim.uv.new_tcp()
+	-- Use vim.uv for async HTTP request (if available)
+	local client
+	if is_neovim then
+		client = vim.uv.new_tcp()
+	else
+		-- Fallback for non-Neovim environment
+		return nil, "vim.uv not available in this environment"
+	end
 	
 	-- Parse URL to get host and port
 	local host, port
