@@ -406,13 +406,13 @@ function http_client._send_single_request(request)
 		"%{http_code}", -- write out HTTP status code
 		"-o",
 		"/tmp/paragonic_response", -- output to temp file
-		"-H",
-		"Content-Type: application/json",
-		"-H",
-		"Accept: application/json, text/event-stream",
-		"-H",
-		"MCP-Protocol-Version: 2025-06-18",
 	}
+
+	-- Add headers from request object
+	for key, value in pairs(request.headers) do
+		table.insert(args, "-H")
+		table.insert(args, key .. ": " .. value)
+	end
 
 	-- Add keep-alive options if enabled
 	if client_state.optimization.enable_keep_alive and connection then
@@ -420,19 +420,7 @@ function http_client._send_single_request(request)
 		table.insert(args, tostring(client_state.optimization.keep_alive_timeout))
 	end
 
-	-- Add session ID header if available
-	if client_state.session_id then
-		table.insert(args, "-H")
-		table.insert(args, "Mcp-Session-Id: " .. client_state.session_id)
-	end
 
-	-- Add custom headers
-	for key, value in pairs(request.headers) do
-		if key ~= "Content-Type" and key ~= "Accept" and key ~= "MCP-Protocol-Version" and key ~= "Mcp-Session-Id" then
-			table.insert(args, "-H")
-			table.insert(args, key .. ": " .. value)
-		end
-	end
 
 	-- Add method
 	table.insert(args, "-X")

@@ -544,8 +544,13 @@ function mcp_http_transport.send_request(request)
 	local start_time = os.clock()
 	local success = false
 
-	-- Send HTTP POST request
-	local response, err = http_client.post("/mcp", request)
+	-- Send HTTP POST request with proper headers
+	local response, err = http_client.post("/mcp", request, {
+		["Accept"] = "application/json, text/event-stream",
+		["Content-Type"] = "application/json",
+		["MCP-Protocol-Version"] = transport_state.protocol_version,
+		["Origin"] = "neovim://paragonic",
+	})
 	if not response then
 		success = false
 	else

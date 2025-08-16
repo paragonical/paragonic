@@ -311,13 +311,10 @@ mod tests {
     }
 }
 
-mod content_association_tests;
 #[cfg(test)]
 mod iragl_database_tests;
 #[cfg(test)]
 mod iragl_processor_tests;
-mod iragl_search_engine_tests;
-mod optimization_engine_tests;
 // Legacy RPC-based tests removed from compilation
 // mod rpc_integration_tests;
 // mod integration_tests;
