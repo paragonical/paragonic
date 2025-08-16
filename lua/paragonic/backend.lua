@@ -195,9 +195,18 @@ local function create_mcp_client()
 		end
 		
 		-- Check if this is a streaming response
-		if resp.result and resp.result.streaming then
-			client.current_streaming_request_id = resp.result.request_id
-			debug.debug_print("🔄 Started streaming request: " .. resp.result.request_id, "info")
+		if resp.result and resp.result.type == "streaming_chunks" then
+			client.current_streaming_request_id = resp.result.progressToken
+			debug.debug_print("🔄 Received streaming chunks: " .. (resp.result.chunks and #resp.result.chunks or 0) .. " chunks", "info")
+			
+			-- Store the chunks for the chat system to retrieve
+			if resp.result.chunks then
+				client.streaming_chunks = resp.result.chunks
+			end
+			
+			-- Mark streaming as complete since we got all chunks
+			client.is_streaming = false
+			
 			return resp
 		else
 			-- Regular response, not streaming
@@ -534,8 +543,8 @@ function M.initialize_backend()
 		M.init()
 	end
 	
-	local success, err = M.connect()
-	return success
+	local success, err = M._rpc_client:connect()
+	return success, err
 end
 
 -- Disconnect from backend

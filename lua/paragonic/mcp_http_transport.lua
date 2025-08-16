@@ -578,10 +578,10 @@ function mcp_http_transport.send_request(request)
 		return nil, MCPHTTPTransportError.INVALID_MESSAGE
 	end
 	
-	-- Check if the response indicates streaming will start
-	if response.body.result and response.body.result.streaming then
-		-- Server indicates streaming will start, connect to SSE stream
-		return mcp_http_transport._start_streaming_connection(request.id, response.body.result.request_id)
+	-- Check if the response contains streaming chunks
+	if response.body.result and response.body.result.type == "streaming_chunks" then
+		-- Server returned streaming chunks directly in response
+		return response.body
 	else
 		-- Regular response
 		return response.body
