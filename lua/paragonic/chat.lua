@@ -1193,16 +1193,24 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 	-- Create a timer for non-blocking chunk checking
 	local check_timer = vim.loop.new_timer()
 	
-	local function check_for_chunks()
-		local chunks = rpc_client:get_streaming_chunks()
-		debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
-		
-		-- Debug: Check if we're receiving any SSE data
-		if rpc_client and rpc_client.is_connected then
-			debug.debug_print("RPC client is connected, checking for new data", "debug")
-		else
-			debug.debug_print("RPC client is not connected", "debug")
-		end
+		local function check_for_chunks()
+			local chunks = rpc_client:get_streaming_chunks()
+			debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
+			
+			-- Debug: Check if we're receiving any SSE data
+			if rpc_client and rpc_client.is_connected then
+				debug.debug_print("RPC client is connected, checking for new data", "debug")
+			else
+				debug.debug_print("RPC client is not connected", "debug")
+			end
+			
+			-- Debug: Check SSE connection status
+			local sse_client = require("paragonic.sse_client")
+			if sse_client and sse_client.is_connected then
+				debug.debug_print("SSE client is connected", "debug")
+			else
+				debug.debug_print("SSE client is not connected", "debug")
+			end
 		
 		if chunks and #chunks > 0 then
 			debug.debug_print("Found " .. #chunks .. " chunks, processing them", "debug")
