@@ -1297,6 +1297,13 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		end
 	end
 	
+	-- Debug: Log the content to see if it contains thinking tags
+	local debug = require("paragonic.debug")
+	debug.debug_print("Full content length: " .. #full_content, "debug")
+	debug.debug_print("Content contains <think>: " .. tostring(full_content:find("<think>") ~= nil), "debug")
+	debug.debug_print("Content contains </think>: " .. tostring(full_content:find("</think>") ~= nil), "debug")
+	debug.debug_print("Content preview: " .. full_content:sub(1, 200):gsub("\n", "\\n"), "debug")
+	
 	-- Process the complete content with thinking logic
 	process_thinking_content(full_content, true)
 	
