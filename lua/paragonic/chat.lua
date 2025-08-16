@@ -1155,56 +1155,73 @@ end
 
 -- Implements Neovim folding for thinking steps
 function M.send_message_thinking_streaming(message, model, on_chunk, on_complete)
-	local backend = require("paragonic.backend")
-	local rpc_client = backend._get_rpc_client()
-	if not rpc_client then
-		-- Try to initialize backend if not available
-		if not backend.initialize_backend() then
-			return nil, "Backend not available - please ensure the Rust server is running"
+	-- Use new streaming layer
+	local streaming = require("paragonic.streaming")
+	local debug = require("paragonic.debug")
+
+	-- Initialize streaming layer if needed
+	if not streaming.is_ready() then
+		local config = require("paragonic.config")
+		local streaming_ok, streaming_err = streaming.init({
+			base_url = config.get("backend_base_url") or "http://localhost:3000",
+			protocol_version = "2025-06-18",
+		})
+		if not streaming_ok then
+			return nil, "Streaming layer initialization failed: " .. tostring(streaming_err)
 		end
-		rpc_client = backend._get_rpc_client()
 	end
 
 	-- Use default model if not specified
 	local config = require("paragonic.config")
 	model = model or config.get("ollama_model") or "deepseek-r1:1.5b"
 
-	-- Start streaming chat completion
-	local response, err = rpc_client:streaming_chat_completion({
-		model = model,
-		message = message,
+	debug.debug_print("🔄 Starting streaming session with new architecture", "info")
+
+	-- Start streaming session using new streaming layer
+	local session_id, session_err = streaming.start_session(message, model, {
 		chunk_size = 50, -- Larger chunks for thinking model
 	})
 
-	if err then
-		return nil, "Failed to start streaming: " .. tostring(err)
+	if not session_id then
+		return nil, "Failed to start streaming session: " .. tostring(session_err)
 	end
 
-	if not response then
-		return nil, "Failed to start streaming: no response"
+	debug.debug_print("✅ Streaming session started: " .. session_id, "success")
+
+	-- Get chunks immediately since they're all returned in the response
+	local chunks, chunks_err = streaming.get_chunks(session_id)
+	if chunks_err then
+		debug.debug_print("❌ Error getting chunks: " .. tostring(chunks_err), "error")
+		streaming.cleanup_session(session_id)
+		return nil, "Failed to get chunks: " .. tostring(chunks_err)
 	end
 
-	-- Check for error in response (response is already a parsed Lua table)
-	if response.error then
-		return nil, "Streaming error: " .. (response.error.message or "Unknown error")
-	end
+	debug.debug_print("📥 Retrieved " .. #chunks .. " chunks from session", "debug")
 
-	-- Debug: Log the response structure
-	local debug = require("paragonic.debug")
-	debug.debug_print("Response type: " .. type(response), "debug")
-	if type(response) == "table" then
-		debug.debug_print("Response keys: " .. table.concat(vim.tbl_keys(response), ", "), "debug")
-		if response.result then
-			debug.debug_print("Result type: " .. type(response.result), "debug")
-			if type(response.result) == "table" then
-				debug.debug_print("Result keys: " .. table.concat(vim.tbl_keys(response.result), ", "), "debug")
+	-- Process chunks immediately
+	if chunks and #chunks > 0 then
+		debug.debug_print("📝 Processing " .. #chunks .. " chunks", "debug")
+		
+		for i, chunk in ipairs(chunks) do
+			if on_chunk then
+				local chunk_type = chunk.chunk_type or "regular_content"
+				debug.debug_print("📝 Processing chunk " .. i .. " with type: " .. chunk_type, "debug")
+				on_chunk(chunk.chunk, chunk.chunk_index or i-1, #chunks, chunk_type)
 			end
 		end
 	end
 
-	-- Check if this is a streaming response
-	if response.result and response.result.streaming then
-		debug.debug_print("🔄 Started streaming request: " .. response.result.request_id, "info")
+	-- Cleanup session
+	streaming.cleanup_session(session_id)
+
+	-- Call completion callback
+	if on_complete then
+		on_complete()
+	end
+
+	debug.debug_print("✅ Streaming session completed successfully", "success")
+	return true
+end
 		
 		-- Set up non-blocking streaming with timers
 		local max_wait_time = 30 -- seconds
