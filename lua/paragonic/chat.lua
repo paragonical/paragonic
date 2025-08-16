@@ -187,13 +187,26 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			local buffer_width = ui.get_buffer_width(buffer)
 			local wrapped_lines
 
+			if enable_debug then
+				debug.debug_print("🧠 Raw thinking content: " .. chunk_content, "debug")
+			end
+
 			if not thinking_content_started then
 				-- First thinking content - add brain icon and wrap to buffer width
 				wrapped_lines = utils.wrap_text_with_brain(chunk_content, buffer_width - 4) -- Leave margin
 				thinking_content_started = true
 				-- Insert after the brain icon line
 				local insert_line = start_line + 2
-				for i = 1, #wrapped_lines do
+
+				if enable_debug then
+					debug.debug_print("🧠 Wrapped lines count: " .. #wrapped_lines, "debug")
+					for i, line in ipairs(wrapped_lines) do
+						debug.debug_print("🧠 Line " .. i .. ": " .. line, "debug")
+					end
+				end
+
+				-- Reverse the lines to fix the order issue
+				for i = #wrapped_lines, 1, -1 do
 					table.insert(lines, insert_line + 1, wrapped_lines[i])
 				end
 				thinking_end_line = insert_line + #wrapped_lines
@@ -201,7 +214,8 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 				-- Subsequent thinking content - add vertical continuation icon
 				wrapped_lines = utils.wrap_text_with_glyph(chunk_content, buffer_width - 4, "⋮")
 				-- Insert at the end of current thinking content
-				for i = 1, #wrapped_lines do
+				-- Reverse the lines to fix the order issue
+				for i = #wrapped_lines, 1, -1 do
 					table.insert(lines, thinking_end_line + 1, wrapped_lines[i])
 				end
 				thinking_end_line = thinking_end_line + #wrapped_lines
