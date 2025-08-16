@@ -1294,10 +1294,35 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 		-- Regular response, not streaming
 		debug.debug_print("📝 Received regular (non-streaming) response", "debug")
 		
-		-- Process the response as a single chunk
-		if response.result and response.result.content then
+		-- Check if response contains chunk data directly
+		if response.result and response.result.chunk then
+			debug.debug_print("📝 Found chunk data in response result", "debug")
+			-- Process the chunk directly
+			if on_chunk then
+				local chunk_type = response.result.chunk_type or "regular_content"
+				local chunk_index = response.result.chunk_index or 0
+				local total_chunks = response.result.total_chunks or 1
+				on_chunk(response.result.chunk, chunk_index, total_chunks, chunk_type)
+			end
+		elseif response.result and response.result.content then
+			debug.debug_print("📝 Found content in response result", "debug")
+			-- Process the content as a single chunk
 			if on_chunk then
 				on_chunk(response.result.content, 1, 1, "regular_content")
+			end
+		else
+			debug.debug_print("📝 No chunk or content found in response", "debug")
+			-- Try to extract any meaningful content from the response
+			if response.result then
+				local content = ""
+				for key, value in pairs(response.result) do
+					if type(value) == "string" and value ~= "" then
+						content = content .. value
+					end
+				end
+				if content ~= "" and on_chunk then
+					on_chunk(content, 1, 1, "regular_content")
+				end
 			end
 		end
 		
