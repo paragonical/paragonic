@@ -2409,7 +2409,7 @@ impl McpHttpServer {
                 // Start thinking section
                 chunks.push(ThinkingChunk {
                     chunk_type: "thinking_start".to_string(),
-                    content: "Starting thinking process...".to_string(),
+                    content: "<think>".to_string(),
                 });
                 continue;
             }
