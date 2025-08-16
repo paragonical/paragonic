@@ -1462,46 +1462,51 @@ impl McpHttpServer {
                     // Send MCP progress notifications for thinking chunks
                     Self::send_mcp_progress_notifications(server, &chunks, &progress_token, &session.id).await;
 
-                    // Send first chunk immediately
-                    if let Some(first_chunk) = chunks.first() {
-                        let chunk_data = serde_json::json!({
-                            "type": "streaming_chunk",
-                            "chunk": first_chunk.content,
-                            "chunk_type": first_chunk.chunk_type,
-                            "chunk_index": 0,
+                    // Return all chunks in a single JSON response (MCP standard)
+                    let all_chunks = chunks.iter().enumerate().map(|(index, chunk)| {
+                        serde_json::json!({
+                            "chunk": chunk.content,
+                            "chunk_type": chunk.chunk_type,
+                            "chunk_index": index,
                             "total_chunks": chunks.len(),
                             "progressToken": progress_token
-                        });
+                        })
+                    }).collect::<Vec<_>>();
 
-                        info!("   📤 Sending first chunk to client:");
-                        info!(
-                            "   Chunk data: {}",
-                            serde_json::to_string_pretty(&chunk_data).unwrap()
-                        );
+                    let response_data = serde_json::json!({
+                        "type": "streaming_chunks",
+                        "chunks": all_chunks,
+                        "progressToken": progress_token
+                    });
 
-                        // Send remaining chunks via SSE notifications
-                        // Add a delay to ensure client has established SSE connection
-                        info!("   ⏳ Waiting for client SSE connection to establish...");
-                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                        info!("   📤 Starting to send remaining chunks via SSE");
-                        Self::send_remaining_chunks_via_sse(server, &chunks[1..], &progress_token, &session.id).await;
+                    info!("   📤 Sending all {} chunks in single response (MCP standard)");
+                    info!(
+                        "   Response data: {}",
+                        serde_json::to_string_pretty(&response_data).unwrap()
+                    );
 
-                        Ok(chunk_data)
-                    } else {
-                        // Fallback to regular content if no thinking chunks found
-                        let chunk_data = serde_json::json!({
-                            "type": "streaming_chunk",
-                            "chunk": content,
-                            "chunk_type": "regular_content",
-                            "chunk_index": 0,
-                            "total_chunks": 1,
-                            "progressToken": progress_token
-                        });
-
-                        Ok(chunk_data)
-                    }
+                    Ok(response_data)
                 } else {
-                    // Regular content for non-thinking models
+                    // Fallback to regular content if no thinking chunks found
+                    let chunk_data = serde_json::json!({
+                        "type": "streaming_chunk",
+                        "chunk": content,
+                        "chunk_type": "regular_content",
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "progressToken": progress_token
+                    });
+
+                    info!("   📤 Sending regular content to client:");
+                    info!(
+                        "   Chunk data: {}",
+                        serde_json::to_string_pretty(&chunk_data).unwrap()
+                    );
+
+                    Ok(chunk_data)
+                }
+            } else {
+                // Regular content for non-thinking models
                     let chunk_data = serde_json::json!({
                         "type": "streaming_chunk",
                         "chunk": content,

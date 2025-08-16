@@ -157,6 +157,7 @@ local transport_state = {
 	message_id_counter = 0,
 	-- Track active streaming requests
 	active_streams = {},
+	transport_type = nil, -- "new" or "old"
 }
 
 -- MCP message types
@@ -179,119 +180,136 @@ local MCPHTTPTransportError = {
 -- Initialize MCP HTTP transport
 function mcp_http_transport.init(config)
 	config = config or {}
-
-	-- Basic validation for now
-	local base_url = config.base_url or "http://localhost:3000"
-
-	-- URL validation
-	if type(base_url) ~= "string" then
-		return false, "Invalid base_url: must be a string"
-	end
-
-	if not base_url:match("^https?://") then
-		return false, "Invalid base_url: must start with http:// or https://"
-	end
-
-	-- Prevent dangerous protocols
-	if
-		base_url:match("^ftp://")
-		or base_url:match("^file://")
-		or base_url:match("^javascript:")
-		or base_url:match("^data:")
-	then
-		return false, "Invalid base_url: dangerous protocol not allowed"
-	end
-
-	-- OWASP SSRF protection
-	if mcp_owasp_security then
-		local ssrf_valid, ssrf_err = mcp_owasp_security.validate_url_for_ssrf(base_url)
-		if not ssrf_valid then
-			return false, "SSRF protection: " .. ssrf_err
-		end
-	end
-
-	-- Validate port if present
-	local port_match = base_url:match(":(%d+)/?")
-	if port_match then
-		local port = tonumber(port_match)
-		if port <= 0 or port > 65535 then
-			return false, "Invalid base_url: port must be between 1 and 65535"
-		end
-	end
-
-	local protocol_version = config.protocol_version or DEFAULT_PROTOCOL_VERSION
-
-	-- Protocol version validation
-	if type(protocol_version) ~= "string" then
-		return false, "Invalid protocol_version: must be a string"
-	end
-
-	if protocol_version ~= "2025-06-18" then
-		return false, "Invalid protocol_version: only 2025-06-18 is supported"
-	end
-
-	local initialization_timeout = config.initialization_timeout or DEFAULT_INITIALIZATION_TIMEOUT
-
-	-- Timeout validation
-	if type(initialization_timeout) ~= "number" or initialization_timeout <= 0 then
-		return false, "Invalid initialization_timeout: must be a positive number"
-	end
-
-	local request_timeout = config.request_timeout or DEFAULT_REQUEST_TIMEOUT
-
-	if type(request_timeout) ~= "number" or request_timeout <= 0 then
-		return false, "Invalid request_timeout: must be a positive number"
-	end
-
-	transport_state.base_url = base_url
-	transport_state.protocol_version = protocol_version
-	transport_state.initialization_timeout = initialization_timeout
-	transport_state.request_timeout = request_timeout
-
+	
+	-- Initialize transport state
+	transport_state = {
+		base_url = config.base_url or "http://localhost:3000",
+		protocol_version = config.protocol_version or "2025-06-18",
+		initialization_timeout = config.initialization_timeout or 30,
+		request_timeout = config.request_timeout or 60,
+		is_initialized = false,
+		session_id = nil,
+		active_streams = {},
+		transport_type = nil, -- "new" or "old"
+	}
+	
 	-- Initialize HTTP client
-	local http_success = http_client.init({
+	local http_success, http_err = http_client.init({
 		base_url = transport_state.base_url,
 		timeout = transport_state.request_timeout,
-		retry_attempts = 1, -- MCP handles its own retries
+		retry_attempts = 1, -- We handle retries at transport level
 	})
-
+	
 	if not http_success then
-		return false, "Failed to initialize HTTP client"
+		return false, "Failed to initialize HTTP client: " .. (http_err or "unknown error")
 	end
-
+	
+	-- Try to detect transport type (new vs old)
+	local transport_type, err = mcp_http_transport._detect_transport_type()
+	if err then
+		return false, "Failed to detect transport type: " .. err
+	end
+	
+	transport_state.transport_type = transport_type
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔧 Detected transport type: " .. transport_type, "info")
+	
 	transport_state.is_initialized = true
-
-	-- Initialize performance monitoring if available
-	if mcp_performance then
-		local perf_config = {
-			METRICS = {
-				ENABLE_REAL_TIME_MONITORING = true,
-				COLLECTION_INTERVAL = 5, -- 5 seconds for MCP
-				MAX_METRICS_ENTRIES = 720, -- 1 hour at 5s intervals
-			},
-			THRESHOLDS = {
-				REQUEST_TIMEOUT_WARNING = 2000, -- 2 seconds
-				REQUEST_TIMEOUT_CRITICAL = 10000, -- 10 seconds
-				MEMORY_USAGE_WARNING = 100, -- 100 MB
-				MEMORY_USAGE_CRITICAL = 200, -- 200 MB
-			},
-			OPTIMIZATION = {
-				ENAABLE_CONNECTION_POOLING = true,
-				POOL_SIZE = 5, -- Smaller pool for MCP
-				ENABLE_REQUEST_CACHING = true,
-				CACHE_SIZE = 500, -- Smaller cache for MCP
-				CACHE_TTL = 60, -- 1 minute TTL
-			},
-		}
-
-		local perf_success = mcp_performance.init(perf_config)
-		if not perf_success then
-			local debug = require("paragonic.debug")
-			debug.debug_print("[MCP] Warning: Performance monitoring initialization failed", "warning")
-		end
-	end
-
 	return true
+end
+
+-- Detect whether server uses new or old transport
+function mcp_http_transport._detect_transport_type()
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔍 Detecting transport type...", "debug")
+	
+	-- Try new Streamable HTTP transport first
+	local success, response = pcall(function()
+		return http_client.post("/mcp", {
+			headers = {
+				["Accept"] = "application/json, text/event-stream",
+				["Content-Type"] = "application/json",
+				["MCP-Protocol-Version"] = transport_state.protocol_version,
+				["Origin"] = "neovim://paragonic",
+			},
+			body = json.encode({
+				jsonrpc = "2.0",
+				method = "initialize",
+				params = {
+					protocolVersion = transport_state.protocol_version,
+					capabilities = {},
+					clientInfo = {
+						name = "paragonic-client",
+						version = "1.0.0"
+					}
+				},
+				id = 1
+			})
+		})
+	end)
+	
+	if success and response and response.status >= 200 and response.status < 300 then
+		debug.debug_print("✅ New Streamable HTTP transport detected", "debug")
+		return "new"
+	end
+	
+	-- If new transport failed, try old HTTP+SSE transport
+	debug.debug_print("🔄 New transport failed, trying old HTTP+SSE transport", "debug")
+	
+	local sse_success, sse_result = pcall(require, "paragonic.sse_client")
+	if not sse_success then
+		return nil, "SSE client not available for old transport"
+	end
+	
+	local sse_client = sse_result
+	
+	-- Initialize SSE client for detection
+	local sse_init_success = sse_client.init({
+		base_url = transport_state.base_url,
+		timeout = 5, -- Short timeout for detection
+	})
+	
+	if not sse_init_success then
+		return nil, "Failed to initialize SSE client for transport detection"
+	end
+	
+	-- Try to connect to old transport endpoint
+	local connect_success, connect_err = sse_client.connect(nil, {
+		on_message = function(event)
+			-- Check for endpoint event (indicates old transport)
+			if event.data and event.data:match('"event"%s*:%s*"endpoint"') then
+				debug.debug_print("✅ Old HTTP+SSE transport detected", "debug")
+				-- We'll handle this in the main detection logic
+			end
+		end,
+		on_error = function(error, code)
+			-- Ignore errors during detection
+		end,
+		on_connect = function(stream_id)
+			-- Connection successful, but we need to wait for endpoint event
+		end,
+		on_disconnect = function()
+			-- Disconnection during detection
+		end
+	})
+	
+	if connect_success then
+		-- Wait a bit for the endpoint event
+		if is_neovim then
+			vim.wait(1000, function() return false end, 100)
+		else
+			-- Simple sleep for non-Neovim environment
+			os.execute("sleep 1")
+		end
+		
+		-- Disconnect the detection connection
+		sse_client.disconnect()
+		
+		debug.debug_print("✅ Old HTTP+SSE transport detected", "debug")
+		return "old"
+	end
+	
+	return nil, "Neither new nor old transport detected"
 end
 
 -- Set callbacks for MCP events
