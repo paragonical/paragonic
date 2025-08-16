@@ -25,7 +25,7 @@ function M.init()
 	debug.debug_print("🔧 Initializing chat module", "info")
 
 	-- Initialize streaming layer
-	local streaming_ok = streaming.init(config.get_all())
+	local streaming_ok = streaming.init(config.get_config())
 	if not streaming_ok then
 		debug.debug_print("❌ Failed to initialize streaming layer", "error")
 		return false
