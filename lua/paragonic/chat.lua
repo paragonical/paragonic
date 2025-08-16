@@ -154,7 +154,7 @@ local function extract_backward_to_tombstone(buffer)
 end
 
 -- Create shared chunk handler for UI updates
-local function create_shared_on_chunk_handler(buffer, start_line, window_id, enable_debug)
+local function create_shared_on_chunk_handler(buffer, start_line, window_id, enable_debug, original_message)
 	local utils = require("paragonic.utils")
 	local thinking_content_started = false
 	local thinking_end_line = nil -- Track where thinking content ends
@@ -244,6 +244,25 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 			vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
 		else
 			-- Default: add as regular content with proper wrapping (matching thinking content format)
+			if enable_debug then
+				debug.debug_print("📝 Default chunk content: " .. chunk_content, "debug")
+			end
+
+			-- Skip if this looks like the user's message being repeated
+			-- Check if the chunk content matches the original message (case-insensitive)
+			if
+				chunk_content
+				and message
+				and chunk_content
+					:lower()
+					:match("^%s*" .. message:lower():gsub("[%-%.%+%*%?%[%]%^%$%(%)%%]", "%%%1") .. "%s*$")
+			then
+				if enable_debug then
+					debug.debug_print("🚫 Skipping repeated user message: " .. chunk_content, "debug")
+				end
+				return
+			end
+
 			local buffer_width = ui.get_buffer_width(buffer)
 			local wrapped_lines = M.wrap_thinking_content(chunk_content, buffer_width - 4, "◊")
 			-- Insert at the end of current content
@@ -394,7 +413,8 @@ function M.send_message_command_thinking()
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false)
+	local on_chunk, on_complete =
+		create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false, message)
 
 	-- Send message with thinking streaming
 	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
@@ -448,7 +468,8 @@ function M.send_message_command_smart()
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false)
+	local on_chunk, on_complete =
+		create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false, message)
 
 	-- Send message with appropriate method
 	if supports_thinking then
@@ -502,7 +523,8 @@ function M.send_message_command_backward()
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false)
+	local on_chunk, on_complete =
+		create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, false, message)
 
 	-- Send message with thinking streaming
 	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
@@ -571,7 +593,8 @@ function M.send_message_command_forward()
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug disabled for normal operation
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, cursor_line + 1, chat_window_id, false)
+	local on_chunk, on_complete =
+		create_shared_on_chunk_handler(current_buf, cursor_line + 1, chat_window_id, false, message)
 
 	-- Send message with thinking streaming
 	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
@@ -620,7 +643,8 @@ function M.send_message_command_debug()
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug enabled
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, true)
+	local on_chunk, on_complete =
+		create_shared_on_chunk_handler(current_buf, line_num + 1, chat_window_id, true, message)
 
 	-- Send message with thinking streaming
 	M.send_message_thinking_streaming(message, current_model, on_chunk, on_complete)
@@ -822,7 +846,8 @@ function M.send_debug_markdown_test()
 	local chat_window_id = vim.api.nvim_get_current_win()
 
 	-- Use shared on_chunk handler with debug enabled
-	local on_chunk, on_complete = create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, true)
+	local on_chunk, on_complete =
+		create_shared_on_chunk_handler(current_buf, line_num, chat_window_id, true, test_message)
 
 	-- Send message with thinking streaming
 	M.send_message_thinking_streaming(test_message, nil, on_chunk, on_complete)
