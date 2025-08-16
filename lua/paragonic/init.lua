@@ -58,11 +58,7 @@ function M.setup(opts)
 		{ name = "ParagonicDebug", func = M.debug.open_debug_buffer, opts = {} },
 
 		-- Chat commands
-		{ name = "ParagonicSend", func = M.chat.send_message_command, opts = {} },
-		{ name = "ParagonicSendBackward", func = M.chat.send_message_backward_only, opts = {} },
-		{ name = "ParagonicSendForward", func = M.chat.send_message_forward_only, opts = {} },
 		{ name = "ParagonicSendDebug", func = M.chat.send_message_command_debug, opts = {} },
-		{ name = "ParagonicSendStreaming", func = M.chat.send_message_command_streaming, opts = {} },
 		{ name = "ParagonicSendThinking", func = M.chat.send_message_command_thinking, opts = {} },
 		{ name = "ParagonicSendSmart", func = M.chat.send_message_command_smart, opts = {} },
 		{ name = "ParagonicDebugMarkdown", func = M.chat.send_debug_markdown_test, opts = {} },
