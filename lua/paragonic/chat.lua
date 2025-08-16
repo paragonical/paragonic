@@ -263,16 +263,19 @@ local function create_shared_on_chunk_handler(buffer, start_line, window_id, ena
 
 			-- Skip if this looks like the user's message being repeated
 			-- Check if the chunk content matches the original message (case-insensitive, more flexible)
+			local normalized_chunk = chunk_content:gsub("%s+", " "):lower():match("^%s*(.-)%s*$")
+			local normalized_message = original_message:gsub("%s+", " "):lower():match("^%s*(.-)%s*$")
+
 			if
 				chunk_content
 				and original_message
 				and (
 										-- Exact match (case-insensitive)
-chunk_content
-						:lower()
-						:match("^%s*" .. original_message:lower():gsub("[%-%.%+%*%?%[%]%^%$%(%)%%]", "%%%1") .. "%s*$")
+normalized_chunk == normalized_message
 					-- Or contains the message as a substring (more flexible)
-					or chunk_content:lower():find(original_message:lower(), 1, true)
+					or normalized_chunk:find(normalized_message, 1, true)
+					-- Or the chunk is very similar to the original message (word-based comparison)
+					or (#normalized_chunk == #normalized_message and normalized_chunk == normalized_message)
 				)
 			then
 				if enable_debug then
