@@ -248,7 +248,7 @@ function mcp_http_transport._detect_transport_type()
 		})
 	end)
 	
-	if success and response and response.status >= 200 and response.status < 300 then
+	if success and response and response.status and response.status >= 200 and response.status < 300 then
 		debug.debug_print("✅ New Streamable HTTP transport detected", "debug")
 		return "new"
 	end
