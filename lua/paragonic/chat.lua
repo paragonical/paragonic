@@ -1854,6 +1854,9 @@ function M.send_message_command_smart()
 	local streaming_type = config.get_current_model_streaming_type()
 	local supports_thinking = config.current_model_supports_thinking()
 
+	-- TEST: Add notification to see if this function is being called
+	vim.notify("TEST: send_message_command_smart called with model: " .. current_model .. ", supports_thinking: " .. tostring(supports_thinking), vim.log.levels.INFO)
+
 	-- Determine which command to use based on model capabilities
 	if supports_thinking then
 		vim.notify(
