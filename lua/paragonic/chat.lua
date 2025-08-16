@@ -1260,30 +1260,35 @@ function M.send_message_thinking_streaming(message, model, on_chunk, on_complete
 			local chunks = rpc_client:get_streaming_chunks()
 			debug.debug_print("Checking for chunks: " .. (chunks and #chunks or 0) .. " chunks found", "debug")
 			
-			-- Debug: Check if we're receiving any SSE data
-			if rpc_client and rpc_client.is_connected then
-				debug.debug_print("RPC client is connected, checking for new data", "debug")
-			else
-				debug.debug_print("RPC client is not connected", "debug")
-			end
-			
-			-- Debug: Check SSE connection status and events
-			local sse_client = require("paragonic.sse_client")
-			if sse_client and sse_client.is_connected then
-				debug.debug_print("SSE client is connected", "debug")
-				-- Check if there are any SSE events in the buffer
-				local events = sse_client.get_event_buffer()
-				if events and #events > 0 then
-					debug.debug_print("SSE event buffer has " .. #events .. " events", "debug")
-					for i, event in ipairs(events) do
-						debug.debug_print("SSE Event " .. i .. ": " .. (event.event_type or "unknown") .. " - " .. (event.data and event.data:sub(1, 50) or "no data"), "debug")
-					end
-				else
-					debug.debug_print("SSE event buffer is empty", "debug")
+					-- Debug: Check if we're receiving any SSE data
+		if rpc_client and rpc_client.is_connected then
+			debug.debug_print("RPC client is connected, checking for new data", "debug")
+		else
+			debug.debug_print("RPC client is not connected", "debug")
+		end
+		
+		-- Debug: Check SSE connection status and events
+		local sse_client = require("paragonic.sse_client")
+		if sse_client and sse_client.is_connected then
+			debug.debug_print("SSE client is connected", "debug")
+			-- Check if there are any SSE events in the buffer
+			local events = sse_client.get_event_buffer()
+			if events and #events > 0 then
+				debug.debug_print("SSE event buffer has " .. #events .. " events", "debug")
+				for i, event in ipairs(events) do
+					debug.debug_print("SSE Event " .. i .. ": " .. (event.event_type or "unknown") .. " - " .. (event.data and event.data:sub(1, 50) or "no data"), "debug")
 				end
 			else
-				debug.debug_print("SSE client is not connected", "debug")
+				debug.debug_print("SSE event buffer is empty", "debug")
 			end
+		else
+			debug.debug_print("SSE client is not connected", "debug")
+		end
+		
+		-- Debug: Check if we should continue waiting for more chunks
+		if chunks and #chunks == 0 then
+			debug.debug_print("No chunks found, but continuing to wait for SSE streaming...", "debug")
+		end
 		
 		if chunks and #chunks > 0 then
 			debug.debug_print("Found " .. #chunks .. " chunks, processing them", "debug")
