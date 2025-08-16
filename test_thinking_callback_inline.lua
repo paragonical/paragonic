@@ -112,9 +112,13 @@ if chat and config then
         "test message"
     })
     
-    -- Set current buffer
+    -- Set current buffer first
     local original_buf = vim.api.nvim_get_current_buf()
     vim.api.nvim_set_current_buf(test_buf)
+    
+    -- Set cursor to the end of the buffer (after the message)
+    local line_count = vim.api.nvim_buf_line_count(test_buf)
+    vim.api.nvim_win_set_cursor(0, {line_count, 0}) -- Last line, column 0
     
     -- Track notifications
     local notifications_received = {}
@@ -123,23 +127,45 @@ if chat and config then
         table.insert(notifications_received, msg)
     end
     
-    -- Test smart command
-    local success = pcall(chat.send_message_command_smart)
+    -- Test message extraction first
+    print("   Testing message extraction...")
+    local success, result = pcall(function()
+        return chat.extract_backward_to_tombstone(test_buf)
+    end)
     
-    -- Restore
-    vim.notify = original_notify
-    vim.api.nvim_set_current_buf(original_buf)
-    vim.api.nvim_buf_delete(test_buf, { force = true })
+    if success then
+        local message, start_line = result, result
+        print("   Extracted message: '" .. tostring(message) .. "'")
+        print("   Start line: " .. tostring(start_line))
+    else
+        print("   Message extraction failed: " .. tostring(result))
+        print("   Available functions in chat module:")
+        for k, v in pairs(chat) do
+            if type(v) == "function" then
+                print("     - " .. k)
+            end
+        end
+    end
+    
+    -- Test smart command directly
+    print("   Testing send_message_command_smart directly...")
+    local success = pcall(chat.send_message_command_smart)
     
     if success then
         print("✅ send_message_command_smart executed successfully")
         
         -- Check for expected notifications
         local found_test_notification = false
+        local found_legacy_notification = false
         for _, notification in ipairs(notifications_received) do
-            if notification and notification:find("TEST: send_message_command_smart called") then
-                found_test_notification = true
-                break
+            if notification then
+                print("   Notification: " .. tostring(notification))
+                if notification:find("TEST: send_message_command_smart called") then
+                    found_test_notification = true
+                end
+                if notification:find("TEST: send_message_command_legacy called") then
+                    found_legacy_notification = true
+                end
             end
         end
         
@@ -149,10 +175,52 @@ if chat and config then
             print("❌ Test notification not found in command execution")
         end
         
+        if found_legacy_notification then
+            print("❌ Legacy function was called instead!")
+        end
+        
         print("   Total notifications: " .. #notifications_received)
     else
         print("❌ send_message_command_smart failed to execute")
     end
+    
+    -- Test command execution via vim.cmd
+    print("   Testing command execution via vim.cmd...")
+    local notifications_received2 = {}
+    vim.notify = function(msg, level, opts)
+        table.insert(notifications_received2, msg)
+    end
+    
+    local success2 = pcall(vim.cmd, "ParagonicSendSmart")
+    
+    if success2 then
+        print("✅ ParagonicSendSmart command executed successfully")
+        
+        local found_test_notification2 = false
+        for _, notification in ipairs(notifications_received2) do
+            if notification then
+                print("   Cmd Notification: " .. tostring(notification))
+                if notification:find("TEST: send_message_command_smart called") then
+                    found_test_notification2 = true
+                end
+            end
+        end
+        
+        if found_test_notification2 then
+            print("✅ Test notification found in command execution")
+        else
+            print("❌ Test notification not found in command execution")
+        end
+        
+        print("   Total cmd notifications: " .. #notifications_received2)
+    else
+        print("❌ ParagonicSendSmart command failed to execute")
+    end
+    
+    -- Restore
+    vim.notify = original_notify
+    vim.api.nvim_set_current_buf(original_buf)
+    vim.api.nvim_buf_delete(test_buf, { force = true })
 end
 
 print("\n" .. "=" .. string.rep("=", 60))
