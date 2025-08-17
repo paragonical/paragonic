@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 // Import modules for MCP tool implementations
 use crate::embeddings::create_embedding;
-use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType};
+use crate::iragl::{search_iragl_index, IraglSearchQuery, SearchType, SearchFilters};
 use crate::ollama::{ChatMessage, OllamaClient, OllamaConfig};
 use crate::patterns::{PatternBootstrap, PatternRegistry};
 use crate::stream_manager::StreamManager;
@@ -1923,6 +1923,30 @@ impl McpHttpServer {
             .and_then(|s| s.as_str())
             .unwrap_or("semantic");
         let limit = params.get("limit").and_then(|l| l.as_u64()).unwrap_or(10);
+        
+        // Parse content type filter
+        let content_type_filter = params
+            .get("filter_by_content_type")
+            .and_then(|f| f.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+            });
+
+        // Create search filters if content type filter is specified
+        let filters = if let Some(content_types) = content_type_filter {
+            Some(SearchFilters {
+                content_types: Some(content_types),
+                file_paths: None,
+                date_range: None,
+                sections: None,
+                source_entities: None,
+            })
+        } else {
+            None
+        };
 
         // Create search query
         let search_query = IraglSearchQuery {
@@ -1935,7 +1959,7 @@ impl McpHttpServer {
                 _ => SearchType::Semantic,
             },
             limit: Some(limit as usize),
-            filters: None,
+            filters,
             include_metadata: true,
         };
 

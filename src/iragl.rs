@@ -1703,6 +1703,7 @@ pub struct IraglSearchRequest {
     pub max_results: usize,
     pub include_associations: bool,
     pub filter_optimized_only: bool,
+    pub filter_by_content_type: Option<Vec<String>>,
 }
 
 /// IRAGL search result
@@ -1788,6 +1789,7 @@ pub async fn perform_iragl_search(
         &query_embedding,
         request.max_results,
         &request.query_context,
+        &request.filter_by_content_type,
     ).await?;
 
     let search_duration_ms = start_time.elapsed().as_millis() as u64;
@@ -1839,13 +1841,14 @@ async fn perform_vector_similarity_search(
     query_embedding: &[f32],
     max_results: usize,
     _query_context: &Option<Value>,
+    content_type_filter: &Option<Vec<String>>,
 ) -> ParagonicResult<Vec<IraglSearchResult>> {
     // For now, return mock results since the database schema might not be fully set up
     // TODO: Implement real vector similarity search when database is properly configured
     
     warn!("Vector similarity search not fully implemented, returning mock results");
     
-    let mock_results = vec![
+    let mut mock_results = vec![
         IraglSearchResult {
             content_id: Uuid::new_v4(),
             content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
@@ -1866,7 +1869,23 @@ async fn perform_vector_similarity_search(
             associations: None,
             optimization_score: Some(0.78),
         },
+        IraglSearchResult {
+            content_id: Uuid::new_v4(),
+            content_text: "Meeting discussion about implementing the IRAGL system with vector similarity search and content type filtering.".to_string(),
+            similarity_score: 0.85,
+            content_type: "conversation".to_string(),
+            source_entity_type: "meeting".to_string(),
+            source_entity_id: Uuid::new_v4(),
+            associations: None,
+            optimization_score: Some(0.72),
+        },
     ];
+
+    // Apply content type filtering if specified
+    if let Some(ref content_types) = content_type_filter {
+        mock_results.retain(|result| content_types.contains(&result.content_type));
+        info!("Applied content type filter: {:?}, filtered to {} results", content_types, mock_results.len());
+    }
 
     // Truncate results to respect max_results limit
     let results: Vec<IraglSearchResult> = mock_results
@@ -2241,6 +2260,7 @@ pub async fn demonstrate_iragl_capabilities() -> ParagonicResult<()> {
         max_results: 5,
         include_associations: true,
         filter_optimized_only: false,
+        filter_by_content_type: None,
     };
 
     match perform_iragl_search(search_request).await {
@@ -4404,6 +4424,7 @@ mod tests {
             max_results: 5,
             include_associations: false,
             filter_optimized_only: false,
+            filter_by_content_type: None,
         };
 
         let response = perform_iragl_search(request).await.unwrap();
@@ -4442,5 +4463,57 @@ mod tests {
 
         println!("✅ Query embedding generation test passed");
         println!("   - Generated embedding with {} dimensions", embedding.len());
+    }
+
+    #[tokio::test]
+    async fn test_content_type_filtering() {
+        // Test content type filtering functionality
+        let request_with_filter = IraglSearchRequest {
+            query_text: "optimization implementation".to_string(),
+            query_context: None,
+            max_results: 10,
+            include_associations: false,
+            filter_optimized_only: false,
+            filter_by_content_type: Some(vec!["document".to_string(), "code".to_string()]),
+        };
+
+        let response_with_filter = perform_iragl_search(request_with_filter).await.unwrap();
+
+        // Verify that all results have the specified content types
+        for result in &response_with_filter.results {
+            assert!(
+                result.content_type == "document" || result.content_type == "code",
+                "Result should only contain 'document' or 'code' content types, got: {}",
+                result.content_type
+            );
+        }
+
+        // Test without filter
+        let request_without_filter = IraglSearchRequest {
+            query_text: "optimization implementation".to_string(),
+            query_context: None,
+            max_results: 10,
+            include_associations: false,
+            filter_optimized_only: false,
+            filter_by_content_type: None,
+        };
+
+        let response_without_filter = perform_iragl_search(request_without_filter).await.unwrap();
+
+        // Verify that results can include any content type when no filter is applied
+        let content_types: std::collections::HashSet<&str> = response_without_filter
+            .results
+            .iter()
+            .map(|r| r.content_type.as_str())
+            .collect();
+
+        assert!(
+            content_types.contains("document") || content_types.contains("code") || content_types.contains("conversation"),
+            "Results should include various content types when no filter is applied"
+        );
+
+        println!("✅ Content type filtering test passed");
+        println!("   - Filtered results: {} (all with specified content types)", response_with_filter.results.len());
+        println!("   - Unfiltered results: {} (various content types)", response_without_filter.results.len());
     }
 }
