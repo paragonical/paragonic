@@ -2284,6 +2284,21 @@ function M.add_custom_model(model)
 	return model_selection.add_custom_model(model)
 end
 
+function M.load_models_from_server()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.load_models_from_server()
+end
+
+function M.refresh_models()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.refresh_models()
+end
+
+function M.format_model_name(model_name)
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.format_model_name(model_name)
+end
+
 -- ============================================================================
 -- Tool Execution Integration Functions
 -- ============================================================================

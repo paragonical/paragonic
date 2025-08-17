@@ -17,57 +17,32 @@ M.config = {
 	selected_color = "String"
 }
 
--- Available models
-M.available_models = {
-	{
-		id = "gpt-4",
-		name = "GPT-4",
-		description = "Most capable model, best for complex reasoning",
-		provider = "OpenAI",
-		max_tokens = 8192
-	},
-	{
-		id = "gpt-3.5-turbo",
-		name = "GPT-3.5 Turbo",
-		description = "Fast and efficient, good for most tasks",
-		provider = "OpenAI",
-		max_tokens = 4096
-	},
-	{
-		id = "claude-3-opus",
-		name = "Claude 3 Opus",
-		description = "Anthropic's most powerful model",
-		provider = "Anthropic",
-		max_tokens = 200000
-	},
-	{
-		id = "claude-3-sonnet",
-		name = "Claude 3 Sonnet",
-		description = "Balanced performance and speed",
-		provider = "Anthropic",
-		max_tokens = 200000
-	},
-	{
-		id = "claude-3-haiku",
-		name = "Claude 3 Haiku",
-		description = "Fastest model, good for simple tasks",
-		provider = "Anthropic",
-		max_tokens = 200000
-	},
-	{
-		id = "llama-3.1-8b",
-		name = "Llama 3.1 8B",
-		description = "Local model, good for privacy",
-		provider = "Meta",
-		max_tokens = 8192
-	},
-	{
-		id = "llama-3.1-70b",
-		name = "Llama 3.1 70B",
-		description = "Local model, high quality",
-		provider = "Meta",
-		max_tokens = 8192
-	}
+-- Available models (will be populated from Ollama server)
+M.available_models = {}
+
+-- Model descriptions for common models
+M.model_descriptions = {
+	["llama3.1:8b"] = "Fast and efficient, good for most tasks",
+	["llama3.1:70b"] = "High quality model, best for complex reasoning",
+	["llama3.2:3b"] = "Ultra-fast model, good for simple tasks",
+	["llama3.2:8b"] = "Balanced performance and speed",
+	["llama3.2:70b"] = "Most capable model, best for complex reasoning",
+	["codellama:7b"] = "Specialized for code generation and analysis",
+	["codellama:13b"] = "Enhanced code generation capabilities",
+	["codellama:34b"] = "Most capable code generation model",
+	["mistral:7b"] = "Fast and efficient general-purpose model",
+	["mixtral:8x7b"] = "High-quality mixture of experts model",
+	["llama2:7b"] = "Reliable general-purpose model",
+	["llama2:13b"] = "Enhanced general-purpose model",
+	["llama2:70b"] = "High-quality general-purpose model",
+	["neural-chat:7b"] = "Optimized for chat and conversation",
+	["orca-mini:3b"] = "Lightweight model for simple tasks",
+	["orca-mini:7b"] = "Balanced chat model",
+	["phi:2.7b"] = "Fast and efficient Microsoft model",
+	["phi:3.5"] = "Enhanced Microsoft model",
+	["qwen:7b"] = "Alibaba's efficient model",
+	["qwen:14b"] = "Alibaba's enhanced model",
+	["qwen:72b"] = "Alibaba's most capable model",
 }
 
 -- Current model state
@@ -77,11 +52,122 @@ M.next_marker_id = 1
 
 -- Initialize model selection system
 function M.initialize()
-	M.current_model = M.available_models[2] -- Default to GPT-3.5 Turbo
 	M.model_markers = {}
 	M.next_marker_id = 1
 	
-	print("✅ Model selection system initialized")
+	-- Load models from Ollama server
+	local success = M.load_models_from_server()
+	if success then
+		-- Set default model to first available, or a common one
+		if #M.available_models > 0 then
+			M.current_model = M.available_models[1]
+		else
+			-- Fallback to a common model if none available
+			M.current_model = {
+				id = "llama3.1:8b",
+				name = "Llama 3.1 8B",
+				description = "Fast and efficient, good for most tasks",
+				provider = "Ollama",
+				max_tokens = 8192,
+				ollama_model = "llama3.1:8b"
+			}
+		end
+		print("✅ Model selection system initialized with " .. #M.available_models .. " Ollama models")
+	else
+		print("⚠️ Model selection system initialized with fallback models")
+	end
+end
+
+-- Load models from Ollama server via Rust backend
+function M.load_models_from_server()
+	local success, api = pcall(require, "paragonic.api")
+	if not success or not api then
+		print("❌ Could not load API module")
+		return false
+	end
+	
+	-- Check if API is ready
+	if not api.is_ready() then
+		print("❌ API not ready, cannot load models")
+		return false
+	end
+	
+	-- Get models from server
+	local response = api.list_models()
+	if not response or not response.success then
+		print("❌ Failed to get models from server: " .. (response and response.error or "unknown error"))
+		return false
+	end
+	
+	-- Parse models from response
+	local models = response.result or response.data or {}
+	if type(models) == "table" and models.models then
+		models = models.models
+	end
+	
+	if not models or #models == 0 then
+		print("⚠️ No models found on Ollama server")
+		return false
+	end
+	
+	-- Convert to our format
+	M.available_models = {}
+	for _, model in ipairs(models) do
+		local model_name = model.name or model.id
+		if model_name then
+			local description = M.model_descriptions[model_name] or "Ollama model"
+			local display_name = M.format_model_name(model_name)
+			
+			table.insert(M.available_models, {
+				id = model_name,
+				name = display_name,
+				description = description,
+				provider = "Ollama",
+				max_tokens = 8192,
+				ollama_model = model_name,
+				size = model.size,
+				modified_at = model.modified_at
+			})
+		end
+	end
+	
+	print("📦 Loaded " .. #M.available_models .. " models from Ollama server")
+	return true
+end
+
+-- Format model name for display
+function M.format_model_name(model_name)
+	-- Convert model names to display names
+	local name_mappings = {
+		["llama3.1:8b"] = "Llama 3.1 8B",
+		["llama3.1:70b"] = "Llama 3.1 70B",
+		["llama3.2:3b"] = "Llama 3.2 3B",
+		["llama3.2:8b"] = "Llama 3.2 8B",
+		["llama3.2:70b"] = "Llama 3.2 70B",
+		["codellama:7b"] = "Code Llama 7B",
+		["codellama:13b"] = "Code Llama 13B",
+		["codellama:34b"] = "Code Llama 34B",
+		["mistral:7b"] = "Mistral 7B",
+		["mixtral:8x7b"] = "Mixtral 8x7B",
+		["llama2:7b"] = "Llama 2 7B",
+		["llama2:13b"] = "Llama 2 13B",
+		["llama2:70b"] = "Llama 2 70B",
+		["neural-chat:7b"] = "Neural Chat 7B",
+		["orca-mini:3b"] = "Orca Mini 3B",
+		["orca-mini:7b"] = "Orca Mini 7B",
+		["phi:2.7b"] = "Phi 2.7B",
+		["phi:3.5"] = "Phi 3.5",
+		["qwen:7b"] = "Qwen 7B",
+		["qwen:14b"] = "Qwen 14B",
+		["qwen:72b"] = "Qwen 72B",
+	}
+	
+	return name_mappings[model_name] or model_name
+end
+
+-- Refresh models from server
+function M.refresh_models()
+	return M.load_models_from_server()
 end
 
 -- Get current model

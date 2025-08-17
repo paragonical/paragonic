@@ -238,10 +238,12 @@ All approval requests have configurable timeouts:
 
 ### Model Selection Features
 
-- **Available models**: GPT-4, GPT-3.5 Turbo, Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku, Llama 3.1 8B, Llama 3.1 70B
+- **Available models**: Dynamically loaded from local Ollama server
+- **Model types**: Llama, Code Llama, Mistral, Mixtral, Phi, Qwen, and more
 - **Current model tracking**: Always shows which model is active
 - **Model details**: View provider, description, and token limits
 - **Quick switching**: Change models with a single interaction
+- **Server integration**: Models are loaded from your local Ollama instance
 
 ---
 
@@ -346,14 +348,14 @@ User: Switch to a more powerful model for this complex task
 
 AI: I'll help you switch to a more capable model for this task.
 
-  󰣩 ⚪ [model_switch] GPT-4 (OpenAI)
-  󰣩 ⚪ [model_switch] Claude 3 Opus (Anthropic)
-  󰣩 ⚪ [model_switch] Claude 3 Sonnet (Anthropic)
+  󰣩 ⚪ [model_switch] Llama 3.2 70B (Ollama)
+  󰣩 ⚪ [model_switch] Code Llama 34B (Ollama)
+  󰣩 ⚪ [model_switch] Mixtral 8x7B (Ollama)
 ```
 
 **Your Actions:**
-1. Press `<CR>` on GPT-4 marker → Choose "Select Model"
-2. Model switches to GPT-4 → Marker shows ✅
+1. Press `<CR>` on Llama 3.2 70B marker → Choose "Select Model"
+2. Model switches to Llama 3.2 70B → Marker shows ✅
 3. Continue with enhanced AI capabilities
 
 ---
@@ -472,7 +474,8 @@ AI: I'll help you switch to a more capable model for this task.
 -- Model selection
 :lua require("paragonic.mcp").show_current_model()
 :lua require("paragonic.mcp").list_available_models()
-:lua require("paragonic.mcp").set_current_model("gpt-4")
+:lua require("paragonic.mcp").set_current_model("llama3.1:8b")
+:lua require("paragonic.mcp").refresh_models()
 ```
 
 ---

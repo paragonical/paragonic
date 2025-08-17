@@ -55,6 +55,16 @@ local function test_model_selection()
 		mcp.initialize_model_selection()
 	end
 	
+	-- Try to load models from server
+	if mcp.load_models_from_server then
+		local success = mcp.load_models_from_server()
+		if success then
+			print("✅ Models loaded from Ollama server")
+		else
+			print("⚠️ Using fallback models (server not available)")
+		end
+	end
+	
 	-- Clear buffer
 	clear_buffer()
 	
@@ -137,7 +147,8 @@ local function test_model_selection()
 	add_text("You can also use these commands:")
 	add_text(":lua require('paragonic.mcp').show_current_model()")
 	add_text(":lua require('paragonic.mcp').list_available_models()")
-	add_text(":lua require('paragonic.mcp').set_current_model('gpt-4')")
+	add_text(":lua require('paragonic.mcp').set_current_model('llama3.1:8b')")
+	add_text(":lua require('paragonic.mcp').refresh_models()")
 	add_text("")
 	
 	add_text("## Demo Notes")
