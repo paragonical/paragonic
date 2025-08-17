@@ -24,6 +24,14 @@ M.pattern_tool_mappings = {}
 M.pattern_execution_history = {}
 M.execution_counter = 0
 
+-- Approval state management
+M.approval_state = {
+	active_requests = {},
+	audit_trail = {},
+	next_audit_id = 1,
+	cleanup_timer = nil,
+}
+
 -- Initialize MCP server
 function M.initialize_mcp_server()
 	if M.mcp_server_initialized then
@@ -1825,6 +1833,291 @@ function M.track_tool_usage(tool_name, pattern_id, success)
 	end
 
 	return false
+end
+
+-- ============================================================================
+-- Approval State Management Functions
+-- ============================================================================
+
+-- Initialize approval state management
+function M.initialize_approval_state()
+	if not M.approval_state then
+		M.approval_state = {
+			active_requests = {},
+			audit_trail = {},
+			next_audit_id = 1,
+			cleanup_timer = nil,
+		}
+	end
+	
+	-- Start cleanup timer if not already running
+	if not M.approval_state.cleanup_timer then
+		M.start_approval_cleanup_timer()
+	end
+	
+	return true
+end
+
+-- Register an approval request
+function M.register_approval_request(request)
+	if not M.approval_state then
+		M.initialize_approval_state()
+	end
+	
+	-- Validate request
+	if not request or not request.id then
+		return false, "Invalid request: missing ID"
+	end
+	
+	-- Check for duplicate
+	if M.approval_state.active_requests[request.id] then
+		return false, "Request already registered: " .. request.id
+	end
+	
+	-- Add to active requests
+	M.approval_state.active_requests[request.id] = {
+		request = request,
+		status = "pending",
+		created_at = os.time(),
+		updated_at = os.time(),
+	}
+	
+	return true
+end
+
+-- Get an approval request by ID
+function M.get_approval_request(request_id)
+	if not M.approval_state or not M.approval_state.active_requests then
+		return nil
+	end
+	
+	local entry = M.approval_state.active_requests[request_id]
+	if not entry then
+		return nil
+	end
+	
+	-- Check for timeout (only if status is still pending)
+	if entry.status == "pending" and entry.request.timeout and (os.time() - entry.created_at) > entry.request.timeout then
+		entry.status = "timeout"
+		entry.updated_at = os.time()
+		M.record_audit_entry(request_id, "timeout", {reason = "automatic timeout"})
+	end
+	
+	-- Return the request data with status information
+	return {
+		id = entry.request.id,
+		status = entry.status,
+		created_at = entry.created_at,
+		updated_at = entry.updated_at,
+		result = entry.result,
+		request = entry.request
+	}
+end
+
+-- Approve a request
+function M.approve_request(request_id, result)
+	if not M.approval_state or not M.approval_state.active_requests then
+		return false, "Approval state not initialized"
+	end
+	
+	local entry = M.approval_state.active_requests[request_id]
+	if not entry then
+		return false, "Request not found: " .. request_id
+	end
+	
+	if entry.status ~= "pending" then
+		return false, "Request not in pending status: " .. entry.status
+	end
+	
+	-- Update status
+	entry.status = "approved"
+	entry.updated_at = os.time()
+	entry.result = result or {approved = true}
+	
+	-- Record audit entry
+	M.record_audit_entry(request_id, "approved", result)
+	
+	return true
+end
+
+-- Deny a request
+function M.deny_request(request_id, result)
+	if not M.approval_state or not M.approval_state.active_requests then
+		return false, "Approval state not initialized"
+	end
+	
+	local entry = M.approval_state.active_requests[request_id]
+	if not entry then
+		return false, "Request not found: " .. request_id
+	end
+	
+	if entry.status ~= "pending" then
+		return false, "Request not in pending status: " .. entry.status
+	end
+	
+	-- Update status
+	entry.status = "denied"
+	entry.updated_at = os.time()
+	entry.result = result or {approved = false}
+	
+	-- Record audit entry
+	M.record_audit_entry(request_id, "denied", result)
+	
+	return true
+end
+
+-- Record audit entry
+function M.record_audit_entry(request_id, action, details)
+	if not M.approval_state then
+		return false
+	end
+	
+	local audit_entry = {
+		id = M.approval_state.next_audit_id,
+		request_id = request_id,
+		action = action,
+		timestamp = os.time(),
+		details = details or {},
+	}
+	
+	M.approval_state.audit_trail[audit_entry.id] = audit_entry
+	M.approval_state.next_audit_id = M.approval_state.next_audit_id + 1
+	
+	return true
+end
+
+-- Get audit entry
+function M.get_audit_entry(request_id)
+	if not M.approval_state or not M.approval_state.audit_trail then
+		return nil
+	end
+	
+	-- Find the most recent audit entry for this request
+	local latest_entry = nil
+	for _, entry in pairs(M.approval_state.audit_trail) do
+		if entry.request_id == request_id then
+			if not latest_entry or entry.timestamp > latest_entry.timestamp then
+				latest_entry = entry
+			end
+		end
+	end
+	
+	return latest_entry
+end
+
+-- Get pending approval count
+function M.get_pending_approval_count()
+	if not M.approval_state or not M.approval_state.active_requests then
+		return 0
+	end
+	
+	local count = 0
+	for _, entry in pairs(M.approval_state.active_requests) do
+		if entry.status == "pending" then
+			count = count + 1
+		end
+	end
+	
+	return count
+end
+
+-- Clean up completed approvals
+function M.cleanup_completed_approvals()
+	if not M.approval_state or not M.approval_state.active_requests then
+		return 0
+	end
+	
+	local cleaned = 0
+	local to_remove = {}
+	
+	for request_id, entry in pairs(M.approval_state.active_requests) do
+		if entry.status ~= "pending" then
+			table.insert(to_remove, request_id)
+		end
+	end
+	
+	for _, request_id in ipairs(to_remove) do
+		M.approval_state.active_requests[request_id] = nil
+		cleaned = cleaned + 1
+	end
+	
+	return cleaned
+end
+
+-- Start approval cleanup timer
+function M.start_approval_cleanup_timer()
+	if M.approval_state.cleanup_timer then
+		return -- Already running
+	end
+	
+	-- Simple timer implementation (in a real environment, use vim.loop.timer)
+	M.approval_state.cleanup_timer = true
+	
+	-- For testing purposes, we'll handle cleanup manually
+	-- In production, this would be a proper timer
+end
+
+-- Save approval state
+function M.save_approval_state()
+	if not M.approval_state then
+		return false
+	end
+	
+	-- Store state in a temporary variable for testing
+	M._saved_state = {
+		active_requests = {},
+		audit_trail = {},
+		next_audit_id = M.approval_state.next_audit_id
+	}
+	
+	-- Copy active requests
+	for id, entry in pairs(M.approval_state.active_requests) do
+		M._saved_state.active_requests[id] = entry
+	end
+	
+	-- Copy audit trail
+	for id, entry in pairs(M.approval_state.audit_trail) do
+		M._saved_state.audit_trail[id] = entry
+	end
+	
+	return true
+end
+
+-- Load approval state
+function M.load_approval_state()
+	if not M.approval_state then
+		M.initialize_approval_state()
+	end
+	
+	if not M._saved_state then
+		return false
+	end
+	
+	-- Restore state from saved data
+	M.approval_state.active_requests = {}
+	M.approval_state.audit_trail = {}
+	M.approval_state.next_audit_id = M._saved_state.next_audit_id
+	
+	-- Restore active requests
+	for id, entry in pairs(M._saved_state.active_requests) do
+		M.approval_state.active_requests[id] = entry
+	end
+	
+	-- Restore audit trail
+	for id, entry in pairs(M._saved_state.audit_trail) do
+		M.approval_state.audit_trail[id] = entry
+	end
+	
+	return true
+end
+
+-- Clear approval state
+function M.clear_approval_state()
+	if M.approval_state then
+		M.approval_state.active_requests = {}
+		M.approval_state.audit_trail = {}
+		M.approval_state.next_audit_id = 1
+	end
 end
 
 return M

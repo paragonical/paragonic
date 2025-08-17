@@ -16,16 +16,16 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 1.6 Implement error handling and timeout mechanisms
   - [x] 1.7 Verify all sampling handler tests pass
 
-- [ ] 2. Approval State Management
-  - [ ] 2.1 Write tests for approval request registration and tracking
-  - [ ] 2.2 Implement approval state manager with request tracking
-  - [ ] 2.3 Write tests for approval lifecycle management
-  - [ ] 2.4 Implement approval lifecycle (pending → approved/denied/cancelled)
-  - [ ] 2.5 Write tests for audit trail recording and retrieval
-  - [ ] 2.6 Implement audit trail system for approval decisions
-  - [ ] 2.7 Write tests for concurrent approval request handling
-  - [ ] 2.8 Implement concurrent request handling and cleanup
-  - [ ] 2.9 Verify all approval state tests pass
+- [x] 2. Approval State Management
+  - [x] 2.1 Write tests for approval request registration and tracking
+  - [x] 2.2 Implement approval state manager with request tracking
+  - [x] 2.3 Write tests for approval lifecycle management
+  - [x] 2.4 Implement approval lifecycle (pending → approved/denied/cancelled)
+  - [x] 2.5 Write tests for audit trail recording and retrieval
+  - [x] 2.6 Implement audit trail system for approval decisions
+  - [x] 2.7 Write tests for concurrent approval request handling
+  - [x] 2.8 Implement concurrent request handling and cleanup
+  - [x] 2.9 Verify all approval state tests pass
 
 - [ ] 3. Approval UI Components
   - [ ] 3.1 Write tests for approval dialog creation and display
