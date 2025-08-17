@@ -77,14 +77,17 @@ function M.initialize_mcp_server()
 				properties = {
 					file_path = {
 						type = "string",
+						custom_type = "file_path",
 						description = "Path to the file to edit",
 					},
 					line_number = {
 						type = "integer",
 						description = "Line number to edit (1-based)",
+						minimum = 1,
 					},
 					content = {
 						type = "string",
+						custom_type = "code_content",
 						description = "Content to insert at the specified line",
 					},
 				},
@@ -117,10 +120,12 @@ function M.initialize_mcp_server()
 				properties = {
 					file_name = {
 						type = "string",
+						custom_type = "filename",
 						description = "Name of the file to create",
 					},
 					content = {
 						type = "string",
+						custom_type = "code_content",
 						description = "Initial content for the file",
 					},
 					open_in_window = {
@@ -162,6 +167,7 @@ function M.initialize_mcp_server()
 				properties = {
 					file_path = {
 						type = "string",
+						custom_type = "file_path",
 						description = "Path to the file to save (optional, uses current buffer if not specified)",
 					},
 					force = {
@@ -248,10 +254,12 @@ function M.initialize_mcp_server()
 				properties = {
 					query = {
 						type = "string",
+						custom_type = "search_query",
 						description = "Search query (filename pattern or content)",
 					},
 					file_type = {
 						type = "string",
+						custom_type = "file_extension",
 						description = "Filter by file type (e.g., 'lua', 'md', 'txt')",
 					},
 					recursive = {
@@ -261,6 +269,8 @@ function M.initialize_mcp_server()
 					max_results = {
 						type = "integer",
 						description = "Maximum number of results to return",
+						minimum = 1,
+						maximum = 1000,
 					},
 				},
 				required = { "query" },
@@ -287,6 +297,30 @@ function M.initialize_mcp_server()
 		{
 			name = "agent_execute_command",
 			description = "Execute Neovim commands or external shell commands",
+			inputSchema = {
+				type = "object",
+				properties = {
+					command_type = {
+						type = "string",
+						description = "Type of command to execute",
+						enum = {"neovim", "shell"},
+						default = "neovim",
+					},
+					command = {
+						type = "string",
+						custom_type = "neovim_command",
+						description = "Command to execute (Neovim or shell command)",
+					},
+					arguments = {
+						type = "array",
+						description = "Command arguments",
+						items = {
+							type = "string"
+						},
+					},
+				},
+				required = { "command" },
+			},
 			inputSchema = {
 				type = "object",
 				properties = {
@@ -2400,6 +2434,92 @@ function M.load_approval_config(file_path)
 	end
 end
 
+-- Tool types functions
+function M.validate_tool_parameters(parameters, tool_name)
+	local types = get_tool_types()
+	if not types then
+		return false, "Tool types system not available"
+	end
+	
+	-- Find tool schema
+	local tool_schema = nil
+	for _, tool in ipairs(M.mcp_tools) do
+		if tool.name == tool_name then
+			tool_schema = tool.inputSchema
+			break
+		end
+	end
+	
+	if not tool_schema then
+		return false, "Tool not found: " .. tool_name
+	end
+	
+	return types.validate_tool_parameters(parameters, tool_schema)
+end
+
+function M.validate_type(value, type_name)
+	local types = get_tool_types()
+	if types then
+		return types.validate_type(value, type_name)
+	else
+		return false, "Tool types system not available"
+	end
+end
+
+function M.show_type_info(type_name)
+	local types = get_tool_types()
+	if types then
+		return types.show_type_info(type_name)
+	else
+		vim.notify("Tool types system not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.list_available_types()
+	local types = get_tool_types()
+	if types then
+		return types.list_types()
+	else
+		return {}
+	end
+end
+
+function M.create_custom_type(name, definition)
+	local types = get_tool_types()
+	if types then
+		return types.create_custom_type(name, definition)
+	else
+		return false, "Tool types system not available"
+	end
+end
+
+function M.remove_custom_type(name)
+	local types = get_tool_types()
+	if types then
+		return types.remove_custom_type(name)
+	else
+		return false, "Tool types system not available"
+	end
+end
+
+function M.enhance_tool_schema(tool_name)
+	local types = get_tool_types()
+	if not types then
+		return false, "Tool types system not available"
+	end
+	
+	-- Find tool
+	for i, tool in ipairs(M.mcp_tools) do
+		if tool.name == tool_name then
+			M.mcp_tools[i].inputSchema = types.enhance_schema_with_types(tool.inputSchema)
+			return true, "Tool schema enhanced"
+		end
+	end
+	
+	return false, "Tool not found: " .. tool_name
+end
+
 -- ============================================================================
 -- Tool Execution Integration Functions
 -- ============================================================================
@@ -2424,6 +2544,18 @@ local function get_approval_config()
 	return approval_config
 end
 
+-- Load tool types
+local tool_types = nil
+local function get_tool_types()
+	if not tool_types then
+		local success, types = pcall(require, "paragonic.tool_types")
+		if success then
+			tool_types = types
+		end
+	end
+	return tool_types
+end
+
 -- Tool execution tracking
 M.tool_execution_status = {}
 
@@ -2433,17 +2565,26 @@ function M.execute_tool_with_approval(tool_name, parameters, request_id)
 		return false, "Invalid parameters"
 	end
 	
-	-- Check if tool exists
-	local tool_exists = false
+	-- Check if tool exists and get its schema
+	local tool_schema = nil
 	for _, tool in ipairs(M.mcp_tools) do
 		if tool.name == tool_name then
-			tool_exists = true
+			tool_schema = tool.inputSchema
 			break
 		end
 	end
 	
-	if not tool_exists then
+	if not tool_schema then
 		return false, "Tool not found: " .. tool_name
+	end
+	
+	-- Validate parameters using type system
+	local types = get_tool_types()
+	if types then
+		local valid, error_msg = types.validate_tool_parameters(parameters, tool_schema)
+		if not valid then
+			return false, "Parameter validation failed: " .. error_msg
+		end
 	end
 	
 	-- Check if tool is auto-approved using new configuration system
