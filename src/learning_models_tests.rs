@@ -533,7 +533,7 @@ fn test_skill_assessment_creation_and_validation() {
         person_id: person.id,
         skill_area_id: skill_area.id,
         assessment_type: "initial".to_string(),
-        score: Some(67), // 67%
+        score: Some(6700), // 67.00 scaled by 100
         confidence_level: Some(3),
         difficulty_level: Some(2),
         questions_answered: Some(3),

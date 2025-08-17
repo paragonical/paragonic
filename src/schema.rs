@@ -1,8 +1,7 @@
 // @generated automatically by Diesel CLI.
 
 pub mod sql_types {
-    #[derive(diesel_derive_enum, diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "vector"))]
+    // Vector type definition - simplified to avoid diesel_derive_enum issues
     pub struct Vector;
 }
 
@@ -112,10 +111,10 @@ diesel::table! {
         title -> Varchar,
         summary -> Nullable<Text>,
         skill_summary -> Jsonb,
-        learning_velocity -> Nullable<Numeric>,
-        total_practice_time_hours -> Nullable<Numeric>,
+        learning_velocity -> Nullable<Int4>,
+        total_practice_time_hours -> Nullable<Int4>,
         total_sessions_completed -> Nullable<Int4>,
-        average_session_score -> Nullable<Numeric>,
+        average_session_score -> Nullable<Int4>,
         strongest_skills -> Nullable<Jsonb>,
         skills_in_development -> Nullable<Jsonb>,
         market_value_indicators -> Nullable<Jsonb>,
@@ -207,12 +206,12 @@ diesel::table! {
         skill_area_id -> Uuid,
         #[max_length = 50]
         metric_type -> Varchar,
-        metric_value -> Numeric,
+        metric_value -> Int4,
         measurement_date -> Date,
         session_count -> Nullable<Int4>,
         practice_time_minutes -> Nullable<Int4>,
-        confidence_interval_lower -> Nullable<Numeric>,
-        confidence_interval_upper -> Nullable<Numeric>,
+        confidence_interval_lower -> Nullable<Int4>,
+        confidence_interval_upper -> Nullable<Int4>,
         #[max_length = 20]
         trend_direction -> Nullable<Varchar>,
         metadata -> Nullable<Jsonb>,
@@ -459,7 +458,7 @@ diesel::table! {
         skill_area_id -> Uuid,
         #[max_length = 50]
         assessment_type -> Varchar,
-        score -> Nullable<Numeric>,
+        score -> Nullable<Int4>,
         confidence_level -> Nullable<Int4>,
         difficulty_level -> Nullable<Int4>,
         questions_answered -> Nullable<Int4>,
@@ -479,7 +478,7 @@ diesel::table! {
         target_skill_area_id -> Uuid,
         #[max_length = 50]
         relationship_type -> Varchar,
-        relationship_strength -> Numeric,
+        relationship_strength -> Int4,
         learning_path_order -> Nullable<Int4>,
         description -> Nullable<Text>,
         metadata -> Nullable<Jsonb>,
@@ -495,7 +494,7 @@ diesel::table! {
         practice_item_id -> Uuid,
         skill_area_id -> Uuid,
         interval_days -> Int4,
-        ease_factor -> Numeric,
+        ease_factor -> Int4,
         repetition_count -> Int4,
         next_review_date -> Date,
         last_review_date -> Nullable<Date>,

@@ -120,7 +120,6 @@ pub struct NewLearningSession {
 /// Session item model for tracking individual practice items in sessions
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable, Associations)]
 #[diesel(table_name = session_items)]
-#[diesel(belongs_to(LearningSession))]
 #[diesel(belongs_to(PracticeItem))]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct SessionItem {
@@ -161,7 +160,7 @@ pub struct SkillAssessment {
     pub person_id: Uuid,
     pub skill_area_id: Uuid,
     pub assessment_type: String,
-    pub score: Option<f64>,
+    pub score: Option<i32>, // Scaled by 100 (e.g., 67 = 0.67, 8500 = 85.00)
     pub confidence_level: Option<i32>,
     pub difficulty_level: Option<i32>,
     pub questions_answered: Option<i32>,
@@ -180,7 +179,7 @@ pub struct NewSkillAssessment {
     pub person_id: Uuid,
     pub skill_area_id: Uuid,
     pub assessment_type: String,
-    pub score: Option<f64>,
+    pub score: Option<i32>, // Scaled by 100 (e.g., 67 = 0.67, 8500 = 85.00)
     pub confidence_level: Option<i32>,
     pub difficulty_level: Option<i32>,
     pub questions_answered: Option<i32>,
@@ -203,7 +202,7 @@ pub struct SpacedRepetitionSchedule {
     pub practice_item_id: Uuid,
     pub skill_area_id: Uuid,
     pub interval_days: i32,
-    pub ease_factor: f64,
+    pub ease_factor: i32, // Scaled by 100 (e.g., 250 = 2.50, 180 = 1.80)
     pub repetition_count: i32,
     pub next_review_date: chrono::NaiveDate,
     pub last_review_date: Option<chrono::NaiveDate>,
@@ -222,7 +221,7 @@ pub struct NewSpacedRepetitionSchedule {
     pub practice_item_id: Uuid,
     pub skill_area_id: Uuid,
     pub interval_days: i32,
-    pub ease_factor: f64,
+    pub ease_factor: i32, // Scaled by 100 (e.g., 250 = 2.50, 180 = 1.80)
     pub repetition_count: i32,
     pub next_review_date: chrono::NaiveDate,
     pub is_active: bool,
@@ -241,10 +240,10 @@ pub struct ExpertiseProfile {
     pub title: String,
     pub summary: Option<String>,
     pub skill_summary: Value,
-    pub learning_velocity: Option<f64>,
-    pub total_practice_time_hours: Option<f64>,
+    pub learning_velocity: Option<i32>, // Scaled by 100 (e.g., 1250 = 12.50, 850 = 8.50)
+    pub total_practice_time_hours: Option<i32>, // Scaled by 100 (e.g., 1500 = 15.00 hours)
     pub total_sessions_completed: Option<i32>,
-    pub average_session_score: Option<f64>,
+    pub average_session_score: Option<i32>, // Scaled by 100 (e.g., 7500 = 75.00)
     pub strongest_skills: Option<Value>,
     pub skills_in_development: Option<Value>,
     pub market_value_indicators: Option<Value>,
@@ -263,10 +262,10 @@ pub struct NewExpertiseProfile {
     pub title: String,
     pub summary: Option<String>,
     pub skill_summary: Value,
-    pub learning_velocity: Option<f64>,
-    pub total_practice_time_hours: Option<f64>,
+    pub learning_velocity: Option<i32>, // Scaled by 100 (e.g., 1250 = 12.50, 850 = 8.50)
+    pub total_practice_time_hours: Option<i32>, // Scaled by 100 (e.g., 1500 = 15.00 hours)
     pub total_sessions_completed: Option<i32>,
-    pub average_session_score: Option<f64>,
+    pub average_session_score: Option<i32>, // Scaled by 100 (e.g., 7500 = 75.00)
     pub strongest_skills: Option<Value>,
     pub skills_in_development: Option<Value>,
     pub market_value_indicators: Option<Value>,

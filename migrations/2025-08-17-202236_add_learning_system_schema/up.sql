@@ -93,7 +93,7 @@ CREATE TABLE skill_assessments (
     person_id UUID NOT NULL REFERENCES people(id) ON DELETE CASCADE,
     skill_area_id UUID NOT NULL REFERENCES skill_areas(id) ON DELETE CASCADE,
     assessment_type VARCHAR(50) NOT NULL, -- 'initial', 'progress', 'final', 'adjacent_skill'
-    score DECIMAL(5,2) CHECK (score >= 0 AND score <= 100),
+    score INTEGER, -- Scaled by 100 (e.g., 67 = 0.67, 8500 = 85.00)
     confidence_level INTEGER CHECK (confidence_level >= 1 AND confidence_level <= 5),
     difficulty_level INTEGER CHECK (difficulty_level >= 1 AND difficulty_level <= 5),
     questions_answered INTEGER DEFAULT 0,
@@ -117,7 +117,7 @@ CREATE TABLE spaced_repetition_schedules (
     practice_item_id UUID NOT NULL REFERENCES practice_items(id) ON DELETE CASCADE,
     skill_area_id UUID NOT NULL REFERENCES skill_areas(id) ON DELETE CASCADE,
     interval_days INTEGER NOT NULL DEFAULT 1,
-    ease_factor DECIMAL(3,2) NOT NULL DEFAULT 2.5,
+    ease_factor INTEGER NOT NULL DEFAULT 250, -- Scaled by 100 (e.g., 250 = 2.50, 180 = 1.80)
     repetition_count INTEGER NOT NULL DEFAULT 0,
     next_review_date DATE NOT NULL,
     last_review_date DATE,
@@ -142,10 +142,10 @@ CREATE TABLE expertise_profiles (
     title VARCHAR(255) NOT NULL,
     summary TEXT,
     skill_summary JSONB NOT NULL, -- Aggregated skill levels and metrics
-    learning_velocity DECIMAL(5,2), -- Skills improvement rate
-    total_practice_time_hours DECIMAL(8,2) DEFAULT 0,
+    learning_velocity INTEGER, -- Scaled by 100 (e.g., 1250 = 12.50, 850 = 8.50)
+    total_practice_time_hours INTEGER DEFAULT 0, -- Scaled by 100 (e.g., 1500 = 15.00 hours)
     total_sessions_completed INTEGER DEFAULT 0,
-    average_session_score DECIMAL(5,2),
+    average_session_score INTEGER, -- Scaled by 100 (e.g., 7500 = 75.00)
     strongest_skills JSONB, -- Top 5 skills with levels
     skills_in_development JSONB, -- Skills currently being learned
     market_value_indicators JSONB, -- Skills with high market demand
@@ -167,12 +167,12 @@ CREATE TABLE learning_analytics (
     person_id UUID NOT NULL REFERENCES people(id) ON DELETE CASCADE,
     skill_area_id UUID NOT NULL REFERENCES skill_areas(id) ON DELETE CASCADE,
     metric_type VARCHAR(50) NOT NULL, -- 'accuracy', 'speed', 'confidence', 'retention', 'adjacent_skill_growth'
-    metric_value DECIMAL(8,4) NOT NULL,
+    metric_value INTEGER NOT NULL, -- Scaled by 100 (e.g., 8500 = 85.00)
     measurement_date DATE NOT NULL,
     session_count INTEGER DEFAULT 1,
     practice_time_minutes INTEGER DEFAULT 0,
-    confidence_interval_lower DECIMAL(8,4),
-    confidence_interval_upper DECIMAL(8,4),
+    confidence_interval_lower INTEGER, -- Scaled by 100
+    confidence_interval_upper INTEGER, -- Scaled by 100
     trend_direction VARCHAR(20), -- 'improving', 'declining', 'stable'
     metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -191,7 +191,7 @@ CREATE TABLE skill_relationships (
     source_skill_area_id UUID NOT NULL REFERENCES skill_areas(id) ON DELETE CASCADE,
     target_skill_area_id UUID NOT NULL REFERENCES skill_areas(id) ON DELETE CASCADE,
     relationship_type VARCHAR(50) NOT NULL, -- 'prerequisite', 'complementary', 'adjacent', 'advanced'
-    relationship_strength DECIMAL(3,2) NOT NULL DEFAULT 0.5, -- 0.0 to 1.0
+    relationship_strength INTEGER NOT NULL DEFAULT 50, -- Scaled by 100 (e.g., 50 = 0.50, 80 = 0.80)
     learning_path_order INTEGER, -- Order in recommended learning path
     description TEXT,
     metadata JSONB, -- Additional relationship information
