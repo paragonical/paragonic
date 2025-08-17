@@ -7,14 +7,14 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
 
 ## Tasks
 
-- [ ] 1. MCP Sampling Request Handler
-  - [ ] 1.1 Write tests for MCP sampling request parsing and validation
-  - [ ] 1.2 Implement MCP sampling/request method handler
-  - [ ] 1.3 Write tests for approval request creation from sampling data
-  - [ ] 1.4 Implement approval request creation and validation
-  - [ ] 1.5 Write tests for error handling and timeout scenarios
-  - [ ] 1.6 Implement error handling and timeout mechanisms
-  - [ ] 1.7 Verify all sampling handler tests pass
+- [x] 1. MCP Sampling Request Handler
+  - [x] 1.1 Write tests for MCP sampling request parsing and validation
+  - [x] 1.2 Implement MCP sampling/request method handler
+  - [x] 1.3 Write tests for approval request creation from sampling data
+  - [x] 1.4 Implement approval request creation and validation
+  - [x] 1.5 Write tests for error handling and timeout scenarios
+  - [x] 1.6 Implement error handling and timeout mechanisms
+  - [x] 1.7 Verify all sampling handler tests pass
 
 - [ ] 2. Approval State Management
   - [ ] 2.1 Write tests for approval request registration and tracking

@@ -1143,9 +1143,26 @@ end
 
 -- Handle MCP sampling requests from external agents
 function M.handle_sampling_request(request)
+	-- Validate request structure
+	if not request or type(request) ~= "table" then
+		return {
+			id = request and request.id or "unknown",
+			error = {
+				code = -32600,
+				message = "Invalid request: request must be a table",
+			},
+		}
+	end
+
 	local uri = request.uri
 	local criteria = request.criteria or {}
 
+	-- Check if this is an approval request
+	if uri and uri:match("^approval://") then
+		return M.handle_approval_sampling_request(request)
+	end
+
+	-- Handle regular sampling requests
 	local sampled_data = M.sample_resource(uri, criteria)
 
 	if sampled_data then
@@ -1175,6 +1192,126 @@ function M.handle_sampling_request(request)
 			},
 		}
 	end
+end
+
+-- Handle approval-specific sampling requests
+function M.handle_approval_sampling_request(request)
+	local uri = request.uri
+	local criteria = request.criteria or {}
+	
+	-- Validate approval request
+	local is_valid, error_msg = M.validate_approval_request(request)
+	if not is_valid then
+		return {
+			id = request.id,
+			error = {
+				code = -32602,
+				message = "Invalid approval request: " .. error_msg,
+			},
+		}
+	end
+
+	-- Create approval request
+	local approval_request = M.create_approval_request(criteria)
+	
+	-- Check for immediate timeout
+	if criteria.timeout and criteria.timeout <= 0 then
+		approval_request.status = "timeout"
+		approval_request.result = "timeout"
+	end
+
+	return {
+		id = request.id,
+		result = {
+			approval_request = approval_request,
+			metadata = {
+				uri = uri,
+				criteria = criteria,
+				timestamp = os.time(),
+			},
+		},
+	}
+end
+
+-- Validate approval request structure and content
+function M.validate_approval_request(request)
+	if not request.params or not request.params.criteria then
+		return false, "Missing criteria"
+	end
+	
+	local criteria = request.params.criteria
+	
+	-- Check required fields based on approval type
+	if not criteria.approval_type then
+		return false, "Missing approval_type"
+	end
+	
+	-- Validate approval type
+	local valid_types = {"tool_execution", "decision_point", "batch_action"}
+	local is_valid_type = false
+	for _, valid_type in ipairs(valid_types) do
+		if criteria.approval_type == valid_type then
+			is_valid_type = true
+			break
+		end
+	end
+	
+	if not is_valid_type then
+		return false, "Invalid approval_type: " .. tostring(criteria.approval_type)
+	end
+	
+	-- Validate type-specific requirements
+	if criteria.approval_type == "tool_execution" then
+		if not criteria.tool_name then
+			return false, "Missing tool_name for tool_execution"
+		end
+		if not criteria.parameters then
+			return false, "Missing parameters for tool_execution"
+		end
+	elseif criteria.approval_type == "decision_point" then
+		if not criteria.question then
+			return false, "Missing question for decision_point"
+		end
+		if not criteria.options or type(criteria.options) ~= "table" then
+			return false, "Missing or invalid options for decision_point"
+		end
+	end
+	
+	-- Validate timeout if provided
+	if criteria.timeout and (type(criteria.timeout) ~= "number" or criteria.timeout < 0) then
+		return false, "Invalid timeout value"
+	end
+	
+	return true, nil
+end
+
+-- Create approval request from sampling data
+function M.create_approval_request(criteria)
+	local approval_id = "approval-" .. os.time() .. "-" .. math.random(1000, 9999)
+	
+	local approval_request = {
+		id = approval_id,
+		type = criteria.approval_type,
+		status = "pending",
+		created_at = os.time(),
+		timeout = criteria.timeout or 30,
+		criteria = criteria,
+	}
+	
+	-- Add type-specific data
+	if criteria.approval_type == "tool_execution" then
+		approval_request.tool_name = criteria.tool_name
+		approval_request.parameters = criteria.parameters
+		approval_request.impact = criteria.impact or "Tool execution"
+	elseif criteria.approval_type == "decision_point" then
+		approval_request.question = criteria.question
+		approval_request.options = criteria.options
+	elseif criteria.approval_type == "batch_action" then
+		approval_request.actions = criteria.actions or {}
+		approval_request.description = criteria.description or "Batch action"
+	end
+	
+	return approval_request
 end
 
 -- Handle MCP roots requests from external agents
