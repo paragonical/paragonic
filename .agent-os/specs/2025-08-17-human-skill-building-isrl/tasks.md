@@ -8,25 +8,26 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
 ## Tasks
 
 - [ ] 1. **Database Schema and Models Implementation**
-  - [ ] 1.1 Write tests for skill areas table schema and validation
-  - [ ] 1.2 Implement skill areas table migration and model
-  - [ ] 1.3 Write tests for practice items table schema and validation
-  - [ ] 1.4 Implement practice items table migration and model
-  - [ ] 1.5 Write tests for learning sessions table schema and validation
-  - [ ] 1.6 Implement learning sessions table migration and model
-  - [ ] 1.7 Write tests for session items table schema and validation
-  - [ ] 1.8 Implement session items table migration and model
-  - [ ] 1.9 Write tests for skill assessments table schema and validation
-  - [ ] 1.10 Implement skill assessments table migration and model
-  - [ ] 1.11 Write tests for spaced repetition schedules table schema and validation
-  - [ ] 1.12 Implement spaced repetition schedules table migration and model
-  - [ ] 1.13 Write tests for expertise profiles table schema and validation
-  - [ ] 1.14 Implement expertise profiles table migration and model
-  - [ ] 1.15 Write tests for learning analytics table schema and validation
-  - [ ] 1.16 Implement learning analytics table migration and model
-  - [ ] 1.17 Write tests for people table learning field modifications
-  - [ ] 1.18 Implement people table learning field migrations
+  - [x] 1.1 Write tests for skill areas table schema and validation
+  - [x] 1.2 Implement skill areas table migration and model
+  - [x] 1.3 Write tests for practice items table schema and validation
+  - [x] 1.4 Implement practice items table migration and model
+  - [x] 1.5 Write tests for learning sessions table schema and validation
+  - [x] 1.6 Implement learning sessions table migration and model
+  - [x] 1.7 Write tests for session items table schema and validation
+  - [x] 1.8 Implement session items table migration and model
+  - [x] 1.9 Write tests for skill assessments table schema and validation
+  - [x] 1.10 Implement skill assessments table migration and model
+  - [x] 1.11 Write tests for spaced repetition schedules table schema and validation
+  - [x] 1.12 Implement spaced repetition schedules table migration and model
+  - [x] 1.13 Write tests for expertise profiles table schema and validation
+  - [x] 1.14 Implement expertise profiles table migration and model
+  - [x] 1.15 Write tests for learning analytics table schema and validation
+  - [x] 1.16 Implement learning analytics table migration and model
+  - [x] 1.17 Write tests for people table learning field modifications
+  - [x] 1.18 Implement people table learning field migrations
   - [ ] 1.19 Verify all database schema tests pass
+  ⚠️ Blocking issue: Schema mismatch between database and Rust models, Person struct doesn't implement Insertable, New* structs missing id fields for retrieval
 
 - [ ] 2. **Core Learning Models and Data Structures**
   - [ ] 2.1 Write tests for SkillArea data structure and validation

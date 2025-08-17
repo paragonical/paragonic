@@ -25,18 +25,28 @@ fn establish_test_connection() -> Pool<ConnectionManager<PgConnection>> {
 fn create_test_person(conn: &mut PgConnection) -> Person {
     use crate::schema::people::dsl::*;
 
-    let new_person = crate::models::NewPerson {
+    let person_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    let person = Person {
+        id: person_id,
         name: "Test Person".to_string(),
         email: Some("test@example.com".to_string()),
-        organization_id: None,
-        role: Some("Developer".to_string()),
-        metadata: Some(json!({"test": true})),
+        bio: None,
+        expertise_areas: None,
+        location: None,
+        timezone: None,
+        availability_status: crate::models::AvailabilityStatus::Available,
+        created_at: now,
+        updated_at: now,
     };
 
     diesel::insert_into(people)
-        .values(&new_person)
-        .get_result(conn)
-        .expect("Failed to create test person")
+        .values(&person)
+        .execute(conn)
+        .expect("Failed to create test person");
+
+    person
 }
 
 #[test]
@@ -60,10 +70,15 @@ fn test_skill_area_creation_and_validation() {
         metadata: Some(json!({"tags": ["programming", "fundamentals"]})),
     };
 
-    let skill_area: SkillArea = diesel::insert_into(skill_areas::table)
+    diesel::insert_into(skill_areas::table)
         .values(&new_skill_area)
-        .get_result(&mut conn)
+        .execute(&mut conn)
         .expect("Failed to insert skill area");
+
+    let skill_area: SkillArea = skill_areas::table
+        .find(new_skill_area.id)
+        .first(&mut conn)
+        .expect("Failed to retrieve skill area");
 
     // Verify the skill area was created correctly
     assert_eq!(skill_area.name, "Programming Fundamentals");
@@ -108,10 +123,15 @@ fn test_skill_area_name_uniqueness() {
     };
 
     // Insert the first skill area
-    let skill_area1: SkillArea = diesel::insert_into(skill_areas::table)
+    diesel::insert_into(skill_areas::table)
         .values(&new_skill_area)
-        .get_result(&mut conn)
+        .execute(&mut conn)
         .expect("Failed to insert first skill area");
+
+    let skill_area1: SkillArea = skill_areas::table
+        .find(new_skill_area.id)
+        .first(&mut conn)
+        .expect("Failed to retrieve first skill area");
 
     // Try to insert another skill area with the same name
     let duplicate_skill_area = NewSkillArea {
@@ -225,10 +245,15 @@ fn test_practice_item_creation_and_validation() {
         metadata: Some(json!({"learning_objective": "Understand variable concept"})),
     };
 
-    let practice_item: PracticeItem = diesel::insert_into(practice_items::table)
+    diesel::insert_into(practice_items::table)
         .values(&new_practice_item)
-        .get_result(&mut conn)
+        .execute(&mut conn)
         .expect("Failed to insert practice item");
+
+    let practice_item: PracticeItem = practice_items::table
+        .find(new_practice_item.id)
+        .first(&mut conn)
+        .expect("Failed to retrieve practice item");
 
     // Verify the practice item was created correctly
     assert_eq!(practice_item.title, "What is a variable?");
@@ -452,10 +477,15 @@ fn test_session_item_creation_and_validation() {
         metadata: Some(json!({"time_spent": 120})),
     };
 
-    let session_item: SessionItem = diesel::insert_into(session_items::table)
+    diesel::insert_into(session_items::table)
         .values(&new_session_item)
-        .get_result(&mut conn)
+        .execute(&mut conn)
         .expect("Failed to insert session item");
+
+    let session_item: SessionItem = session_items::table
+        .find(new_session_item.id)
+        .first(&mut conn)
+        .expect("Failed to retrieve session item");
 
     // Verify the session item was created correctly
     assert_eq!(session_item.session_id, learning_session.id);
