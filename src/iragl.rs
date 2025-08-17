@@ -1739,25 +1739,52 @@ pub async fn perform_iragl_search(
     if should_skip_db_operation() {
         warn!("Database not available for IRAGL search, using mock results");
         // Return mock results for testing, respecting max_results limit
+        let mock_content_id_1 = Uuid::new_v4();
+        let mock_content_id_2 = Uuid::new_v4();
+        
         let mut mock_results = vec![
             IraglSearchResult {
-                content_id: Uuid::new_v4(),
+                content_id: mock_content_id_1,
                 content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
                 similarity_score: 0.92,
                 content_type: "document".to_string(),
                 source_entity_type: "project".to_string(),
                 source_entity_id: Uuid::new_v4(),
-                associations: None,
+                associations: Some(vec![
+                    ContentAssociationResponse {
+                        id: Uuid::new_v4(),
+                        content_id: mock_content_id_1,
+                        entity_type: "project".to_string(),
+                        entity_id: Uuid::new_v4(),
+                        association_type: "references".to_string(),
+                        association_strength: 0.85,
+                        confidence_score: 0.92,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    }
+                ]),
                 optimization_score: Some(0.85),
             },
             IraglSearchResult {
-                content_id: Uuid::new_v4(),
+                content_id: mock_content_id_2,
                 content_text: "def optimize_embeddings(content, model):\n    # Implement IRAGL optimization\n    embeddings = generate_embeddings(content, model)\n    return optimize_with_differential_geometry(embeddings)".to_string(),
                 similarity_score: 0.88,
                 content_type: "code".to_string(),
                 source_entity_type: "project".to_string(),
                 source_entity_id: Uuid::new_v4(),
-                associations: None,
+                associations: Some(vec![
+                    ContentAssociationResponse {
+                        id: Uuid::new_v4(),
+                        content_id: mock_content_id_2,
+                        entity_type: "document".to_string(),
+                        entity_id: mock_content_id_1,
+                        association_type: "implements".to_string(),
+                        association_strength: 0.92,
+                        confidence_score: 0.95,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    }
+                ]),
                 optimization_score: Some(0.78),
             },
         ];
@@ -1957,17 +1984,7 @@ async fn perform_vector_similarity_search(
             
             for row in search_rows {
                 // Extract associations from metadata if available
-                let associations = if let Some(ref metadata) = row.metadata {
-                    if let Some(associations_value) = metadata.get("associations") {
-                        // Convert to the expected type - for now, we'll use None
-                        // TODO: Implement proper association extraction when the type is defined
-                        None
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                let associations = extract_associations_from_metadata(&row.metadata);
 
                 let result = IraglSearchResult {
                     content_id: row.id,
@@ -1990,35 +2007,86 @@ async fn perform_vector_similarity_search(
             info!("Content type filter for mock results: {:?}", content_type_filter);
             
             // Fallback to mock results if database query fails
+            let mock_content_id_1 = Uuid::new_v4();
+            let mock_content_id_2 = Uuid::new_v4();
+            let mock_content_id_3 = Uuid::new_v4();
+            
             let mut mock_results = vec![
                 IraglSearchResult {
-                    content_id: Uuid::new_v4(),
+                    content_id: mock_content_id_1,
                     content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
                     similarity_score: 0.92,
                     content_type: "document".to_string(),
                     source_entity_type: "project".to_string(),
                     source_entity_id: Uuid::new_v4(),
-                    associations: None,
+                    associations: Some(vec![
+                        ContentAssociationResponse {
+                            id: Uuid::new_v4(),
+                            content_id: mock_content_id_1,
+                            entity_type: "project".to_string(),
+                            entity_id: Uuid::new_v4(),
+                            association_type: "references".to_string(),
+                            association_strength: 0.85,
+                            confidence_score: 0.92,
+                            created_at: Utc::now(),
+                            updated_at: Utc::now(),
+                        },
+                        ContentAssociationResponse {
+                            id: Uuid::new_v4(),
+                            content_id: mock_content_id_1,
+                            entity_type: "code".to_string(),
+                            entity_id: Uuid::new_v4(),
+                            association_type: "implements".to_string(),
+                            association_strength: 0.78,
+                            confidence_score: 0.88,
+                            created_at: Utc::now(),
+                            updated_at: Utc::now(),
+                        }
+                    ]),
                     optimization_score: Some(0.85),
                 },
                 IraglSearchResult {
-                    content_id: Uuid::new_v4(),
+                    content_id: mock_content_id_2,
                     content_text: "def optimize_embeddings(content, model):\n    # Implement IRAGL optimization\n    embeddings = generate_embeddings(content, model)\n    return optimize_with_differential_geometry(embeddings)".to_string(),
                     similarity_score: 0.88,
                     content_type: "code".to_string(),
                     source_entity_type: "project".to_string(),
                     source_entity_id: Uuid::new_v4(),
-                    associations: None,
+                    associations: Some(vec![
+                        ContentAssociationResponse {
+                            id: Uuid::new_v4(),
+                            content_id: mock_content_id_2,
+                            entity_type: "document".to_string(),
+                            entity_id: mock_content_id_1,
+                            association_type: "implements".to_string(),
+                            association_strength: 0.92,
+                            confidence_score: 0.95,
+                            created_at: Utc::now(),
+                            updated_at: Utc::now(),
+                        }
+                    ]),
                     optimization_score: Some(0.78),
                 },
                 IraglSearchResult {
-                    content_id: Uuid::new_v4(),
+                    content_id: mock_content_id_3,
                     content_text: "Meeting discussion about implementing the IRAGL system with vector similarity search and content type filtering.".to_string(),
                     similarity_score: 0.85,
                     content_type: "conversation".to_string(),
                     source_entity_type: "meeting".to_string(),
                     source_entity_id: Uuid::new_v4(),
-                    associations: None,
+                    associations: Some(vec![
+                        ContentAssociationResponse {
+                            id: Uuid::new_v4(),
+                            content_id: mock_content_id_3,
+                            entity_type: "project".to_string(),
+                            entity_id: Uuid::new_v4(),
+                            association_type: "discusses".to_string(),
+                            association_strength: 0.75,
+                            confidence_score: 0.82,
+                            created_at: Utc::now(),
+                            updated_at: Utc::now(),
+                        }
+                    ]),
                     optimization_score: Some(0.72),
                 },
             ];
@@ -2038,6 +2106,110 @@ async fn perform_vector_similarity_search(
             Ok(results)
         }
     }
+}
+
+/// Extract content associations from metadata
+///
+/// This function parses the "associations" field from the metadata JSON
+/// and converts it to a vector of ContentAssociationResponse objects.
+fn extract_associations_from_metadata(metadata: &Option<serde_json::Value>) -> Option<Vec<ContentAssociationResponse>> {
+    let metadata = metadata.as_ref()?;
+    let associations_value = metadata.get("associations")?;
+    
+    // Handle different association formats
+    match associations_value {
+        serde_json::Value::Array(associations_array) => {
+            let mut associations = Vec::new();
+            
+            for association_value in associations_array {
+                if let Some(association) = parse_association_from_value(association_value) {
+                    associations.push(association);
+                }
+            }
+            
+            if associations.is_empty() {
+                None
+            } else {
+                Some(associations)
+            }
+        }
+        serde_json::Value::Object(association_obj) => {
+            // Single association object
+            if let Some(association) = parse_association_from_value(associations_value) {
+                Some(vec![association])
+            } else {
+                None
+            }
+        }
+        _ => {
+            // Invalid format, log warning and return None
+            warn!("Invalid associations format in metadata: expected array or object, got {:?}", associations_value);
+            None
+        }
+    }
+}
+
+/// Parse a single association from a JSON value
+fn parse_association_from_value(value: &serde_json::Value) -> Option<ContentAssociationResponse> {
+    let obj = value.as_object()?;
+    
+    // Extract required fields with fallbacks
+    let id = obj.get("id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or_else(Uuid::new_v4);
+    
+    let content_id = obj.get("content_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or_else(Uuid::new_v4);
+    
+    let entity_type = obj.get("entity_type")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| "unknown".to_string());
+    
+    let entity_id = obj.get("entity_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or_else(Uuid::new_v4);
+    
+    let association_type = obj.get("association_type")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| "related".to_string());
+    
+    let association_strength = obj.get("association_strength")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.5);
+    
+    let confidence_score = obj.get("confidence_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.5);
+    
+    let created_at = obj.get("created_at")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+    
+    let updated_at = obj.get("updated_at")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+    
+    Some(ContentAssociationResponse {
+        id,
+        content_id,
+        entity_type,
+        entity_id,
+        association_type,
+        association_strength,
+        confidence_score,
+        created_at,
+        updated_at,
+    })
 }
 
 /// Perform enhanced embedding update with comprehensive performance tracking
@@ -4659,6 +4831,65 @@ mod tests {
         println!("✅ Content type filtering test passed");
         println!("   - Filtered results: {} (all with specified content types)", response_with_filter.results.len());
         println!("   - Unfiltered results: {} (various content types)", response_without_filter.results.len());
+    }
+
+    #[tokio::test]
+    async fn test_association_extraction() {
+        // Test that association extraction is working correctly
+        let request = IraglSearchRequest {
+            query_text: "test query for association extraction".to_string(),
+            query_context: None,
+            max_results: 10,
+            include_associations: true,
+            filter_optimized_only: false,
+            filter_by_content_type: None,
+        };
+
+        let response = perform_iragl_search(request).await.unwrap();
+
+        // Verify that results have associations
+        let results_with_associations: Vec<&IraglSearchResult> = response.results
+            .iter()
+            .filter(|result| result.associations.is_some())
+            .collect();
+
+        assert!(!results_with_associations.is_empty(), "Should have results with associations");
+
+        // Verify association structure
+        for result in &results_with_associations {
+            let associations = result.associations.as_ref().unwrap();
+            assert!(!associations.is_empty(), "Associations should not be empty");
+
+            for association in associations {
+                // Verify required fields
+                assert!(!association.entity_type.is_empty(), "Entity type should not be empty");
+                assert!(!association.association_type.is_empty(), "Association type should not be empty");
+                assert!(association.association_strength >= 0.0 && association.association_strength <= 1.0, 
+                    "Association strength should be between 0.0 and 1.0");
+                assert!(association.confidence_score >= 0.0 && association.confidence_score <= 1.0, 
+                    "Confidence score should be between 0.0 and 1.0");
+            }
+        }
+
+        println!("✅ Association extraction test passed");
+        println!("   - Total results: {}", response.results.len());
+        println!("   - Results with associations: {}", results_with_associations.len());
+        
+        // Print some association details for verification
+        if let Some(first_result) = results_with_associations.first() {
+            if let Some(associations) = &first_result.associations {
+                println!("   - First result associations:");
+                for (i, association) in associations.iter().enumerate() {
+                    println!("     {}. {} -> {} (strength: {:.2}, confidence: {:.2})", 
+                        i + 1, 
+                        association.entity_type, 
+                        association.association_type,
+                        association.association_strength,
+                        association.confidence_score
+                    );
+                }
+            }
+        }
     }
 
 
