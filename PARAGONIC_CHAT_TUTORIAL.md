@@ -113,15 +113,36 @@ Approval markers follow this format:
 󰭙 [status] [type] description - additional info
 ```
 
+### Model Selection Markers
+
+Model selection markers use a different sigil and format:
+```
+󰣩 [status] [action_type] Model Name (Provider)
+```
+
+**Example:**
+```
+󰣩 🔵 [current_model] GPT-3.5 Turbo (OpenAI)
+󰣩 ⚪ [model_switch] GPT-4 (OpenAI)
+󰣩 ✅ [model_switch] Claude 3 Opus (Anthropic)
+```
+
 ### Status Indicators
 
+#### Approval Markers
 - **🔄 Pending** - Waiting for your approval
 - **🆗 Approved** - Action has been approved (with timestamp)
 - **⛔ Denied** - Action has been denied (with timestamp)
 - **⏰ Timeout** - Request timed out automatically
 
+#### Model Selection Markers
+- **🔵 Current** - This is the currently active model
+- **⚪ Available** - Model is available for selection
+- **✅ Selected** - Model has been selected (completed action)
+
 ### Example Markers
 
+#### Approval Markers
 ```
 󰭙 🔄 [tool_execution] Create main.py with Flask application setup
 󰭙 🆗 [tool_execution] Create requirements.txt - approved at 14:32:15 ✓
@@ -129,11 +150,23 @@ Approval markers follow this format:
 󰭙 🔄 [batch_action] Create project documentation and config files
 ```
 
+#### Model Selection Markers
+```
+󰣩 🔵 [current_model] GPT-3.5 Turbo (OpenAI)
+󰣩 ⚪ [model_switch] GPT-4 (OpenAI)
+󰣩 ✅ [model_switch] Claude 3 Opus (Anthropic)
+```
+
 ### Marker Types
 
+#### Approval Marker Types
 1. **`[tool_execution]`** - AI wants to create, edit, or delete files
 2. **`[decision_point]`** - AI needs you to choose between options
 3. **`[batch_action]`** - AI wants to perform multiple related actions
+
+#### Model Selection Marker Types
+1. **`[current_model]`** - Shows the currently active model
+2. **`[model_switch]`** - Offers to switch to a different model
 
 ---
 
@@ -148,6 +181,11 @@ Approval markers follow this format:
    - **Deny** - Reject the action
    - **Details** - View full request information
    - **Cancel** - Close without action
+
+**For Model Selection Markers:**
+- **Select Model** - Switch to this model
+- **Show Details** - View model information
+- **Cancel** - Close without action
 
 ### Method 2: Quick Actions (Recommended)
 
@@ -197,6 +235,13 @@ All approval requests have configurable timeouts:
 - **🆗/⛔ markers** can be safely ignored
 - **Press Enter** on completed markers to see details
 - **No action required** for completed requests
+
+### Model Selection Features
+
+- **Available models**: GPT-4, GPT-3.5 Turbo, Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku, Llama 3.1 8B, Llama 3.1 70B
+- **Current model tracking**: Always shows which model is active
+- **Model details**: View provider, description, and token limits
+- **Quick switching**: Change models with a single interaction
 
 ---
 
@@ -293,6 +338,23 @@ AI: I'll help you reorganize your project files for better structure.
 1. Visual select all markers → Press `ya` to approve all
 2. Review the results → Check that files were moved correctly
 3. Test the project → Ensure everything still works
+
+### Example 4: Model Selection
+
+```
+User: Switch to a more powerful model for this complex task
+
+AI: I'll help you switch to a more capable model for this task.
+
+  󰣩 ⚪ [model_switch] GPT-4 (OpenAI)
+  󰣩 ⚪ [model_switch] Claude 3 Opus (Anthropic)
+  󰣩 ⚪ [model_switch] Claude 3 Sonnet (Anthropic)
+```
+
+**Your Actions:**
+1. Press `<CR>` on GPT-4 marker → Choose "Select Model"
+2. Model switches to GPT-4 → Marker shows ✅
+3. Continue with enhanced AI capabilities
 
 ---
 
@@ -406,6 +468,11 @@ AI: I'll help you reorganize your project files for better structure.
 
 -- Show status
 :lua require("paragonic.mcp").show_system_status()
+
+-- Model selection
+:lua require("paragonic.mcp").show_current_model()
+:lua require("paragonic.mcp").list_available_models()
+:lua require("paragonic.mcp").set_current_model("gpt-4")
 ```
 
 ---

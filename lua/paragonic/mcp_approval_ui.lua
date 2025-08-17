@@ -215,6 +215,15 @@ function M.handle_enter_key()
 				return true
 			end
 		end
+		
+		-- Check for model selection markers (󰣩)
+		if line:find("󰣩") then
+			-- Delegate to model selection system
+			local model_selection = require("paragonic.mcp_model_selection")
+			if model_selection.handle_model_enter_key then
+				return model_selection.handle_model_enter_key()
+			end
+		end
 	end
 	
 	return false

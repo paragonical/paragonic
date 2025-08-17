@@ -329,6 +329,13 @@ function M.initialize_mcp_server()
 	}
 
 	M.mcp_server_initialized = true
+	
+	-- Initialize approval state
+	M.initialize_approval_state()
+	
+	-- Initialize model selection system
+	M.initialize_model_selection()
+	
 	vim.notify("MCP server initialized successfully", vim.log.levels.INFO)
 	return true
 end
@@ -2234,6 +2241,47 @@ end
 function M.show_context_menu()
 	local ui = require("paragonic.mcp_approval_ui")
 	return ui.show_context_menu()
+end
+
+-- Model selection functions
+function M.initialize_model_selection()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.initialize()
+end
+
+function M.get_current_model()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.get_current_model()
+end
+
+function M.set_current_model(model_id)
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.set_current_model(model_id)
+end
+
+function M.create_model_marker(model_id, action_type)
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.create_model_marker(model_id, action_type)
+end
+
+function M.show_current_model()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.show_current_model()
+end
+
+function M.list_available_models()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.list_available_models()
+end
+
+function M.get_available_models()
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.get_available_models()
+end
+
+function M.add_custom_model(model)
+	local model_selection = require("paragonic.mcp_model_selection")
+	return model_selection.add_custom_model(model)
 end
 
 -- ============================================================================
