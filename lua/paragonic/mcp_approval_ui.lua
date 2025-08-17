@@ -450,7 +450,7 @@ function M.setup_chat_buffer_mappings()
 	end, {buffer = 0, noremap = true, desc = "Show details for marker under cursor"})
 	
 	-- Context menu
-	vim.keymap.set("n", "<C-Right>", function()
+	vim.keymap.set("n", "<C-m>", function() -- Ctrl+m for menu
 		M.show_context_menu()
 	end, {buffer = 0, noremap = true, desc = "Show context menu for marker"})
 	
