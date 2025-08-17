@@ -2205,6 +2205,37 @@ function M.initialize_chat_approval()
 	return ui.initialize()
 end
 
+-- Contextual approval functions
+function M.quick_approve_cursor()
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.quick_approve_cursor()
+end
+
+function M.quick_deny_cursor()
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.quick_deny_cursor()
+end
+
+function M.show_details_cursor()
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.show_details_cursor()
+end
+
+function M.batch_approve_selected()
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.batch_approve_selected()
+end
+
+function M.batch_deny_selected()
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.batch_deny_selected()
+end
+
+function M.show_context_menu()
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.show_context_menu()
+end
+
 -- ============================================================================
 -- Tool Execution Integration Functions
 -- ============================================================================

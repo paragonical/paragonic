@@ -426,7 +426,7 @@ function M.show_request_details(approval_id, request)
 	end, {buffer = buf, noremap = true, silent = true})
 end
 
--- Set up Enter key mapping for chat buffers
+-- Set up contextual mappings for chat buffers
 function M.setup_chat_buffer_mappings()
 	-- Override Enter key in chat buffers
 	vim.keymap.set("n", "<CR>", function()
@@ -435,6 +435,33 @@ function M.setup_chat_buffer_mappings()
 			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, true, true), "n", false)
 		end
 	end, {buffer = 0, noremap = true})
+	
+	-- Quick approval/rejection based on cursor position
+	vim.keymap.set("n", "ya", function() -- "y" for yes, "a" for approve
+		M.quick_approve_cursor()
+	end, {buffer = 0, noremap = true, desc = "Quick approve marker under cursor"})
+	
+	vim.keymap.set("n", "nd", function() -- "n" for no, "d" for deny
+		M.quick_deny_cursor()
+	end, {buffer = 0, noremap = true, desc = "Quick deny marker under cursor"})
+	
+	vim.keymap.set("n", "gd", function() -- "g" for get, "d" for details
+		M.show_details_cursor()
+	end, {buffer = 0, noremap = true, desc = "Show details for marker under cursor"})
+	
+	-- Context menu
+	vim.keymap.set("n", "<C-Right>", function()
+		M.show_context_menu()
+	end, {buffer = 0, noremap = true, desc = "Show context menu for marker"})
+	
+	-- Visual mode batch operations
+	vim.keymap.set("v", "ya", function() -- Visual approve
+		M.batch_approve_selected()
+	end, {buffer = 0, noremap = true, desc = "Approve all selected markers"})
+	
+	vim.keymap.set("v", "nd", function() -- Visual deny
+		M.batch_deny_selected()
+	end, {buffer = 0, noremap = true, desc = "Deny all selected markers"})
 end
 
 -- Clean up old approvals
@@ -501,6 +528,213 @@ function M.remove_approval_marker(approval_id)
 	
 	-- Remove from tracking
 	M.pending_approvals[approval_id] = nil
+	
+	return true
+end
+
+-- Get marker under cursor
+function M.get_marker_under_cursor()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	
+	if cursor_line <= #lines then
+		local line = lines[cursor_line]
+		if line:find(M.config.sigil_marker) then
+			-- Found a marker, find the corresponding approval
+			for approval_id, approval in pairs(M.pending_approvals) do
+				if approval.buffer_id == current_buf and 
+				   line:find(approval.description) then
+					return approval_id, approval, line
+				end
+			end
+		end
+	end
+	
+	return nil, nil, nil
+end
+
+-- Quick approve marker under cursor
+function M.quick_approve_cursor()
+	local approval_id, approval, line = M.get_marker_under_cursor()
+	if not approval_id or not approval then
+		vim.notify("No approval marker found under cursor", vim.log.levels.WARN)
+		return false
+	end
+	
+	if approval.status ~= "pending" then
+		vim.notify("Marker is not pending approval", vim.log.levels.WARN)
+		return false
+	end
+	
+	-- Get the actual request
+	local mcp = require("paragonic.mcp")
+	local request_entry = mcp.get_approval_request(approval.request_id)
+	if not request_entry then
+		vim.notify("Approval request not found", vim.log.levels.ERROR)
+		return false
+	end
+	
+	-- Approve the request
+	return M.approve_request(approval_id, request_entry.request)
+end
+
+-- Quick deny marker under cursor
+function M.quick_deny_cursor()
+	local approval_id, approval, line = M.get_marker_under_cursor()
+	if not approval_id or not approval then
+		vim.notify("No approval marker found under cursor", vim.log.levels.WARN)
+		return false
+	end
+	
+	if approval.status ~= "pending" then
+		vim.notify("Marker is not pending approval", vim.log.levels.WARN)
+		return false
+	end
+	
+	-- Get the actual request
+	local mcp = require("paragonic.mcp")
+	local request_entry = mcp.get_approval_request(approval.request_id)
+	if not request_entry then
+		vim.notify("Approval request not found", vim.log.levels.ERROR)
+		return false
+	end
+	
+	-- Deny the request
+	return M.deny_request(approval_id, request_entry.request)
+end
+
+-- Show details for marker under cursor
+function M.show_details_cursor()
+	local approval_id, approval, line = M.get_marker_under_cursor()
+	if not approval_id or not approval then
+		vim.notify("No approval marker found under cursor", vim.log.levels.WARN)
+		return false
+	end
+	
+	-- Get the actual request
+	local mcp = require("paragonic.mcp")
+	local request_entry = mcp.get_approval_request(approval.request_id)
+	if not request_entry then
+		vim.notify("Approval request not found", vim.log.levels.ERROR)
+		return false
+	end
+	
+	-- Show details
+	M.show_request_details(approval_id, request_entry.request)
+	return true
+end
+
+-- Batch approve selected markers (visual mode)
+function M.batch_approve_selected()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local start_line = vim.fn.line("'<")
+	local end_line = vim.fn.line("'>")
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	
+	local approved_count = 0
+	
+	for line_num = start_line, end_line do
+		local line = lines[line_num]
+		if line:find(M.config.sigil_marker) then
+			-- Find the corresponding approval
+			for approval_id, approval in pairs(M.pending_approvals) do
+				if approval.buffer_id == current_buf and 
+				   line:find(approval.description) and
+				   approval.status == "pending" then
+					
+					-- Get the actual request
+					local mcp = require("paragonic.mcp")
+					local request_entry = mcp.get_approval_request(approval.request_id)
+					if request_entry then
+						M.approve_request(approval_id, request_entry.request)
+						approved_count = approved_count + 1
+					end
+					break
+				end
+			end
+		end
+	end
+	
+	if approved_count > 0 then
+		vim.notify("Approved " .. approved_count .. " markers", vim.log.levels.INFO)
+	else
+		vim.notify("No pending markers found in selection", vim.log.levels.WARN)
+	end
+	
+	return approved_count
+end
+
+-- Batch deny selected markers (visual mode)
+function M.batch_deny_selected()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local start_line = vim.fn.line("'<")
+	local end_line = vim.fn.line("'>")
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	
+	local denied_count = 0
+	
+	for line_num = start_line, end_line do
+		local line = lines[line_num]
+		if line:find(M.config.sigil_marker) then
+			-- Find the corresponding approval
+			for approval_id, approval in pairs(M.pending_approvals) do
+				if approval.buffer_id == current_buf and 
+				   line:find(approval.description) and
+				   approval.status == "pending" then
+					
+					-- Get the actual request
+					local mcp = require("paragonic.mcp")
+					local request_entry = mcp.get_approval_request(approval.request_id)
+					if request_entry then
+						M.deny_request(approval_id, request_entry.request)
+						denied_count = denied_count + 1
+					end
+					break
+				end
+			end
+		end
+	end
+	
+	if denied_count > 0 then
+		vim.notify("Denied " .. denied_count .. " markers", vim.log.levels.INFO)
+	else
+		vim.notify("No pending markers found in selection", vim.log.levels.WARN)
+	end
+	
+	return denied_count
+end
+
+-- Show context menu for marker under cursor
+function M.show_context_menu()
+	local approval_id, approval, line = M.get_marker_under_cursor()
+	if not approval_id or not approval then
+		vim.notify("No approval marker found under cursor", vim.log.levels.WARN)
+		return false
+	end
+	
+	local options = {}
+	
+	if approval.status == "pending" then
+		options = {"Approve", "Deny", "Details", "Cancel"}
+	else
+		options = {"Details", "Cancel"}
+	end
+	
+	vim.ui.select(options, {
+		prompt = "Marker Action:",
+		format_item = function(item)
+			return item
+		end
+	}, function(choice)
+		if choice == "Approve" then
+			M.quick_approve_cursor()
+		elseif choice == "Deny" then
+			M.quick_deny_cursor()
+		elseif choice == "Details" then
+			M.show_details_cursor()
+		end
+	end)
 	
 	return true
 end
