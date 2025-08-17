@@ -1887,6 +1887,13 @@ function M.register_approval_request(request)
 		updated_at = os.time(),
 	}
 	
+	-- Create chat marker if chat integration is available
+	local success, chat = pcall(require, "paragonic.mcp_chat_integration")
+	if success and chat then
+		local description = request.description or request.impact or request.tool_name or request.type
+		chat.create_approval_marker(request.id, request.type, description)
+	end
+	
 	return true
 end
 
@@ -1942,6 +1949,18 @@ function M.approve_request(request_id, result)
 	-- Record audit entry
 	M.record_audit_entry(request_id, "approved", result)
 	
+	-- Update chat marker if available
+	local success, chat = pcall(require, "paragonic.mcp_chat_integration")
+	if success and chat then
+		-- Find the approval marker for this request
+		for approval_id, approval in pairs(chat.pending_approvals) do
+			if approval.request_id == request_id then
+				chat.update_approval_marker(approval_id, "approved", result)
+				break
+			end
+		end
+	end
+	
 	return true
 end
 
@@ -1970,6 +1989,18 @@ function M.deny_request(request_id, result)
 	
 	-- Cancel tool execution if it exists
 	M.cancel_tool_execution(request_id)
+	
+	-- Update chat marker if available
+	local success, chat = pcall(require, "paragonic.mcp_chat_integration")
+	if success and chat then
+		-- Find the approval marker for this request
+		for approval_id, approval in pairs(chat.pending_approvals) do
+			if approval.request_id == request_id then
+				chat.update_approval_marker(approval_id, "denied", result)
+				break
+			end
+		end
+	end
 	
 	return true
 end
