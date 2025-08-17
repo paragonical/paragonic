@@ -1,488 +1,300 @@
 --[[
-Paragonic MCP Approval UI Module
-Handles approval dialog creation, display, and user interaction
+MCP Approval UI - Chat Integration Only
+Non-interruptive approval system using chat sigil markers
 --]]
 
 local M = {}
 
--- UI state management
-M.active_dialogs = {}
-M.next_dialog_id = 1
-
--- Dialog configuration
-M.dialog_config = {
-	default_width = 80,
-	default_height = 20,
-	position = "center",
-	style = "minimal",
-	timeout_check_interval = 1, -- seconds
+-- Configuration for chat-based approval
+M.config = {
+	sigil_marker = "󰭙", -- Account question icon
+	pending_prefix = "🔄",
+	approved_prefix = "✅",
+	denied_prefix = "❌",
+	timeout_prefix = "⏰",
+	marker_color = "WarningMsg",
+	pending_color = "Comment",
+	approved_color = "String",
+	denied_color = "ErrorMsg",
+	timeout_color = "Special"
 }
 
--- Initialize approval UI module
+-- Track pending approvals in chat buffers
+M.pending_approvals = {}
+M.next_approval_id = 1
+
+-- Initialize chat-based approval system
 function M.initialize()
-	if not M.active_dialogs then
-		M.active_dialogs = {}
+	M.pending_approvals = {}
+	M.next_approval_id = 1
+	
+	-- Set up autocommands for chat buffers
+	vim.api.nvim_create_autocmd("BufEnter", {
+		pattern = "*",
+		callback = function()
+			M.check_for_approval_markers()
+		end
+	})
+	
+	print("✅ Chat-based approval system initialized")
+end
+
+-- Create approval marker in chat buffer
+function M.create_approval_marker(request_id, request_type, description)
+	local approval_id = M.next_approval_id
+	M.next_approval_id = M.next_approval_id + 1
+	
+	local marker_line = string.format("%s %s [%s] %s", 
+		M.config.sigil_marker,
+		M.config.pending_prefix,
+		request_type,
+		description
+	)
+	
+	-- Store approval info
+	M.pending_approvals[approval_id] = {
+		id = approval_id,
+		request_id = request_id,
+		request_type = request_type,
+		description = description,
+		marker_line = marker_line,
+		status = "pending",
+		created_at = os.time(),
+		buffer_id = vim.api.nvim_get_current_buf()
+	}
+	
+	-- Add marker to current buffer
+	local current_buf = vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	table.insert(lines, marker_line)
+	vim.api.nvim_buf_set_lines(current_buf, 0, -1, false, lines)
+	
+	-- Highlight the marker
+	M.highlight_approval_marker(current_buf, #lines, approval_id)
+	
+	return approval_id
+end
+
+-- Highlight approval marker in buffer
+function M.highlight_approval_marker(buffer_id, line_number, approval_id)
+	local approval = M.pending_approvals[approval_id]
+	if not approval then
+		return
 	end
-	if not M.next_dialog_id then
-		M.next_dialog_id = 1
+	
+	-- Create highlight namespace
+	local ns_id = vim.api.nvim_create_namespace("mcp_approval_" .. approval_id)
+	
+	-- Highlight the marker
+	local highlight_group = M.config.marker_color
+	if approval.status == "pending" then
+		highlight_group = M.config.pending_color
+	elseif approval.status == "approved" then
+		highlight_group = M.config.approved_color
+	elseif approval.status == "denied" then
+		highlight_group = M.config.denied_color
+	elseif approval.status == "timeout" then
+		highlight_group = M.config.timeout_color
 	end
+	
+	vim.api.nvim_buf_add_highlight(buffer_id, ns_id, highlight_group, line_number - 1, 0, -1)
+end
+
+-- Update approval marker status
+function M.update_approval_marker(approval_id, status, result)
+	local approval = M.pending_approvals[approval_id]
+	if not approval then
+		return false
+	end
+	
+	approval.status = status
+	approval.result = result
+	approval.updated_at = os.time()
+	
+	-- Update the marker line
+	local new_prefix = M.config.pending_prefix
+	if status == "approved" then
+		new_prefix = M.config.approved_prefix
+	elseif status == "denied" then
+		new_prefix = M.config.denied_prefix
+	elseif status == "timeout" then
+		new_prefix = M.config.timeout_prefix
+	end
+	
+	local new_marker_line = string.format("%s %s [%s] %s", 
+		M.config.sigil_marker,
+		new_prefix,
+		approval.request_type,
+		approval.description
+	)
+	
+	-- Update the line in the buffer
+	local buffer_id = approval.buffer_id
+	if vim.api.nvim_buf_is_valid(buffer_id) then
+		local lines = vim.api.nvim_buf_get_lines(buffer_id, 0, -1, false)
+		
+		-- Find the marker line
+		for i, line in ipairs(lines) do
+			if line:find(M.config.sigil_marker) and line:find(approval.description) then
+				lines[i] = new_marker_line
+				vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, lines)
+				
+				-- Update highlighting
+				M.highlight_approval_marker(buffer_id, i, approval_id)
+				break
+			end
+		end
+	end
+	
 	return true
 end
 
--- Create approval dialog
-function M.create_approval_dialog(request_id)
-	if not request_id then
-		return nil, "Invalid request ID"
+-- Check for approval markers in current buffer
+function M.check_for_approval_markers()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	
+	for i, line in ipairs(lines) do
+		if line:find(M.config.sigil_marker) then
+			-- Found a marker, check if it's pending
+			for approval_id, approval in pairs(M.pending_approvals) do
+				if approval.buffer_id == current_buf and 
+				   line:find(approval.description) and
+				   approval.status == "pending" then
+					M.highlight_approval_marker(current_buf, i, approval_id)
+				end
+			end
+		end
+	end
+end
+
+-- Handle Enter key in chat buffer for approval processing
+function M.handle_enter_key()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	
+	if cursor_line <= #lines then
+		local line = lines[cursor_line]
+		if line:find(M.config.sigil_marker) then
+			-- Found a marker, check if it's pending
+			for approval_id, approval in pairs(M.pending_approvals) do
+				if approval.buffer_id == current_buf and 
+				   line:find(approval.description) and
+				   approval.status == "pending" then
+					-- Process the approval
+					M.process_approval(approval_id)
+					return true
+				end
+			end
+		end
 	end
 	
-	-- Get the approval request
+	return false
+end
+
+-- Process approval when user presses Enter on marker
+function M.process_approval(approval_id)
+	local approval = M.pending_approvals[approval_id]
+	if not approval or approval.status ~= "pending" then
+		return false
+	end
+	
+	-- Get the actual request
 	local mcp = require("paragonic.mcp")
-	local request_entry = mcp.get_approval_request(request_id)
+	local request_entry = mcp.get_approval_request(approval.request_id)
 	if not request_entry then
-		return nil, "Request not found: " .. request_id
+		vim.notify("Approval request not found", vim.log.levels.ERROR)
+		return false
 	end
 	
 	local request = request_entry.request
 	
-	-- Create buffer
-	local buf = vim.api.nvim_create_buf(false, true)
-	if not buf then
-		return nil, "Failed to create buffer"
-	end
-	
-	-- Set buffer options
-	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-	vim.api.nvim_buf_set_option(buf, "swapfile", false)
-	vim.api.nvim_buf_set_option(buf, "modifiable", true)
-	
-	-- Create window
-	local width = M.dialog_config.default_width
-	local height = M.dialog_config.default_height
-	
-	local win_config = {
-		relative = "editor",
-		width = width,
-		height = height,
-		row = (vim.o.lines - height) / 2,
-		col = (vim.o.columns - width) / 2,
-		style = M.dialog_config.style,
-		border = "rounded",
-	}
-	
-	local win = vim.api.nvim_open_win(buf, true, win_config)
-	if not win then
-		vim.api.nvim_buf_delete(buf, {force = true})
-		return nil, "Failed to create window"
-	end
-	
-	-- Set window options
-	vim.api.nvim_win_set_option(win, "wrap", false)
-	vim.api.nvim_win_set_option(win, "cursorline", true)
-	
-	-- Generate dialog content
-	local content = M.generate_dialog_content(request)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
-	
-	-- Set buffer options after content
-	vim.api.nvim_buf_set_option(buf, "modifiable", false)
-	vim.api.nvim_buf_set_option(buf, "filetype", "approval")
-	
-	-- Create dialog object
-	local dialog_id = "dialog-" .. M.next_dialog_id
-	M.next_dialog_id = M.next_dialog_id + 1
-	
-	local dialog = {
-		id = dialog_id,
-		buffer_id = buf,
-		window_id = win,
-		request_id = request_id,
-		request_type = request.type,
-		status = "open",
-		created_at = os.time(),
-	}
-	
-	-- Store dialog
-	M.active_dialogs[dialog_id] = dialog
-	
-	-- Set up keymaps
-	M.setup_dialog_keymaps(dialog)
-	
-	return dialog
-end
-
--- Generate dialog content based on request type
-function M.generate_dialog_content(request)
-	local lines = {}
-	
-	-- Header
-	table.insert(lines, "╭─────────────────────────────────────────────────────────────────────────────────╮")
-	table.insert(lines, "│                           APPROVAL REQUEST                                    │")
-	table.insert(lines, "├─────────────────────────────────────────────────────────────────────────────────┤")
-	
-	-- Request type specific content
-	if request.type == "tool_execution" then
-		lines = M.generate_tool_execution_content(request, lines)
-	elseif request.type == "decision_point" then
-		lines = M.generate_decision_point_content(request, lines)
-	elseif request.type == "batch_action" then
-		lines = M.generate_batch_action_content(request, lines)
-	else
-		lines = M.generate_generic_content(request, lines)
-	end
-	
-	-- Footer
-	table.insert(lines, "├─────────────────────────────────────────────────────────────────────────────────┤")
-	table.insert(lines, "│  [y] Approve  [n] Deny  [m] Modify  [q] Close  [t] Timeout: " .. (request.timeout or "∞") .. "s │")
-	table.insert(lines, "╰─────────────────────────────────────────────────────────────────────────────────╯")
-	
-	return lines
-end
-
--- Generate content for tool execution requests
-function M.generate_tool_execution_content(request, lines)
-	table.insert(lines, "│  Tool: " .. (request.tool_name or "Unknown"))
-	table.insert(lines, "│")
-	
-	if request.parameters then
-		table.insert(lines, "│  Parameters:")
-		for key, value in pairs(request.parameters) do
-			if type(value) == "table" then
-				table.insert(lines, "│    " .. key .. ": " .. vim.inspect(value))
-			else
-				table.insert(lines, "│    " .. key .. ": " .. tostring(value))
-			end
+	-- Show quick approval options
+	local options = {"Approve", "Deny", "Details", "Cancel"}
+	vim.ui.select(options, {
+		prompt = "Process approval:",
+		format_item = function(item)
+			return item
 		end
-		table.insert(lines, "│")
-	end
-	
-	if request.impact then
-		table.insert(lines, "│  Impact: " .. request.impact)
-		table.insert(lines, "│")
-	end
-	
-	return lines
-end
-
--- Generate content for decision point requests
-function M.generate_decision_point_content(request, lines)
-	table.insert(lines, "│  Question: " .. (request.question or "No question provided"))
-	table.insert(lines, "│")
-	
-	if request.options and #request.options > 0 then
-		table.insert(lines, "│  Options:")
-		for i, option in ipairs(request.options) do
-			table.insert(lines, "│    " .. i .. ". " .. option)
+	}, function(choice)
+		if choice == "Approve" then
+			M.approve_request(approval_id, request)
+		elseif choice == "Deny" then
+			M.deny_request(approval_id, request)
+		elseif choice == "Details" then
+			M.show_request_details(approval_id, request)
 		end
-		table.insert(lines, "│")
-	end
-	
-	return lines
+	end)
 end
 
--- Generate content for batch action requests
-function M.generate_batch_action_content(request, lines)
-	table.insert(lines, "│  Description: " .. (request.description or "Batch action"))
-	table.insert(lines, "│")
-	
-	if request.actions and #request.actions > 0 then
-		table.insert(lines, "│  Actions:")
-		for i, action in ipairs(request.actions) do
-			local action_text = "│    " .. i .. ". " .. (action.type or "unknown") .. ": " .. (action.file or action.description or "unknown")
-			table.insert(lines, action_text)
-		end
-		table.insert(lines, "│")
-		table.insert(lines, "│  [y] Approve All  [n] Deny All  [p] Partial Approval  [q] Quit")
-		table.insert(lines, "│")
-		table.insert(lines, "│  Note: Press 'p' for partial approval with space toggling")
-	end
-	
-	return lines
-end
-
--- Generate generic content for unknown request types
-function M.generate_generic_content(request, lines)
-	table.insert(lines, "│  Type: " .. (request.type or "Unknown"))
-	table.insert(lines, "│  ID: " .. (request.id or "Unknown"))
-	table.insert(lines, "│")
-	
-	-- Show all request data
-	for key, value in pairs(request) do
-		if key ~= "type" and key ~= "id" and key ~= "timeout" then
-			if type(value) == "table" then
-				table.insert(lines, "│  " .. key .. ": " .. vim.inspect(value))
-			else
-				table.insert(lines, "│  " .. key .. ": " .. tostring(value))
-			end
-		end
-	end
-	
-	return lines
-end
-
--- Set up keymaps for dialog
-function M.setup_dialog_keymaps(dialog)
-	local buf = dialog.buffer_id
-	
-	-- Approve
-	vim.keymap.set("n", "y", function()
-		M.handle_user_approval(dialog, {approved = true})
-	end, {buffer = buf, noremap = true, silent = true})
-	
-	-- Deny
-	vim.keymap.set("n", "n", function()
-		M.handle_user_denial(dialog, {approved = false})
-	end, {buffer = buf, noremap = true, silent = true})
-	
-	-- Close
-	vim.keymap.set("n", "q", function()
-		M.close_approval_dialog(dialog)
-	end, {buffer = buf, noremap = true, silent = true})
-	
-	-- Escape
-	vim.keymap.set("n", "<Esc>", function()
-		M.close_approval_dialog(dialog)
-	end, {buffer = buf, noremap = true, silent = true})
-end
-
--- Display approval dialog
-function M.display_approval_dialog(dialog)
-	if not dialog or not dialog.window_id then
-		return false, "Invalid dialog"
-	end
-	
-	-- Focus the window
-	vim.api.nvim_set_current_win(dialog.window_id)
-	
-	-- Update dialog status
-	dialog.status = "displayed"
-	dialog.displayed_at = os.time()
-	
-	return true
-end
-
--- Handle user approval
-function M.handle_user_approval(dialog, result)
-	if not dialog or not dialog.request_id then
-		return false, "Invalid dialog"
-	end
-	
+-- Approve request
+function M.approve_request(approval_id, request)
 	local mcp = require("paragonic.mcp")
-	local success = mcp.approve_request(dialog.request_id, result)
+	local success = mcp.approve_request(request.id, {approved = true})
 	
 	if success then
-		M.close_approval_dialog(dialog)
+		M.update_approval_marker(approval_id, "approved", {approved = true})
 		vim.notify("Request approved", vim.log.levels.INFO)
-		return true
 	else
 		vim.notify("Failed to approve request", vim.log.levels.ERROR)
-		return false
 	end
 end
 
--- Handle user denial
-function M.handle_user_denial(dialog, result)
-	if not dialog or not dialog.request_id then
-		return false, "Invalid dialog"
-	end
-	
+-- Deny request
+function M.deny_request(approval_id, request)
 	local mcp = require("paragonic.mcp")
-	local success = mcp.deny_request(dialog.request_id, result)
+	local success = mcp.deny_request(request.id, {approved = false})
 	
 	if success then
-		M.close_approval_dialog(dialog)
+		M.update_approval_marker(approval_id, "denied", {approved = false})
 		vim.notify("Request denied", vim.log.levels.INFO)
-		return true
 	else
 		vim.notify("Failed to deny request", vim.log.levels.ERROR)
-		return false
 	end
 end
 
--- Close approval dialog
-function M.close_approval_dialog(dialog)
-	if not dialog then
-		return false
+-- Show request details in a floating window
+function M.show_request_details(approval_id, request)
+	local details = {}
+	table.insert(details, "Request Details:")
+	table.insert(details, "Type: " .. (request.type or "Unknown"))
+	table.insert(details, "ID: " .. (request.id or "Unknown"))
+	
+	if request.type == "tool_execution" then
+		table.insert(details, "Tool: " .. (request.tool_name or "Unknown"))
+		if request.parameters then
+			table.insert(details, "Parameters:")
+			for key, value in pairs(request.parameters) do
+				table.insert(details, "  " .. key .. ": " .. tostring(value))
+			end
+		end
+	elseif request.type == "decision_point" then
+		table.insert(details, "Question: " .. (request.question or "Unknown"))
+		if request.options then
+			table.insert(details, "Options:")
+			for i, option in ipairs(request.options) do
+				table.insert(details, "  " .. i .. ". " .. option)
+			end
+		end
+	elseif request.type == "batch_action" then
+		table.insert(details, "Description: " .. (request.description or "Unknown"))
+		if request.actions then
+			table.insert(details, "Actions:")
+			for i, action in ipairs(request.actions) do
+				table.insert(details, "  " .. i .. ". " .. (action.type or "unknown") .. ": " .. (action.file or action.description or "unknown"))
+			end
+		end
 	end
 	
-	-- Close window if it exists
-	if dialog.window_id and vim.api.nvim_win_is_valid(dialog.window_id) then
-		vim.api.nvim_win_close(dialog.window_id, true)
-	end
-	
-	-- Delete buffer if it exists
-	if dialog.buffer_id and vim.api.nvim_buf_is_valid(dialog.buffer_id) then
-		vim.api.nvim_buf_delete(dialog.buffer_id, {force = true})
-	end
-	
-	-- Update dialog status
-	dialog.status = "closed"
-	dialog.closed_at = os.time()
-	
-	-- Remove from active dialogs
-	M.active_dialogs[dialog.id] = nil
-	
-	return true
-end
-
--- Check if dialog is open
-function M.is_dialog_open(dialog)
-	if not dialog or not dialog.window_id then
-		return false
-	end
-	
-	-- Check for timeout and close if needed
-	local mcp = require("paragonic.mcp")
-	local request_entry = mcp.get_approval_request(dialog.request_id)
-	if request_entry and request_entry.status == "timeout" then
-		M.close_approval_dialog(dialog)
-		return false
-	end
-	
-	return vim.api.nvim_win_is_valid(dialog.window_id)
-end
-
--- Get dialog state
-function M.get_dialog_state(dialog)
-	if not dialog then
-		return {status = "invalid"}
-	end
-	
-	return {
-		id = dialog.id,
-		status = dialog.status,
-		request_id = dialog.request_id,
-		request_type = dialog.request_type,
-		created_at = dialog.created_at,
-		displayed_at = dialog.displayed_at,
-		closed_at = dialog.closed_at,
-		is_open = M.is_dialog_open(dialog)
-	}
-end
-
--- Create decision point dialog
-function M.create_decision_point_dialog(request_id)
-	local dialog = M.create_approval_dialog(request_id)
-	if not dialog then
-		return nil
-	end
-	
-	-- Add decision point specific keymaps
-	local buf = dialog.buffer_id
-	
-	-- Number keys for option selection
-	for i = 1, 9 do
-		vim.keymap.set("n", tostring(i), function()
-			M.handle_option_selection(dialog, i)
-		end, {buffer = buf, noremap = true, silent = true})
-	end
-	
-	return dialog
-end
-
--- Handle option selection for decision points
-function M.handle_option_selection(dialog, option_index)
-	if not dialog or not dialog.request_id then
-		return false, "Invalid dialog"
-	end
-	
-	local mcp = require("paragonic.mcp")
-	local request_entry = mcp.get_approval_request(dialog.request_id)
-	if not request_entry then
-		return false, "Request not found"
-	end
-	
-	local request = request_entry.request
-	if request.type ~= "decision_point" then
-		return false, "Not a decision point request"
-	end
-	
-	if not request.options or option_index > #request.options then
-		return false, "Invalid option index"
-	end
-	
-	-- Approve with selected option
-	local result = {
-		approved = true,
-		selected_option = option_index,
-		selected_value = request.options[option_index]
-	}
-	
-	return M.handle_user_approval(dialog, result)
-end
-
--- Create batch action dialog
-function M.create_batch_action_dialog(request_id)
-	local dialog = M.create_approval_dialog(request_id)
-	if not dialog then
-		return nil
-	end
-	
-	-- Add batch action specific keymaps
-	local buf = dialog.buffer_id
-	
-	-- Partial approval keymaps
-	vim.keymap.set("n", "p", function()
-		M.show_partial_approval_menu(dialog)
-	end, {buffer = buf, noremap = true, silent = true})
-	
-	return dialog
-end
-
--- Show partial approval menu
-function M.show_partial_approval_menu(dialog)
-	if not dialog or not dialog.request_id then
-		return false
-	end
-	
-	local mcp = require("paragonic.mcp")
-	local request_entry = mcp.get_approval_request(dialog.request_id)
-	if not request_entry then
-		return false
-	end
-	
-	local request = request_entry.request
-	if request.type ~= "batch_action" or not request.actions then
-		return false
-	end
-	
-	-- Create a custom partial approval dialog
-	M.create_partial_approval_dialog(dialog, request.actions)
-end
-
--- Create partial approval dialog with space toggling
-function M.create_partial_approval_dialog(original_dialog, actions)
-	-- Create buffer for partial approval
+	-- Show details in a floating window
 	local buf = vim.api.nvim_create_buf(false, true)
-	
-	-- Set buffer content
-	local lines = {}
-	table.insert(lines, "┌─ Partial Approval ──────────────────────────────────┐")
-	table.insert(lines, "│ Select actions to approve:                          │")
-	table.insert(lines, "│                                                     │")
-	
-	local selected_actions = {}
-	
-	for i, action in ipairs(actions) do
-		local action_text = string.format("│ [ ] %d. %s", i, action.description or action.type .. ": " .. (action.file or "unknown"))
-		table.insert(lines, action_text)
-		selected_actions[i] = false -- Start with none selected
-	end
-	
-	table.insert(lines, "│                                                     │")
-	table.insert(lines, "│ Controls:                                           │")
-	table.insert(lines, "│   <Space> - Toggle selection                        │")
-	table.insert(lines, "│   <Enter> - Confirm selection                       │")
-	table.insert(lines, "│   <Esc>  - Cancel                                  │")
-	table.insert(lines, "└─────────────────────────────────────────────────────┘")
-	
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, details)
 	vim.api.nvim_buf_set_option(buf, "modifiable", false)
 	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-	vim.api.nvim_buf_set_option(buf, "filetype", "approval")
 	
-	-- Create window
 	local width = 60
-	local height = #lines
+	local height = #details + 2
 	local row = math.floor((vim.o.lines - height) / 2) - 1
 	local col = math.floor((vim.o.columns - width) / 2)
 	
@@ -496,123 +308,100 @@ function M.create_partial_approval_dialog(original_dialog, actions)
 		border = "rounded"
 	})
 	
-	-- Set window options
-	vim.api.nvim_win_set_option(win, "wrap", false)
-	vim.api.nvim_win_set_option(win, "cursorline", true)
-	
-	-- Set up keymaps for partial approval
-	local function update_display()
-		local new_lines = {}
-		table.insert(new_lines, "┌─ Partial Approval ──────────────────────────────────┐")
-		table.insert(new_lines, "│ Select actions to approve:                          │")
-		table.insert(new_lines, "│                                                     │")
-		
-		for i, action in ipairs(actions) do
-			local checkbox = selected_actions[i] and "[X]" or "[ ]"
-			local action_text = string.format("│ %s %d. %s", checkbox, i, action.description or action.type .. ": " .. (action.file or "unknown"))
-			table.insert(new_lines, action_text)
-		end
-		
-		table.insert(new_lines, "│                                                     │")
-		table.insert(new_lines, "│ Controls:                                           │")
-		table.insert(new_lines, "│   <Space> - Toggle selection                        │")
-		table.insert(new_lines, "│   <Enter> - Confirm selection                       │")
-		table.insert(new_lines, "│   <Esc>  - Cancel                                  │")
-		table.insert(new_lines, "└─────────────────────────────────────────────────────┘")
-		
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, new_lines)
-	end
-	
-	-- Space to toggle selection
-	vim.keymap.set("n", "<Space>", function()
-		local cursor_line = vim.api.nvim_win_get_cursor(win)[1]
-		local action_index = cursor_line - 3 -- Account for header lines
-		
-		if action_index >= 1 and action_index <= #actions then
-			selected_actions[action_index] = not selected_actions[action_index]
-			update_display()
-		end
-	end, {buffer = buf, noremap = true, silent = true})
-	
-	-- Enter to confirm
+	-- Close on any key
 	vim.keymap.set("n", "<CR>", function()
-		local approved_indices = {}
-		for i, selected in ipairs(selected_actions) do
-			if selected then
-				table.insert(approved_indices, i)
-			end
-		end
-		
-		-- Close partial approval dialog
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, {force = true})
-		
-		-- Handle the partial approval
-		M.handle_partial_approval(original_dialog, approved_indices)
 	end, {buffer = buf, noremap = true, silent = true})
 	
-	-- Escape to cancel
 	vim.keymap.set("n", "<Esc>", function()
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, {force = true})
 	end, {buffer = buf, noremap = true, silent = true})
 	
-	-- q to cancel
 	vim.keymap.set("n", "q", function()
 		vim.api.nvim_win_close(win, true)
 		vim.api.nvim_buf_delete(buf, {force = true})
 	end, {buffer = buf, noremap = true, silent = true})
-	
-	-- Initial display
-	update_display()
-	
-	-- Set cursor to first action
-	vim.api.nvim_win_set_cursor(win, {4, 0})
 end
 
--- Handle partial approval for batch actions
-function M.handle_partial_approval(dialog, approved_indices)
-	if not dialog or not dialog.request_id then
-		return false, "Invalid dialog"
-	end
-	
-	local mcp = require("paragonic.mcp")
-	local request_entry = mcp.get_approval_request(dialog.request_id)
-	if not request_entry then
-		return false, "Request not found"
-	end
-	
-	local request = request_entry.request
-	if request.type ~= "batch_action" then
-		return false, "Not a batch action request"
-	end
-	
-	-- Create result with approved actions
-	local result = {
-		approved = true,
-		approved_actions = approved_indices,
-		partial_approval = true
-	}
-	
-	return M.handle_user_approval(dialog, result)
+-- Set up Enter key mapping for chat buffers
+function M.setup_chat_buffer_mappings()
+	-- Override Enter key in chat buffers
+	vim.keymap.set("n", "<CR>", function()
+		if not M.handle_enter_key() then
+			-- Default Enter behavior
+			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, true, true), "n", false)
+		end
+	end, {buffer = 0, noremap = true})
 end
 
--- Clean up all dialogs
-function M.cleanup_all_dialogs()
-	for dialog_id, dialog in pairs(M.active_dialogs) do
-		M.close_approval_dialog(dialog)
+-- Clean up old approvals
+function M.cleanup_old_approvals()
+	local cutoff_time = os.time() - 3600 -- 1 hour
+	local to_remove = {}
+	
+	for approval_id, approval in pairs(M.pending_approvals) do
+		if approval.updated_at and approval.updated_at < cutoff_time then
+			table.insert(to_remove, approval_id)
+		end
 	end
+	
+	for _, approval_id in ipairs(to_remove) do
+		M.pending_approvals[approval_id] = nil
+	end
+	
+	return #to_remove
 end
 
--- Get active dialog count
-function M.get_active_dialog_count()
+-- Get pending approval count
+function M.get_pending_approval_count()
 	local count = 0
-	for _, dialog in pairs(M.active_dialogs) do
-		if M.is_dialog_open(dialog) then
+	for _, approval in pairs(M.pending_approvals) do
+		if approval.status == "pending" then
 			count = count + 1
 		end
 	end
 	return count
+end
+
+-- Get all pending approvals
+function M.get_pending_approvals()
+	local pending = {}
+	for approval_id, approval in pairs(M.pending_approvals) do
+		if approval.status == "pending" then
+			table.insert(pending, approval)
+		end
+	end
+	return pending
+end
+
+-- Remove approval marker from buffer
+function M.remove_approval_marker(approval_id)
+	local approval = M.pending_approvals[approval_id]
+	if not approval then
+		return false
+	end
+	
+	local buffer_id = approval.buffer_id
+	if vim.api.nvim_buf_is_valid(buffer_id) then
+		local lines = vim.api.nvim_buf_get_lines(buffer_id, 0, -1, false)
+		
+		-- Find and remove the marker line
+		for i = #lines, 1, -1 do
+			local line = lines[i]
+			if line:find(M.config.sigil_marker) and line:find(approval.description) then
+				table.remove(lines, i)
+				vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, lines)
+				break
+			end
+		end
+	end
+	
+	-- Remove from tracking
+	M.pending_approvals[approval_id] = nil
+	
+	return true
 end
 
 return M

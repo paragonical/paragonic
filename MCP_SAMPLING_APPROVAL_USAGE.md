@@ -1,176 +1,232 @@
-# MCP Sampling Approval System - Usage Guide
+# MCP Sampling Approval Usage Guide
 
-## 🎯 Overview
+## Overview
 
-The MCP Sampling Approval System provides user control over AI agent actions through native Neovim interfaces. It integrates seamlessly with the Model Context Protocol (MCP) to enable approval workflows for tool execution, decision points, and batch actions.
+The MCP Sampling Approval system provides a **non-interruptive, chat-based approval workflow** for AI agent actions. Instead of blocking dialogs, approval requests appear as sigil markers (󰭙) in chat buffers, allowing users to process them at their own pace.
 
-## 🚀 Quick Start
+## Key Features
+
+- **Non-Interruptive**: No blocking dialogs that interrupt workflow
+- **Chat Integration**: Approval markers appear naturally in chat flow
+- **Visual Status**: Clear status indicators (🔄 ✅ ❌ ⏰)
+- **Enter Key Integration**: Press Enter on markers to process approvals
+- **Contextual**: Markers appear with relevant context and descriptions
+
+## Quick Start
 
 ### 1. Initialize the System
 
 ```lua
--- In Neovim, source the demo file
-:source demo_mcp_sampling_approval.lua
+local mcp = require("paragonic.mcp")
 
--- Run the complete demo
-:lua run_demo()
+-- Initialize MCP server (includes approval system)
+mcp.initialize_mcp_server()
 
--- Or run individual demos
-:lua demo_basic_approval()
-:lua demo_batch_actions()
-:lua demo_decision_point()
-:lua demo_undo_redo()
+-- Initialize approval state
+mcp.initialize_approval_state()
+
+-- Initialize chat-based approval UI
+mcp.initialize_chat_approval()
 ```
 
-### 2. Basic Usage
-
-The system automatically integrates with AI agents. When an AI agent attempts to execute a tool, an approval dialog will appear:
-
-```
-┌─────────────────────────────────────────┐
-│ AI Agent Approval Request               │
-├─────────────────────────────────────────┤
-│ Tool: agent_edit_file                   │
-│ File: example.lua                       │
-│ Action: Modify line 10                  │
-│ Impact: Will change function signature  │
-│                                         │
-│ [y] Approve  [n] Deny  [q] Quit        │
-└─────────────────────────────────────────┘
-```
-
-## 🔧 Key Features
-
-### 1. Tool Execution Approval
-
-AI agents automatically trigger approval dialogs for tool execution:
+### 2. Set Up Chat Buffer Mappings
 
 ```lua
--- AI agent calls this (automatically)
-mcp.execute_tool_with_approval("agent_edit_file", {
-    file_path = "example.lua",
-    line_number = 10,
-    content = "new content"
-}, "request-id")
+-- Set up Enter key integration for chat buffers
+mcp.setup_chat_buffer_mappings()
 ```
 
-**User sees:** Approval dialog with tool details and impact assessment
-
-### 2. Decision Points
-
-For complex decisions, the system provides interactive decision dialogs:
+### 3. Create Approval Requests
 
 ```lua
--- AI agent requests user decision
-local decision_request = {
-    id = "decision-123",
-    type = "decision_point",
-    question = "Which approach should be used?",
-    options = {
-        "Option A: Simple approach",
-        "Option B: Advanced approach",
-        "Option C: Hybrid approach"
-    }
+-- Register an approval request (marker appears automatically)
+local request = {
+    id = "unique-request-id",
+    type = "tool_execution",
+    tool_name = "agent_edit_file",
+    parameters = {
+        file_path = "example.py",
+        line_number = 1,
+        content = "print('Hello, World!')"
+    },
+    description = "Create example.py with hello world",
+    timeout = 300  -- 5 minutes
+}
+
+local success = mcp.register_approval_request(request)
+```
+
+## Visual Example
+
+**Chat Buffer with Approval Markers:**
+```
+# AI Assistant Chat
+
+User: Can you help me create a Python project?
+
+AI: I'll help you set up a Python project structure.
+
+AI: First, let me create the main application file.
+
+󰭙 🔄 [tool_execution] Create main.py with application header
+󰭙 🔄 [tool_execution] Create requirements.txt with dependencies
+󰭙 🔄 [decision_point] Choose testing framework for the project
+󰭙 🔄 [batch_action] Create project documentation and config files
+```
+
+**After Processing:**
+```
+󰭙 ✅ [tool_execution] Create main.py with application header
+󰭙 ❌ [tool_execution] Create requirements.txt with dependencies
+󰭙 ✅ [decision_point] Choose testing framework for the project
+󰭙 🔄 [batch_action] Create project documentation and config files
+```
+
+## User Interaction
+
+### Processing Approvals
+
+1. **Move cursor** to any 󰭙 marker line
+2. **Press Enter** to open approval dialog
+3. **Choose action**:
+   - **Approve** - Approve the request
+   - **Deny** - Deny the request
+   - **Details** - View full request information
+   - **Cancel** - Cancel the action
+
+### Status Indicators
+
+- **🔄 Pending** - Waiting for user approval
+- **✅ Approved** - Request has been approved
+- **❌ Denied** - Request has been denied
+- **⏰ Timeout** - Request timed out automatically
+
+## Request Types
+
+### 1. Tool Execution
+
+```lua
+local tool_request = {
+    id = "tool-request-id",
+    type = "tool_execution",
+    tool_name = "agent_edit_file",
+    parameters = {
+        file_path = "file.txt",
+        line_number = 1,
+        content = "New content"
+    },
+    description = "Edit file.txt with new content",
+    timeout = 300
 }
 ```
 
-**User sees:** Numbered options dialog with selection interface
-
-### 3. Batch Actions
-
-For multiple related actions, batch approval dialogs allow partial approval:
+### 2. Decision Point
 
 ```lua
--- AI agent requests batch approval
+local decision_request = {
+    id = "decision-request-id",
+    type = "decision_point",
+    question = "Which database should we use?",
+    options = {
+        "SQLite (simple)",
+        "PostgreSQL (production)",
+        "MySQL (popular)"
+    },
+    description = "Choose database for the application",
+    timeout = 300
+}
+```
+
+### 3. Batch Action
+
+```lua
 local batch_request = {
-    id = "batch-456",
+    id = "batch-request-id",
     type = "batch_action",
     actions = {
-        {type = "edit", file = "file1.lua", tool_name = "agent_edit_file"},
-        {type = "edit", file = "file2.lua", tool_name = "agent_edit_file"},
-        {type = "create", file = "file3.lua", tool_name = "agent_create_file"}
-    }
+        {
+            type = "create",
+            file = "file1.txt",
+            description = "Create first file"
+        },
+        {
+            type = "create", 
+            file = "file2.txt",
+            description = "Create second file"
+        }
+    },
+    description = "Create multiple project files",
+    timeout = 300
 }
 ```
 
-**User sees:** Batch dialog with individual action selection
+## API Reference
 
-### 4. Undo Integration
-
-All AI modifications are tracked in Neovim's undo tree:
+### Core Functions
 
 ```lua
--- Undo specific AI modification
-:lua mcp.undo_ai_modification("request-id")
+-- Register approval request (creates marker automatically)
+mcp.register_approval_request(request)
 
--- Redo specific AI modification
-:lua mcp.redo_ai_modification("request-id")
+-- Get approval request by ID
+mcp.get_approval_request(request_id)
 
--- Undo multiple AI modifications
-:lua mcp.undo_ai_modifications({"id1", "id2", "id3"})
+-- Approve request
+mcp.approve_request(request_id, result)
+
+-- Deny request  
+mcp.deny_request(request_id, result)
+
+-- Get pending approval count
+mcp.get_pending_approval_count()
+
+-- Get all pending approvals
+mcp.get_pending_approvals()
 ```
 
-## 🎮 Interactive Controls
-
-### Approval Dialog Controls
-
-- **`y`** - Approve the action
-- **`n`** - Deny the action
-- **`q`** or **`<Esc>`** - Close dialog without action
-
-### Decision Point Controls
-
-- **`1`, `2`, `3`** - Select numbered option
-- **`q`** or **`<Esc>`** - Cancel decision
-
-### Batch Action Controls
-
-- **`y`** - Approve all actions
-- **`n`** - Deny all actions
-- **`p`** - Partial approval (select specific actions)
-- **`q`** or **`<Esc>`** - Cancel batch
-
-## 📊 System Status Commands
-
-### Check Approval Status
+### Chat Integration Functions
 
 ```lua
--- Show pending approvals
-:lua print("Pending: " .. mcp.get_pending_approval_count())
+-- Create approval marker in chat buffer
+mcp.create_approval_marker(request_id, request_type, description)
 
--- Show approval details
-:lua print(vim.inspect(mcp.get_approval_request("request-id")))
+-- Update marker status
+mcp.update_approval_marker(approval_id, status, result)
+
+-- Set up chat buffer mappings
+mcp.setup_chat_buffer_mappings()
+
+-- Remove approval marker
+mcp.remove_approval_marker(approval_id)
+
+-- Initialize chat approval system
+mcp.initialize_chat_approval()
 ```
 
-### Check Undo Integration
+### Tool Execution Integration
 
 ```lua
--- Show undo integration status
-:lua print(vim.inspect(mcp.get_undo_integration_status()))
+-- Execute tool with approval workflow
+mcp.execute_tool_with_approval(tool_name, parameters, request_id)
 
--- Show AI undo entries
-:lua print(vim.inspect(mcp.get_ai_undo_entry("request-id")))
+-- Execute tool with modified parameters
+mcp.execute_tool_with_modification(tool_name, original_params, modified_params, request_id)
+
+-- Execute batch tools with approval
+mcp.execute_batch_tools_with_approval(actions, request_id)
+
+-- Execute partial batch approval
+mcp.execute_partial_batch_approval(actions, approved_indices, request_id)
 ```
 
-### Cleanup Commands
+## Configuration
+
+### Auto-Approved Tools
+
+Some tools are automatically approved to avoid unnecessary interruptions:
 
 ```lua
--- Clean up completed approvals
-:lua mcp.cleanup_completed_approvals()
-
--- Clean up old undo entries
-:lua mcp.cleanup_old_ai_undo_entries()
-```
-
-## 🔒 Security Features
-
-### Auto-Approval
-
-Certain "safe" tools are automatically approved:
-
-```lua
--- These tools bypass approval
-mcp.auto_approved_tools = {
+M.auto_approved_tools = {
     "agent_session_info",
     "agent_search_files", 
     "file_search",
@@ -178,173 +234,194 @@ mcp.auto_approved_tools = {
 }
 ```
 
-### Timeout Handling
+### Timeout Settings
 
-All approval requests have configurable timeouts:
+Default timeout is 30 seconds, but can be customized per request:
 
 ```lua
--- Request with 30-second timeout
 local request = {
-    id = "timeout-example",
-    timeout = 30,  -- seconds
+    id = "custom-timeout",
+    type = "tool_execution",
+    timeout = 600,  -- 10 minutes
     -- ... other fields
 }
 ```
 
-### Validation
+## Best Practices
 
-All requests are validated before processing:
+### 1. Descriptive Requests
+
+Always provide clear descriptions for approval requests:
 
 ```lua
--- Invalid requests are rejected
-local invalid_request = {
-    id = "invalid",
-    tool_name = "nonexistent_tool",
-    parameters = {}
-}
--- Result: Request denied, error logged
+-- Good
+description = "Create main.py with Flask application setup"
+
+-- Avoid
+description = "Create file"
 ```
 
-## 🎯 Real-World Scenarios
+### 2. Appropriate Timeouts
 
-### Scenario 1: Code Review
-
-AI agent suggests code changes:
-
-1. **AI Agent** proposes modification to `main.lua`
-2. **User** sees approval dialog with diff preview
-3. **User** approves with `y` or denies with `n`
-4. **System** executes approved changes with undo tracking
-
-### Scenario 2: Architecture Decision
-
-AI agent needs user input for design decisions:
-
-1. **AI Agent** presents multiple architectural options
-2. **User** sees decision point dialog with numbered choices
-3. **User** selects preferred option with number key
-4. **System** proceeds with selected approach
-
-### Scenario 3: Batch Refactoring
-
-AI agent proposes multiple related changes:
-
-1. **AI Agent** suggests refactoring across multiple files
-2. **User** sees batch dialog listing all proposed changes
-3. **User** can approve all, deny all, or select specific changes
-4. **System** executes only approved changes
-
-### Scenario 4: Undo Management
-
-User wants to revert specific AI changes:
-
-1. **User** identifies unwanted AI modification
-2. **User** calls `:lua mcp.undo_ai_modification("request-id")`
-3. **System** reverts only that specific change
-4. **User** can redo with `:lua mcp.redo_ai_modification("request-id")`
-
-## 🔧 Advanced Configuration
-
-### Custom Approval Dialogs
+Set timeouts based on request complexity:
 
 ```lua
--- Create custom approval dialog
-local dialog = mcp.create_approval_dialog("custom-request-id")
-mcp.display_approval_dialog(dialog)
+-- Simple tool execution
+timeout = 60  -- 1 minute
 
--- Handle user interaction
-mcp.handle_user_approval(dialog, {approved = true, notes = "Custom notes"})
+-- Complex decision point
+timeout = 300  -- 5 minutes
+
+-- Batch actions
+timeout = 600  -- 10 minutes
 ```
 
-### Custom Decision Points
+### 3. Contextual Information
+
+Include relevant context in request descriptions:
 
 ```lua
--- Create custom decision point
-local dialog = mcp.create_decision_point_dialog("decision-id")
-mcp.display_approval_dialog(dialog)
-
--- Handle option selection
-mcp.handle_option_selection(dialog, 2)  -- Select option 2
+description = "Create requirements.txt with Flask dependencies for web app"
 ```
 
-### Batch Action Management
+### 4. Error Handling
+
+Always check return values:
 
 ```lua
--- Create batch action dialog
-local dialog = mcp.create_batch_action_dialog("batch-id")
-mcp.display_approval_dialog(dialog)
-
--- Handle partial approval
-mcp.handle_partial_approval(dialog, {1, 3})  -- Approve actions 1 and 3
+local success, error = mcp.register_approval_request(request)
+if not success then
+    print("Failed to register request: " .. error)
+end
 ```
 
-## 🐛 Troubleshooting
+## Demo Scripts
 
-### Common Issues
-
-1. **Dialog not appearing**
-   - Check if Neovim has floating window support
-   - Verify MCP module is loaded correctly
-
-2. **Undo not working**
-   - Ensure undo integration is initialized
-   - Check if AI modification was tracked
-
-3. **Approval not processing**
-   - Verify request ID is valid
-   - Check if request has timed out
-
-### Debug Commands
+### Polished Chat Approval Demo
 
 ```lua
+-- Source the demo
+:source demo_polished_chat_approval.lua
+
+-- Run the full demo
+:lua test_polished_chat_approval()
+
+-- Test individual marker interaction
+:lua test_marker_interaction()
+
 -- Show system status
 :lua show_system_status()
 
--- Check MCP tools
-:lua print(vim.inspect(mcp.mcp_tools))
-
--- Check approval state
-:lua print(vim.inspect(mcp.approval_state))
+-- Clean up demo
+:lua cleanup_demo()
 ```
 
-## 📚 API Reference
+### Simple Chat Integration Demo
 
-### Core Functions
+```lua
+-- Source the demo
+:source demo_chat_integration.lua
 
-- `mcp.register_approval_request(request)` - Register new approval request
-- `mcp.approve_request(id, result)` - Approve specific request
-- `mcp.deny_request(id, result)` - Deny specific request
-- `mcp.get_approval_request(id)` - Get request details
-- `mcp.get_pending_approval_count()` - Count pending requests
+-- Run the demo
+:lua test_chat_integration()
 
-### UI Functions
+-- Test single marker
+:lua test_single_marker()
 
-- `mcp.create_approval_dialog(id)` - Create approval dialog
-- `mcp.create_decision_point_dialog(id)` - Create decision dialog
-- `mcp.create_batch_action_dialog(id)` - Create batch dialog
-- `mcp.display_approval_dialog(dialog)` - Show dialog
-- `mcp.close_approval_dialog(dialog)` - Close dialog
+-- Show status
+:lua show_chat_status()
+```
 
-### Undo Functions
+## Troubleshooting
 
-- `mcp.undo_ai_modification(id)` - Undo specific AI change
-- `mcp.redo_ai_modification(id)` - Redo specific AI change
-- `mcp.get_ai_undo_entry(id)` - Get undo entry details
-- `mcp.get_undo_integration_status()` - Get undo system status
+### Common Issues
 
-### Tool Execution
+1. **Markers not appearing**
+   - Ensure `mcp.initialize_chat_approval()` is called
+   - Check that `mcp.setup_chat_buffer_mappings()` is set up
+   - Verify the request has a valid `description` field
 
-- `mcp.execute_tool_with_approval(tool, params, id)` - Execute with approval
-- `mcp.execute_tool_with_undo_integration(tool, params, id)` - Execute with undo
-- `mcp.execute_batch_with_undo_integration(actions, id)` - Execute batch with undo
+2. **Enter key not working**
+   - Make sure chat buffer mappings are set up
+   - Check that cursor is on a marker line
+   - Verify the marker is still pending (🔄 status)
 
-## 🎉 Getting Started
+3. **Markers not updating**
+   - Check that approval/denial functions are called correctly
+   - Verify the request ID matches the marker
+   - Ensure the UI module is properly loaded
 
-1. **Load the system**: `:source demo_mcp_sampling_approval.lua`
-2. **Run demo**: `:lua run_demo()`
-3. **Watch dialogs**: Observe approval dialogs appearing
-4. **Interact**: Use `y`/`n` keys to approve/deny
-5. **Explore**: Try different demo scenarios
-6. **Integrate**: Connect with your AI agent workflow
+### Debug Functions
 
-The MCP Sampling Approval System provides a powerful, user-friendly interface for controlling AI agent actions while maintaining full undo/redo capabilities and comprehensive safety mechanisms.
+```lua
+-- Show pending approval count
+print("Pending: " .. mcp.get_pending_approval_count())
+
+-- Show all pending approvals
+local pending = mcp.get_pending_approvals()
+for i, approval in ipairs(pending) do
+    print(i .. ". " .. approval.description)
+end
+
+-- Check specific request
+local request = mcp.get_approval_request("request-id")
+if request then
+    print("Status: " .. request.status)
+end
+```
+
+## Integration with Existing Systems
+
+### MCP Protocol Integration
+
+The approval system integrates seamlessly with MCP sampling requests:
+
+```lua
+-- Handle MCP sampling request
+function M.handle_sampling_request(uri, criteria)
+    if uri:find("approval://") then
+        -- Extract approval information
+        local approval_type = uri:match("approval://(.+)")
+        local request = M.validate_approval_request(criteria)
+        
+        -- Register approval request (creates marker)
+        M.register_approval_request(request)
+        
+        return {
+            status = "pending",
+            message = "Approval request created"
+        }
+    end
+end
+```
+
+### Neovim Integration
+
+The system works with Neovim's native features:
+
+```lua
+-- Set up autocommands for chat buffers
+vim.api.nvim_create_autocmd("BufEnter", {
+    pattern = "*",
+    callback = function()
+        -- Check for approval markers
+        mcp.check_for_approval_markers()
+    end
+})
+```
+
+## Performance Considerations
+
+- **Marker Cleanup**: Old markers are automatically cleaned up after 1 hour
+- **Memory Usage**: Each marker uses minimal memory (~1KB)
+- **Highlighting**: Uses Neovim's efficient highlighting system
+- **Updates**: Marker updates are batched for performance
+
+## Security
+
+- **Request Validation**: All requests are validated before processing
+- **Audit Trail**: All approval actions are logged
+- **Timeout Protection**: Automatic timeout prevents hanging requests
+- **Access Control**: Only valid requests can be processed
+
+This non-interruptive chat-sigil system provides a much better user experience compared to traditional blocking dialogs, allowing users to maintain their workflow while still having full control over AI agent actions.

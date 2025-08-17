@@ -1887,11 +1887,11 @@ function M.register_approval_request(request)
 		updated_at = os.time(),
 	}
 	
-	-- Create chat marker if chat integration is available
-	local success, chat = pcall(require, "paragonic.mcp_chat_integration")
-	if success and chat then
+	-- Create chat marker if approval UI is available
+	local success, ui = pcall(require, "paragonic.mcp_approval_ui")
+	if success and ui then
 		local description = request.description or request.impact or request.tool_name or request.type
-		chat.create_approval_marker(request.id, request.type, description)
+		ui.create_approval_marker(request.id, request.type, description)
 	end
 	
 	return true
@@ -1950,12 +1950,12 @@ function M.approve_request(request_id, result)
 	M.record_audit_entry(request_id, "approved", result)
 	
 	-- Update chat marker if available
-	local success, chat = pcall(require, "paragonic.mcp_chat_integration")
-	if success and chat then
+	local success, ui = pcall(require, "paragonic.mcp_approval_ui")
+	if success and ui then
 		-- Find the approval marker for this request
-		for approval_id, approval in pairs(chat.pending_approvals) do
+		for approval_id, approval in pairs(ui.pending_approvals) do
 			if approval.request_id == request_id then
-				chat.update_approval_marker(approval_id, "approved", result)
+				ui.update_approval_marker(approval_id, "approved", result)
 				break
 			end
 		end
@@ -1991,12 +1991,12 @@ function M.deny_request(request_id, result)
 	M.cancel_tool_execution(request_id)
 	
 	-- Update chat marker if available
-	local success, chat = pcall(require, "paragonic.mcp_chat_integration")
-	if success and chat then
+	local success, ui = pcall(require, "paragonic.mcp_approval_ui")
+	if success and ui then
 		-- Find the approval marker for this request
-		for approval_id, approval in pairs(chat.pending_approvals) do
+		for approval_id, approval in pairs(ui.pending_approvals) do
 			if approval.request_id == request_id then
-				chat.update_approval_marker(approval_id, "denied", result)
+				ui.update_approval_marker(approval_id, "denied", result)
 				break
 			end
 		end
@@ -2160,73 +2160,49 @@ function M.clear_approval_state()
 end
 
 -- ============================================================================
--- Approval UI Integration Functions
+-- Chat-Based Approval Integration Functions
 -- ============================================================================
 
--- Create approval dialog
-function M.create_approval_dialog(request_id)
+-- Create approval marker in chat buffer
+function M.create_approval_marker(request_id, request_type, description)
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.create_approval_dialog(request_id)
+	return ui.create_approval_marker(request_id, request_type, description)
 end
 
--- Display approval dialog
-function M.display_approval_dialog(dialog)
+-- Update approval marker status
+function M.update_approval_marker(approval_id, status, result)
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.display_approval_dialog(dialog)
+	return ui.update_approval_marker(approval_id, status, result)
 end
 
--- Handle user approval
-function M.handle_user_approval(dialog, result)
+-- Set up chat buffer mappings
+function M.setup_chat_buffer_mappings()
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.handle_user_approval(dialog, result)
+	return ui.setup_chat_buffer_mappings()
 end
 
--- Handle user denial
-function M.handle_user_denial(dialog, result)
+-- Get pending approval count
+function M.get_pending_approval_count()
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.handle_user_denial(dialog, result)
+	return ui.get_pending_approval_count()
 end
 
--- Close approval dialog
-function M.close_approval_dialog(dialog)
+-- Get all pending approvals
+function M.get_pending_approvals()
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.close_approval_dialog(dialog)
+	return ui.get_pending_approvals()
 end
 
--- Check if dialog is open
-function M.is_dialog_open(dialog)
+-- Remove approval marker from buffer
+function M.remove_approval_marker(approval_id)
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.is_dialog_open(dialog)
+	return ui.remove_approval_marker(approval_id)
 end
 
--- Get dialog state
-function M.get_dialog_state(dialog)
+-- Initialize chat-based approval system
+function M.initialize_chat_approval()
 	local ui = require("paragonic.mcp_approval_ui")
-	return ui.get_dialog_state(dialog)
-end
-
--- Create decision point dialog
-function M.create_decision_point_dialog(request_id)
-	local ui = require("paragonic.mcp_approval_ui")
-	return ui.create_decision_point_dialog(request_id)
-end
-
--- Handle option selection
-function M.handle_option_selection(dialog, option_index)
-	local ui = require("paragonic.mcp_approval_ui")
-	return ui.handle_option_selection(dialog, option_index)
-end
-
--- Create batch action dialog
-function M.create_batch_action_dialog(request_id)
-	local ui = require("paragonic.mcp_approval_ui")
-	return ui.create_batch_action_dialog(request_id)
-end
-
--- Handle partial approval
-function M.handle_partial_approval(dialog, approved_indices)
-	local ui = require("paragonic.mcp_approval_ui")
-	return ui.handle_partial_approval(dialog, approved_indices)
+	return ui.initialize()
 end
 
 -- ============================================================================
