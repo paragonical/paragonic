@@ -1,7 +1,8 @@
 // @generated automatically by Diesel CLI.
 
 pub mod sql_types {
-    // Vector type definition - simplified to avoid diesel_derive_enum issues
+    #[derive(diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "vector"))]
     pub struct Vector;
 }
 

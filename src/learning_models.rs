@@ -344,7 +344,7 @@ pub struct NewSkillRelationship {
 }
 
 /// Enum for practice item types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PracticeItemType {
     MultipleChoice,
     CodingChallenge,
@@ -378,7 +378,7 @@ impl std::str::FromStr for PracticeItemType {
 }
 
 /// Enum for session types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SessionType {
     Practice,
     Assessment,
@@ -412,7 +412,7 @@ impl std::str::FromStr for SessionType {
 }
 
 /// Enum for session status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SessionStatus {
     InProgress,
     Completed,
@@ -446,7 +446,7 @@ impl std::str::FromStr for SessionStatus {
 }
 
 /// Enum for assessment types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AssessmentType {
     Initial,
     Progress,
@@ -480,7 +480,7 @@ impl std::str::FromStr for AssessmentType {
 }
 
 /// Enum for relationship types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RelationshipType {
     Prerequisite,
     Complementary,
@@ -514,7 +514,7 @@ impl std::str::FromStr for RelationshipType {
 }
 
 /// Enum for metric types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MetricType {
     Accuracy,
     Speed,
@@ -551,7 +551,7 @@ impl std::str::FromStr for MetricType {
 }
 
 /// Enum for trend directions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TrendDirection {
     Improving,
     Declining,

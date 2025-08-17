@@ -325,3 +325,5 @@ mod pattern_database_operations_tests;
 mod pattern_database_tests;
 #[cfg(test)]
 mod embeddings_local_test;
+#[cfg(test)]
+mod learning_models_tests;
