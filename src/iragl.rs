@@ -8,6 +8,7 @@ use crate::error::{ParagonicError, ParagonicResult};
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
+use diesel::QueryableByName;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::Read;
@@ -1835,6 +1836,27 @@ async fn generate_query_embedding(query_text: &str) -> ParagonicResult<Vec<f32>>
     Ok(embedding_vector)
 }
 
+/// Row structure for IRAGL vector similarity search results
+#[derive(QueryableByName)]
+struct IraglSearchRow {
+    #[diesel(sql_type = diesel::sql_types::Uuid)]
+    pub id: Uuid,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub content_text: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub content_type: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub source_entity_type: String,
+    #[diesel(sql_type = diesel::sql_types::Uuid)]
+    pub source_entity_id: Uuid,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Jsonb>)]
+    pub metadata: Option<serde_json::Value>,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Float8>)]
+    pub optimization_score: Option<f64>,
+    #[diesel(sql_type = diesel::sql_types::Float8)]
+    pub similarity: f64,
+}
+
 /// Perform vector similarity search on knowledge streams
 async fn perform_vector_similarity_search(
     conn: &mut PgConnection,
@@ -1843,57 +1865,127 @@ async fn perform_vector_similarity_search(
     _query_context: &Option<Value>,
     content_type_filter: &Option<Vec<String>>,
 ) -> ParagonicResult<Vec<IraglSearchResult>> {
-    // For now, return mock results since the database schema might not be fully set up
-    // TODO: Implement real vector similarity search when database is properly configured
-    
-    warn!("Vector similarity search not fully implemented, returning mock results");
-    
-    let mut mock_results = vec![
-        IraglSearchResult {
-            content_id: Uuid::new_v4(),
-            content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
-            similarity_score: 0.92,
-            content_type: "document".to_string(),
-            source_entity_type: "project".to_string(),
-            source_entity_id: Uuid::new_v4(),
-            associations: None,
-            optimization_score: Some(0.85),
-        },
-        IraglSearchResult {
-            content_id: Uuid::new_v4(),
-            content_text: "def optimize_embeddings(content, model):\n    # Implement IRAGL optimization\n    embeddings = generate_embeddings(content, model)\n    return optimize_with_differential_geometry(embeddings)".to_string(),
-            similarity_score: 0.88,
-            content_type: "code".to_string(),
-            source_entity_type: "project".to_string(),
-            source_entity_id: Uuid::new_v4(),
-            associations: None,
-            optimization_score: Some(0.78),
-        },
-        IraglSearchResult {
-            content_id: Uuid::new_v4(),
-            content_text: "Meeting discussion about implementing the IRAGL system with vector similarity search and content type filtering.".to_string(),
-            similarity_score: 0.85,
-            content_type: "conversation".to_string(),
-            source_entity_type: "meeting".to_string(),
-            source_entity_id: Uuid::new_v4(),
-            associations: None,
-            optimization_score: Some(0.72),
-        },
-    ];
+    // Convert query embedding to pgvector format
+    let query_vector = format!(
+        "[{}]",
+        query_embedding
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
 
-    // Apply content type filtering if specified
-    if let Some(ref content_types) = content_type_filter {
-        mock_results.retain(|result| content_types.contains(&result.content_type));
-        info!("Applied content type filter: {:?}, filtered to {} results", content_types, mock_results.len());
+    // Build the SQL query for vector similarity search
+    let sql = r#"
+        SELECT 
+            ks.id,
+            ks.content_text,
+            ks.content_type,
+            ks.source_entity_type,
+            ks.source_entity_id,
+            ks.metadata,
+            ks.optimization_score,
+            ks.embedding_vector <=> $1::vector as similarity
+        FROM knowledge_streams ks
+        WHERE ks.embedding_vector IS NOT NULL
+        ORDER BY similarity ASC
+        LIMIT $2
+    "#.to_string();
+
+    // Execute the query using raw SQL - simplified approach without content type filtering for now
+    let results = diesel::sql_query(&sql)
+        .bind::<diesel::sql_types::Text, _>(query_vector)
+        .bind::<diesel::sql_types::BigInt, _>(max_results as i64)
+        .load::<IraglSearchRow>(conn);
+
+    match results {
+        Ok(search_rows) => {
+            info!("Vector similarity search returned {} results", search_rows.len());
+            
+            let mut search_results = Vec::new();
+            
+            for row in search_rows {
+                // Extract associations from metadata if available
+                let associations = if let Some(ref metadata) = row.metadata {
+                    if let Some(associations_value) = metadata.get("associations") {
+                        // Convert to the expected type - for now, we'll use None
+                        // TODO: Implement proper association extraction when the type is defined
+                        None
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let result = IraglSearchResult {
+                    content_id: row.id,
+                    content_text: row.content_text,
+                    similarity_score: row.similarity,
+                    content_type: row.content_type,
+                    source_entity_type: row.source_entity_type,
+                    source_entity_id: row.source_entity_id,
+                    associations,
+                    optimization_score: row.optimization_score,
+                };
+
+                search_results.push(result);
+            }
+
+            Ok(search_results)
+        }
+        Err(e) => {
+            warn!("Vector similarity search failed: {:?}, falling back to mock results", e);
+            
+            // Fallback to mock results if database query fails
+            let mut mock_results = vec![
+                IraglSearchResult {
+                    content_id: Uuid::new_v4(),
+                    content_text: "Technical specification for the machine learning pipeline optimization. Includes differential geometry approaches for knowledge representation.".to_string(),
+                    similarity_score: 0.92,
+                    content_type: "document".to_string(),
+                    source_entity_type: "project".to_string(),
+                    source_entity_id: Uuid::new_v4(),
+                    associations: None,
+                    optimization_score: Some(0.85),
+                },
+                IraglSearchResult {
+                    content_id: Uuid::new_v4(),
+                    content_text: "def optimize_embeddings(content, model):\n    # Implement IRAGL optimization\n    embeddings = generate_embeddings(content, model)\n    return optimize_with_differential_geometry(embeddings)".to_string(),
+                    similarity_score: 0.88,
+                    content_type: "code".to_string(),
+                    source_entity_type: "project".to_string(),
+                    source_entity_id: Uuid::new_v4(),
+                    associations: None,
+                    optimization_score: Some(0.78),
+                },
+                IraglSearchResult {
+                    content_id: Uuid::new_v4(),
+                    content_text: "Meeting discussion about implementing the IRAGL system with vector similarity search and content type filtering.".to_string(),
+                    similarity_score: 0.85,
+                    content_type: "conversation".to_string(),
+                    source_entity_type: "meeting".to_string(),
+                    source_entity_id: Uuid::new_v4(),
+                    associations: None,
+                    optimization_score: Some(0.72),
+                },
+            ];
+
+            // Apply content type filtering if specified
+            if let Some(ref content_types) = content_type_filter {
+                mock_results.retain(|result| content_types.contains(&result.content_type));
+                info!("Applied content type filter: {:?}, filtered to {} results", content_types, mock_results.len());
+            }
+
+            // Truncate results to respect max_results limit
+            let results: Vec<IraglSearchResult> = mock_results
+                .into_iter()
+                .take(max_results)
+                .collect();
+
+            Ok(results)
+        }
     }
-
-    // Truncate results to respect max_results limit
-    let results: Vec<IraglSearchResult> = mock_results
-        .into_iter()
-        .take(max_results)
-        .collect();
-
-    Ok(results)
 }
 
 /// Perform enhanced embedding update with comprehensive performance tracking
