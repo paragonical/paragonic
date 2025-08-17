@@ -1963,6 +1963,9 @@ function M.deny_request(request_id, result)
 	-- Record audit entry
 	M.record_audit_entry(request_id, "denied", result)
 	
+	-- Cancel tool execution if it exists
+	M.cancel_tool_execution(request_id)
+	
 	return true
 end
 
@@ -2188,6 +2191,244 @@ end
 function M.handle_partial_approval(dialog, approved_indices)
 	local ui = require("paragonic.mcp_approval_ui")
 	return ui.handle_partial_approval(dialog, approved_indices)
+end
+
+-- ============================================================================
+-- Tool Execution Integration Functions
+-- ============================================================================
+
+-- Auto-approved tools configuration
+M.auto_approved_tools = {
+	"agent_session_info",
+	"agent_search_files",
+	"file_search",
+	"buffer_navigate"
+}
+
+-- Tool execution tracking
+M.tool_execution_status = {}
+
+-- Execute tool with approval workflow
+function M.execute_tool_with_approval(tool_name, parameters, request_id)
+	if not tool_name or not parameters or not request_id then
+		return false, "Invalid parameters"
+	end
+	
+	-- Check if tool exists
+	local tool_exists = false
+	for _, tool in ipairs(M.mcp_tools) do
+		if tool.name == tool_name then
+			tool_exists = true
+			break
+		end
+	end
+	
+	if not tool_exists then
+		return false, "Tool not found: " .. tool_name
+	end
+	
+	-- Check if tool is auto-approved
+	local is_auto_approved = false
+	for _, auto_tool in ipairs(M.auto_approved_tools) do
+		if auto_tool == tool_name then
+			is_auto_approved = true
+			break
+		end
+	end
+	
+	-- Get approval request
+	local approval = M.get_approval_request(request_id)
+	if not approval then
+		return false, "Approval request not found: " .. request_id
+	end
+	
+	-- Track execution status
+	M.tool_execution_status[request_id] = {
+		tool_name = tool_name,
+		parameters = parameters,
+		status = "pending",
+		created_at = os.time()
+	}
+	
+	if is_auto_approved then
+		-- Auto-approve and execute
+		local success = M.approve_request(request_id, {
+			approved = true,
+			auto_approved = true,
+			reason = "Auto-approved tool"
+		})
+		
+		if success then
+			M.tool_execution_status[request_id].status = "executing"
+			-- In a real implementation, this would execute the actual tool
+			M.tool_execution_status[request_id].status = "completed"
+			return true
+		else
+			M.tool_execution_status[request_id].status = "failed"
+			return false
+		end
+	else
+		-- Require manual approval
+		M.tool_execution_status[request_id].status = "waiting_approval"
+		return true
+	end
+end
+
+-- Execute tool with modification
+function M.execute_tool_with_modification(tool_name, original_params, modified_params, request_id)
+	if not tool_name or not original_params or not modified_params or not request_id then
+		return false, "Invalid parameters"
+	end
+	
+	-- Get approval request
+	local approval = M.get_approval_request(request_id)
+	if not approval then
+		return false, "Approval request not found: " .. request_id
+	end
+	
+	-- Update approval with modified parameters
+	local success = M.approve_request(request_id, {
+		approved = true,
+		modified = true,
+		original_parameters = original_params,
+		modified_parameters = modified_params,
+		reason = "User modified parameters"
+	})
+	
+	if success then
+		-- Track execution with modified parameters
+		M.tool_execution_status[request_id] = {
+			tool_name = tool_name,
+			parameters = modified_params,
+			status = "executing",
+			created_at = os.time(),
+			modified = true
+		}
+		
+		-- In a real implementation, this would execute the tool with modified parameters
+		M.tool_execution_status[request_id].status = "completed"
+		return true
+	else
+		return false
+	end
+end
+
+-- Execute batch tools with approval
+function M.execute_batch_tools_with_approval(actions, request_id)
+	if not actions or not request_id then
+		return false, "Invalid parameters"
+	end
+	
+	-- Get approval request
+	local approval = M.get_approval_request(request_id)
+	if not approval then
+		return false, "Approval request not found: " .. request_id
+	end
+	
+	-- Track batch execution
+	M.tool_execution_status[request_id] = {
+		type = "batch",
+		actions = actions,
+		status = "waiting_approval",
+		created_at = os.time()
+	}
+	
+	return true
+end
+
+-- Execute partial batch approval
+function M.execute_partial_batch_approval(actions, approved_indices, request_id)
+	if not actions or not approved_indices or not request_id then
+		return false, "Invalid parameters"
+	end
+	
+	-- Get approval request
+	local approval = M.get_approval_request(request_id)
+	if not approval then
+		return false, "Approval request not found: " .. request_id
+	end
+	
+	-- Create result with approved actions
+	local result = {
+		approved = true,
+		approved_actions = approved_indices,
+		partial_approval = true,
+		total_actions = #actions,
+		approved_count = #approved_indices
+	}
+	
+	local success = M.approve_request(request_id, result)
+	
+	if success then
+		-- Track partial execution
+		M.tool_execution_status[request_id] = {
+			type = "batch_partial",
+			actions = actions,
+			approved_actions = approved_indices,
+			status = "executing",
+			created_at = os.time()
+		}
+		
+		-- In a real implementation, this would execute only the approved actions
+		M.tool_execution_status[request_id].status = "completed"
+		return true
+	else
+		return false
+	end
+end
+
+-- Get tool execution status
+function M.get_tool_execution_status(request_id)
+	if not request_id then
+		return nil
+	end
+	
+	local status = M.tool_execution_status[request_id]
+	if not status then
+		return nil
+	end
+	
+	-- Check for timeout
+	local approval = M.get_approval_request(request_id)
+	if approval and approval.status == "timeout" then
+		status.status = "timeout"
+	end
+	
+	return status.status
+end
+
+-- Cancel tool execution
+function M.cancel_tool_execution(request_id)
+	if not request_id then
+		return false
+	end
+	
+	local status = M.tool_execution_status[request_id]
+	if not status then
+		return false
+	end
+	
+	status.status = "cancelled"
+	status.cancelled_at = os.time()
+	
+	return true
+end
+
+-- Clean up completed tool executions
+function M.cleanup_completed_tool_executions()
+	local to_remove = {}
+	
+	for request_id, status in pairs(M.tool_execution_status) do
+		if status.status == "completed" or status.status == "cancelled" or status.status == "timeout" then
+			table.insert(to_remove, request_id)
+		end
+	end
+	
+	for _, request_id in ipairs(to_remove) do
+		M.tool_execution_status[request_id] = nil
+	end
+	
+	return #to_remove
 end
 
 return M

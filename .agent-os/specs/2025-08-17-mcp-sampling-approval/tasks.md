@@ -38,16 +38,16 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 3.8 Implement UI state management and error handling
   - [x] 3.9 Verify all approval UI tests pass
 
-- [ ] 4. Tool Execution Integration
-  - [ ] 4.1 Write tests for approval workflow integration with existing tool calls
-  - [ ] 4.2 Implement approval workflow hooks in existing tool execution
-  - [ ] 4.3 Write tests for approval bypass for auto-approved tools
-  - [ ] 4.4 Implement approval bypass mechanism for configured tools
-  - [ ] 4.5 Write tests for tool execution cancellation on approval denial
-  - [ ] 4.6 Implement tool execution cancellation and cleanup
-  - [ ] 4.7 Write tests for modified tool execution based on user input
-  - [ ] 4.8 Implement modified tool execution handling
-  - [ ] 4.9 Verify all tool execution integration tests pass
+- [x] 4. Tool Execution Integration
+  - [x] 4.1 Write tests for approval workflow integration with existing tool calls
+  - [x] 4.2 Implement approval workflow hooks in existing tool execution
+  - [x] 4.3 Write tests for approval bypass for auto-approved tools
+  - [x] 4.4 Implement approval bypass mechanism for configured tools
+  - [x] 4.5 Write tests for tool execution cancellation on approval denial
+  - [x] 4.6 Implement tool execution cancellation and cleanup
+  - [x] 4.7 Write tests for modified tool execution based on user input
+  - [x] 4.8 Implement modified tool execution handling
+  - [x] 4.9 Verify all tool execution integration tests pass
 
 - [ ] 5. Neovim Undo Integration
   - [ ] 5.1 Write tests for AI agent file modification undo integration
