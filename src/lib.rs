@@ -9,6 +9,7 @@ pub mod embeddings;
 pub mod embeddings_local;
 pub mod error;
 pub mod http_server;
+pub mod learning_models;
 pub mod models;
 pub mod ollama;
 pub mod schema;

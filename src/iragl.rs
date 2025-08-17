@@ -3,6 +3,9 @@
 //! This module implements the IRAGL system for continuous knowledge stream processing,
 //! differential geometry optimization, and enhanced search capabilities.
 
+// Include the analytics module
+pub mod analytics;
+
 use crate::database::get_connection;
 use crate::error::{ParagonicError, ParagonicResult};
 use chrono::Utc;

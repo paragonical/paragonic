@@ -395,4 +395,77 @@ The advanced IRAGL approach provides the best balance of capabilities while main
 - **Differential Geometry**: Functionally-invariant path optimization
 - **Vector Storage**: PostgreSQL with pgvector extension
 - **Optimization**: Background processes with performance tracking
-- **Search**: Context-aware similarity search with organizational weighting 
+- **Search**: Context-aware similarity search with organizational weighting
+
+## 2025-08-17: Human Skill Building with Interleaved Spaced Repetition Learning
+
+**ID:** DEC-008
+**Status:** Accepted
+**Category:** Product
+**Stakeholders:** Product Owner, Tech Lead, Development Team
+
+### Decision
+
+Implement a comprehensive human skill building system using Interleaved Spaced Repetition Learning (ISRL) to help developers continuously improve their skills while working with AI agents, creating marketable expertise profiles for the fractional organization network.
+
+### Context
+
+The fractional organization network vision requires humans to develop and maintain marketable expertise that can be demonstrated to potential organizations. Current AI collaboration tools focus on immediate productivity but don't systematically help humans build and retain skills over time. A structured learning system is needed to ensure humans continue developing while AI agents handle routine tasks.
+
+### Alternatives Considered
+
+1. **No Learning System**
+   - Pros: Simpler implementation, focus on immediate productivity
+   - Cons: Humans may lose skills over time, no expertise profiles for fractional work
+
+2. **Basic Learning Tracking**
+   - Pros: Simple implementation, minimal overhead
+   - Cons: Limited effectiveness, no systematic skill development
+
+3. **Advanced ISRL System (Selected)**
+   - Pros: Scientifically proven learning method, systematic skill development, marketable expertise profiles
+   - Cons: Higher complexity, requires sophisticated algorithms
+
+### Rationale
+
+The ISRL system provides the optimal foundation for human skill development:
+- **Scientifically Proven**: Based on spaced repetition and interleaving research
+- **Systematic Development**: Structured approach to skill building and retention
+- **Marketable Profiles**: Creates demonstrable expertise for fractional organizations
+- **AI Integration**: Seamlessly integrates with AI agent collaboration
+- **Continuous Improvement**: Adaptive learning based on performance and progress
+
+### Consequences
+
+**Positive:**
+- Enables systematic human skill development alongside AI collaboration
+- Creates marketable expertise profiles for fractional organization network
+- Improves long-term human value and employability
+- Provides competitive advantage in fractional work market
+- Supports the vision of humans and agents providing shared expertise
+
+**Risks:**
+- Higher implementation complexity
+- Requires sophisticated learning algorithms
+- Potential user resistance to structured learning
+- Need for extensive practice item creation and curation
+
+**Implementation Plan:**
+1. Database schema for learning system (skill areas, practice items, sessions)
+2. ISRL engine with SuperMemo 2 algorithm and interleaving
+3. Skill assessment and tracking system
+4. Practice session generation and management
+5. Learning analytics and progress visualization
+6. Expertise profile builder for marketable skills
+7. AI agent integration for collaborative learning
+8. Neovim UI for seamless learning experience
+
+### Technical Details
+
+- **ISRL Algorithm**: SuperMemo 2 with interleaving modifications
+- **Skill Assessment**: Multi-dimensional skill measurement with confidence intervals
+- **Practice Generation**: Adaptive sessions with mixed skill areas
+- **Learning Analytics**: Comprehensive progress tracking and insights
+- **Expertise Profiles**: Marketable skill summaries with learning velocity
+- **AI Integration**: Learning insights shared with AI agents for better collaboration
+- **Database**: Extended schema for learning data and expertise profiles 
