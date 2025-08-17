@@ -33,7 +33,8 @@ M.tool_categories = {
 	file_operations = { "agent_edit_file", "agent_create_file", "agent_save_file" },
 	session_management = { "agent_session_info" },
 	pattern_execution = { "pattern_execute", "pattern_status" },
-	search_navigation = { "file_search", "buffer_navigate" },
+	search_navigation = { "agent_search_files", "file_search", "buffer_navigate" },
+	command_execution = { "agent_execute_command" },
 }
 
 -- Intent detection patterns
@@ -41,9 +42,10 @@ M.intent_patterns = {
 	file_editing = { "edit", "modify", "change", "update", "fix", "replace", "insert", "delete" },
 	file_creation = { "create", "new", "add", "make", "generate", "write" },
 	file_saving = { "save", "persist", "write", "store" },
-	session_management = { "session", "buffer", "window", "tab" },
+	session_management = { "session", "buffer", "window", "tab", "info", "context" },
 	pattern_execution = { "pattern", "execute", "run", "apply" },
-	search_operations = { "search", "find", "locate", "grep" },
+	search_operations = { "search", "find", "locate", "grep", "look" },
+	command_execution = { "command", "run", "execute", "call", "invoke" },
 }
 
 -- Configuration
@@ -361,6 +363,7 @@ function M.calculate_pattern_tool_relevance(tool, pattern)
 			agent_create_file = 0.5,
 			agent_save_file = 0.4,
 			agent_session_info = 0.8,
+			agent_execute_command = 0.7,
 		},
 		self_reflection = {
 			agent_session_info = 0.9,
@@ -371,16 +374,19 @@ function M.calculate_pattern_tool_relevance(tool, pattern)
 			agent_session_info = 0.8,
 			agent_edit_file = 0.5,
 			agent_create_file = 0.4,
+			agent_search_files = 0.8,
 		},
 		progress_tracking = {
 			agent_session_info = 0.9,
 			agent_edit_file = 0.6,
 			agent_create_file = 0.5,
+			agent_execute_command = 0.7,
 		},
 		knowledge_extraction = {
 			agent_create_file = 0.9,
 			agent_edit_file = 0.7,
 			agent_save_file = 0.6,
+			agent_search_files = 0.8,
 		},
 	}
 
@@ -410,6 +416,7 @@ function M.intent_matches_category(intent, category)
 		session_management = "session_management",
 		pattern_execution = "pattern_execution",
 		search_operations = "search_navigation",
+		command_execution = "command_execution",
 	}
 
 	return intent_category_map[intent] == category
@@ -436,6 +443,8 @@ function M.get_specific_tool_guidance(tool, intent)
 		agent_create_file = "Use agent_create_file to create new files. Specify file_name and optional initial content.",
 		agent_save_file = "Use agent_save_file to persist changes. Specify file_path or save current buffer.",
 		agent_session_info = "Use agent_session_info to get current session information and context.",
+		agent_search_files = "Use agent_search_files to search for files by name or content. Specify query and optionally file_type filter.",
+		agent_execute_command = "Use agent_execute_command to run Neovim or shell commands. Specify command and command_type (neovim/shell).",
 	}
 
 	return guidance_templates[tool.name]
@@ -603,6 +612,7 @@ function M.get_tools_for_pattern(pattern_id)
 			"agent_edit_file",
 			"agent_create_file",
 			"agent_session_info",
+			"agent_execute_command",
 		},
 		self_reflection = {
 			"agent_session_info",
@@ -612,16 +622,19 @@ function M.get_tools_for_pattern(pattern_id)
 			"agent_session_info",
 			"agent_edit_file",
 			"agent_create_file",
+			"agent_search_files",
 		},
 		progress_tracking = {
 			"agent_session_info",
 			"agent_edit_file",
 			"agent_create_file",
+			"agent_execute_command",
 		},
 		knowledge_extraction = {
 			"agent_create_file",
 			"agent_edit_file",
 			"agent_save_file",
+			"agent_search_files",
 		},
 	}
 

@@ -187,6 +187,137 @@ function M.initialize_mcp_server()
 				last_used = nil,
 			},
 		},
+		{
+			name = "agent_session_info",
+			description = "Get current session information and context",
+			inputSchema = {
+				type = "object",
+				properties = {
+					include_buffers = {
+						type = "boolean",
+						description = "Include information about open buffers",
+					},
+					include_patterns = {
+						type = "boolean",
+						description = "Include information about active patterns",
+					},
+					include_history = {
+						type = "boolean",
+						description = "Include recent interaction history",
+					},
+				},
+				required = {},
+			},
+			patterns = {
+				{
+					pattern_id = "self_reflection",
+					relationship_type = "input",
+					description = "Provides session context for self-reflection pattern",
+				},
+				{
+					pattern_id = "activity_labeling",
+					relationship_type = "enhance",
+					description = "Enhances activity labeling pattern with session context",
+				},
+				{
+					pattern_id = "progress_tracking",
+					relationship_type = "input",
+					description = "Provides session data for progress tracking pattern",
+				},
+			},
+			usage_guidance = "Use this tool to get current session information including buffer details, active patterns, and recent interactions. This is useful for understanding the current context before making decisions.",
+			success_metrics = {
+				success_rate = 0.99,
+				usage_count = 0,
+				last_used = nil,
+			},
+		},
+		{
+			name = "agent_search_files",
+			description = "Search for files in the current directory and subdirectories",
+			inputSchema = {
+				type = "object",
+				properties = {
+					query = {
+						type = "string",
+						description = "Search query (filename pattern or content)",
+					},
+					file_type = {
+						type = "string",
+						description = "Filter by file type (e.g., 'lua', 'md', 'txt')",
+					},
+					recursive = {
+						type = "boolean",
+						description = "Search recursively in subdirectories",
+					},
+					max_results = {
+						type = "integer",
+						description = "Maximum number of results to return",
+					},
+				},
+				required = { "query" },
+			},
+			patterns = {
+				{
+					pattern_id = "knowledge_extraction",
+					relationship_type = "input",
+					description = "Used to find relevant files for knowledge extraction pattern",
+				},
+				{
+					pattern_id = "context_summarization",
+					relationship_type = "input",
+					description = "Used to find files for context summarization pattern",
+				},
+			},
+			usage_guidance = "Use this tool to search for files by name or content. Specify a query string and optionally filter by file type. Set recursive=true to search subdirectories.",
+			success_metrics = {
+				success_rate = 0.90,
+				usage_count = 0,
+				last_used = nil,
+			},
+		},
+		{
+			name = "agent_execute_command",
+			description = "Execute Neovim commands or external shell commands",
+			inputSchema = {
+				type = "object",
+				properties = {
+					command = {
+						type = "string",
+						description = "Command to execute (Neovim command or shell command)",
+					},
+					command_type = {
+						type = "string",
+						enum = { "neovim", "shell" },
+						description = "Type of command to execute",
+					},
+					args = {
+						type = "array",
+						items = { type = "string" },
+						description = "Additional arguments for the command",
+					},
+				},
+				required = { "command" },
+			},
+			patterns = {
+				{
+					pattern_id = "activity_labeling",
+					relationship_type = "enhance",
+					description = "Enhances activity labeling pattern by tracking command executions",
+				},
+				{
+					pattern_id = "progress_tracking",
+					relationship_type = "enhance",
+					description = "Enhances progress tracking pattern by recording command activities",
+				},
+			},
+			usage_guidance = "Use this tool to execute Neovim commands or shell commands. Specify command_type as 'neovim' for Neovim commands or 'shell' for external commands. Be careful with shell commands and ensure they are safe.",
+			success_metrics = {
+				success_rate = 0.85,
+				usage_count = 0,
+				last_used = nil,
+			},
+		},
 	}
 
 	M.mcp_server_initialized = true

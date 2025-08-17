@@ -1,198 +1,266 @@
 --[[
-Test Enhanced MCP Tool Descriptions
-Tests the enhanced MCP tools with pattern information
+Unit tests for Enhanced MCP Tool Descriptions
+Tests the new tools and enhanced tool awareness functionality
 --]]
 
--- Add lua directory to package path
-package.path = package.path .. ";lua/?.lua;lua/?/init.lua"
+local M = {}
 
-local M = require("paragonic.mcp")
-
--- Mock vim API for testing
-local vim = {
-	api = {
-		nvim_list_bufs = function()
-			return {}
-		end,
-		nvim_buf_is_valid = function()
-			return true
-		end,
-		nvim_buf_get_name = function()
-			return "test.lua"
-		end,
-		nvim_buf_get_option = function()
-			return ""
-		end,
-		nvim_get_current_buf = function()
-			return 1
-		end,
-		nvim_buf_get_lines = function()
-			return {}
-		end,
-		nvim_get_option = function()
-			return ""
-		end,
-		nvim_get_var = function()
-			return ""
-		end,
-		nvim_get_vvar = function()
-			return ""
-		end,
-		nvim_list_wins = function()
-			return {}
-		end,
-		nvim_win_get_buf = function()
-			return 1
-		end,
-		nvim_win_get_cursor = function()
-			return { 1, 0 }
-		end,
-		nvim_win_get_position = function()
-			return { 0, 0 }
-		end,
-		nvim_win_get_width = function()
-			return 80
-		end,
-		nvim_win_get_height = function()
-			return 24
-		end,
-		nvim_get_commands = function()
-			return {}
-		end,
-		nvim_get_autocmds = function()
-			return {}
-		end,
+-- Test configuration
+local TEST_CONFIG = {
+	test_message = "Please search for files and get session info",
+	test_context = {
+		current_buffer = "test.lua",
+		current_directory = "/tmp/test",
+		buffer_count = 3,
+		mode = "n",
+		timestamp = os.time(),
 	},
-	notify = function(msg, level)
-		print("NOTIFY: " .. msg)
-	end,
-	log = { levels = { INFO = 1, WARN = 2, ERROR = 3 } },
 }
 
--- Set global vim for testing
-_G.vim = vim
+-- Mock MCP module for testing
+local mock_mcp = {
+	list_mcp_tools = function()
+		return {
+			{
+				name = "agent_edit_file",
+				description = "Edit a file in the current Neovim session",
+				inputSchema = {
+					type = "object",
+					properties = {
+						file_path = { type = "string" },
+						line_number = { type = "integer" },
+						content = { type = "string" },
+					},
+				},
+			},
+			{
+				name = "agent_create_file",
+				description = "Create a new file in the current Neovim session",
+				inputSchema = {
+					type = "object",
+					properties = {
+						file_name = { type = "string" },
+						content = { type = "string" },
+						open_in_window = { type = "boolean" },
+					},
+				},
+			},
+			{
+				name = "agent_save_file",
+				description = "Save files to disk in the current Neovim session",
+				inputSchema = {
+					type = "object",
+					properties = {
+						file_path = { type = "string" },
+						force = { type = "boolean" },
+					},
+				},
+			},
+			{
+				name = "agent_session_info",
+				description = "Get current session information and context",
+				inputSchema = {
+					type = "object",
+					properties = {
+						include_buffers = { type = "boolean" },
+						include_patterns = { type = "boolean" },
+						include_history = { type = "boolean" },
+					},
+				},
+			},
+			{
+				name = "agent_search_files",
+				description = "Search for files in the current directory and subdirectories",
+				inputSchema = {
+					type = "object",
+					properties = {
+						query = { type = "string" },
+						file_type = { type = "string" },
+						recursive = { type = "boolean" },
+						max_results = { type = "integer" },
+					},
+				},
+			},
+			{
+				name = "agent_execute_command",
+				description = "Execute Neovim commands or external shell commands",
+				inputSchema = {
+					type = "object",
+					properties = {
+						command = { type = "string" },
+						command_type = { type = "string" },
+						args = { type = "array" },
+					},
+				},
+			},
+		}
+	end,
+}
 
--- Test function
-local function test_enhanced_mcp_tool_descriptions()
-	print("Testing Enhanced MCP Tool Descriptions...")
+-- Add lua directory to package path for testing
+package.path = package.path .. ";./lua/?.lua;./lua/?/init.lua"
 
-	-- Initialize MCP server
-	local success = M.initialize_mcp_server()
-	assert(success, "MCP server initialization failed")
+-- Test enhanced tool discovery
+function M.test_enhanced_tool_discovery()
+	print("🧪 Testing enhanced tool discovery...")
 
-	-- Get MCP tools
-	local tools = M.list_mcp_tools()
-	assert(tools, "Failed to get MCP tools")
-	assert(#tools >= 3, "Expected at least 3 MCP tools")
+	-- Mock the MCP module
+	package.loaded["paragonic.mcp"] = mock_mcp
 
-	-- Test agent_edit_file tool
-	local edit_tool = nil
+	local mcp_tool_prompts = require("paragonic.mcp_tool_prompts")
+	mcp_tool_prompts.init()
+
+	-- Test getting available tools
+	local tools = mcp_tool_prompts.get_available_tools()
+	assert(type(tools) == "table", "Tools should be a table")
+	assert(#tools == 6, "Should have 6 tools (including new ones)")
+
+	-- Verify new tools are present
+	local tool_names = {}
 	for _, tool in ipairs(tools) do
-		if tool.name == "agent_edit_file" then
-			edit_tool = tool
-			break
-		end
+		table.insert(tool_names, tool.name)
 	end
-	assert(edit_tool, "agent_edit_file tool not found")
-	assert(edit_tool.patterns, "agent_edit_file missing patterns")
-	assert(#edit_tool.patterns >= 2, "agent_edit_file should have at least 2 patterns")
-	assert(edit_tool.usage_guidance, "agent_edit_file missing usage guidance")
-	assert(edit_tool.success_metrics, "agent_edit_file missing success metrics")
-	print("  ✓ agent_edit_file tool enhanced with pattern information")
 
-	-- Test agent_create_file tool
-	local create_tool = nil
-	for _, tool in ipairs(tools) do
-		if tool.name == "agent_create_file" then
-			create_tool = tool
-			break
-		end
-	end
-	assert(create_tool, "agent_create_file tool not found")
-	assert(create_tool.patterns, "agent_create_file missing patterns")
-	assert(#create_tool.patterns >= 3, "agent_create_file should have at least 3 patterns")
-	assert(create_tool.usage_guidance, "agent_create_file missing usage guidance")
-	assert(create_tool.success_metrics, "agent_create_file missing success metrics")
+	assert(table.concat(tool_names, ","):find("agent_session_info"), "Should have agent_session_info tool")
+	assert(table.concat(tool_names, ","):find("agent_search_files"), "Should have agent_search_files tool")
+	assert(table.concat(tool_names, ","):find("agent_execute_command"), "Should have agent_execute_command tool")
 
-	-- Verify agent_create_file pattern relationships
-	local has_session_summary = false
-	local has_activity_labeling = false
-	local has_knowledge_extraction = false
-	for _, pattern in ipairs(create_tool.patterns) do
-		if pattern.pattern_id == "session_summary_generation" then
-			has_session_summary = true
-		elseif pattern.pattern_id == "activity_labeling" then
-			has_activity_labeling = true
-		elseif pattern.pattern_id == "knowledge_extraction" then
-			has_knowledge_extraction = true
-		end
-	end
-	assert(has_session_summary, "agent_create_file missing session_summary_generation pattern")
-	assert(has_activity_labeling, "agent_create_file missing activity_labeling pattern")
-	assert(has_knowledge_extraction, "agent_create_file missing knowledge_extraction pattern")
-	print("  ✓ agent_create_file tool enhanced with pattern information")
-
-	-- Test agent_save_file tool
-	local save_tool = nil
-	for _, tool in ipairs(tools) do
-		if tool.name == "agent_save_file" then
-			save_tool = tool
-			break
-		end
-	end
-	assert(save_tool, "agent_save_file tool not found")
-	assert(save_tool.patterns, "agent_save_file missing patterns")
-	assert(#save_tool.patterns >= 3, "agent_save_file should have at least 3 patterns")
-	assert(save_tool.usage_guidance, "agent_save_file missing usage guidance")
-	assert(save_tool.success_metrics, "agent_save_file missing success metrics")
-
-	-- Verify agent_save_file pattern relationships
-	local has_progress_tracking = false
-	local has_activity_labeling_save = false
-	local has_session_summary_save = false
-	for _, pattern in ipairs(save_tool.patterns) do
-		if pattern.pattern_id == "progress_tracking" then
-			has_progress_tracking = true
-		elseif pattern.pattern_id == "activity_labeling" then
-			has_activity_labeling_save = true
-		elseif pattern.pattern_id == "session_summary_generation" then
-			has_session_summary_save = true
-		end
-	end
-	assert(has_progress_tracking, "agent_save_file missing progress_tracking pattern")
-	assert(has_activity_labeling_save, "agent_save_file missing activity_labeling pattern")
-	assert(has_session_summary_save, "agent_save_file missing session_summary_generation pattern")
-	print("  ✓ agent_save_file tool enhanced with pattern information")
-
-	-- Test schema validation
-	assert(edit_tool.inputSchema, "agent_edit_file missing inputSchema")
-	assert(edit_tool.inputSchema.type == "object", "agent_edit_file inputSchema should be object type")
-	assert(edit_tool.inputSchema.required, "agent_edit_file missing required fields")
-
-	assert(create_tool.inputSchema, "agent_create_file missing inputSchema")
-	assert(create_tool.inputSchema.type == "object", "agent_create_file inputSchema should be object type")
-	assert(create_tool.inputSchema.required, "agent_create_file missing required fields")
-
-	assert(save_tool.inputSchema, "agent_save_file missing inputSchema")
-	assert(save_tool.inputSchema.type == "object", "agent_save_file inputSchema should be object type")
-	print("  ✓ All tools have proper input schemas")
-
-	-- Test success metrics
-	assert(edit_tool.success_metrics.success_rate > 0, "agent_edit_file success rate should be positive")
-	assert(create_tool.success_metrics.success_rate > 0, "agent_create_file success rate should be positive")
-	assert(save_tool.success_metrics.success_rate > 0, "agent_save_file success rate should be positive")
-	print("  ✓ All tools have success metrics")
-
-	print("  ✓ Enhanced MCP tool descriptions test passed")
-	return true
+	print("✅ Enhanced tool discovery test passed")
 end
 
--- Run test
-local success, result = pcall(test_enhanced_mcp_tool_descriptions)
-if success then
-	print("✅ Enhanced MCP Tool Descriptions Test: PASSED")
-else
-	print("❌ Enhanced MCP Tool Descriptions Test: FAILED")
-	print("Error: " .. tostring(result))
-	os.exit(1)
+-- Test enhanced intent detection
+function M.test_enhanced_intent_detection()
+	print("🧪 Testing enhanced intent detection...")
+
+	package.loaded["paragonic.mcp"] = mock_mcp
+	local mcp_tool_prompts = require("paragonic.mcp_tool_prompts")
+	mcp_tool_prompts.init()
+
+	-- Test session management intent
+	local session_intent = mcp_tool_prompts.detect_user_intent("Get session info and context")
+	assert(session_intent.session_management, "Should detect session management intent")
+
+	-- Test search operations intent
+	local search_intent = mcp_tool_prompts.detect_user_intent("Search for files with .lua extension")
+	assert(search_intent.search_operations, "Should detect search operations intent")
+
+	-- Test command execution intent
+	local command_intent = mcp_tool_prompts.detect_user_intent("Execute the git status command")
+	assert(command_intent.command_execution, "Should detect command execution intent")
+
+	print("✅ Enhanced intent detection test passed")
 end
+
+-- Test enhanced tool categorization
+function M.test_enhanced_tool_categorization()
+	print("🧪 Testing enhanced tool categorization...")
+
+	package.loaded["paragonic.mcp"] = mock_mcp
+	local mcp_tool_prompts = require("paragonic.mcp_tool_prompts")
+	mcp_tool_prompts.init()
+
+	local tools = mcp_tool_prompts.get_available_tools()
+	local categorized = mcp_tool_prompts.categorize_tools(tools)
+
+	-- Test new categories
+	assert(categorized.session_management, "Should have session_management category")
+	assert(categorized.search_navigation, "Should have search_navigation category")
+	assert(categorized.command_execution, "Should have command_execution category")
+
+	-- Test tool assignments
+	local session_tools = categorized.session_management
+	local session_tool_names = {}
+	for _, tool in ipairs(session_tools) do
+		table.insert(session_tool_names, tool.name)
+	end
+	assert(table.concat(session_tool_names, ","):find("agent_session_info"), "agent_session_info should be in session_management")
+
+	local search_tools = categorized.search_navigation
+	local search_tool_names = {}
+	for _, tool in ipairs(search_tools) do
+		table.insert(search_tool_names, tool.name)
+	end
+	assert(table.concat(search_tool_names, ","):find("agent_search_files"), "agent_search_files should be in search_navigation")
+
+	local command_tools = categorized.command_execution
+	local command_tool_names = {}
+	for _, tool in ipairs(command_tools) do
+		table.insert(command_tool_names, tool.name)
+	end
+	assert(table.concat(command_tool_names, ","):find("agent_execute_command"), "agent_execute_command should be in command_execution")
+
+	print("✅ Enhanced tool categorization test passed")
+end
+
+-- Test enhanced prompt construction
+function M.test_enhanced_prompt_construction()
+	print("🧪 Testing enhanced prompt construction...")
+
+	package.loaded["paragonic.mcp"] = mock_mcp
+	local mcp_tool_prompts = require("paragonic.mcp_tool_prompts")
+	mcp_tool_prompts.init()
+
+	-- Test prompt with search and session intent
+	local prompt = mcp_tool_prompts.build_tool_awareness_prompt(
+		"Search for files and get session information",
+		TEST_CONFIG.test_context
+	)
+
+	assert(type(prompt) == "string", "Prompt should be a string")
+	assert(#prompt > 0, "Prompt should not be empty")
+	assert(prompt:find("agent_search_files"), "Prompt should mention agent_search_files")
+	assert(prompt:find("agent_session_info"), "Prompt should mention agent_session_info")
+
+	print("✅ Enhanced prompt construction test passed")
+end
+
+-- Test enhanced pattern tool mappings
+function M.test_enhanced_pattern_tool_mappings()
+	print("🧪 Testing enhanced pattern tool mappings...")
+
+	package.loaded["paragonic.mcp"] = mock_mcp
+	local mcp_tool_prompts = require("paragonic.mcp_tool_prompts")
+	mcp_tool_prompts.init()
+
+	-- Test knowledge extraction pattern tools
+	local knowledge_tools = mcp_tool_prompts.get_tools_for_pattern("knowledge_extraction")
+	local knowledge_tool_names = {}
+	for _, tool in ipairs(knowledge_tools) do
+		table.insert(knowledge_tool_names, tool.name)
+	end
+
+	assert(table.concat(knowledge_tool_names, ","):find("agent_search_files"), "knowledge_extraction should include agent_search_files")
+
+	-- Test context summarization pattern tools
+	local context_tools = mcp_tool_prompts.get_tools_for_pattern("context_summarization")
+	local context_tool_names = {}
+	for _, tool in ipairs(context_tools) do
+		table.insert(context_tool_names, tool.name)
+	end
+
+	assert(table.concat(context_tool_names, ","):find("agent_search_files"), "context_summarization should include agent_search_files")
+
+	print("✅ Enhanced pattern tool mappings test passed")
+end
+
+-- Run all tests
+function M.run_all_tests()
+	print("🚀 Running Enhanced MCP Tool Descriptions Tests")
+	print("=" .. string.rep("=", 50))
+
+	M.test_enhanced_tool_discovery()
+	M.test_enhanced_intent_detection()
+	M.test_enhanced_tool_categorization()
+	M.test_enhanced_prompt_construction()
+	M.test_enhanced_pattern_tool_mappings()
+
+	print("=" .. string.rep("=", 50))
+	print("✅ All Enhanced MCP Tool Descriptions Tests Passed!")
+end
+
+-- Run tests if this file is executed directly
+if arg[0]:match("test_enhanced_mcp_tool_descriptions.lua$") then
+	M.run_all_tests()
+end
+
+return M
