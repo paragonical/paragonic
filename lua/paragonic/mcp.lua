@@ -2431,4 +2431,122 @@ function M.cleanup_completed_tool_executions()
 	return #to_remove
 end
 
+-- ============================================================================
+-- Neovim Undo Integration Functions
+-- ============================================================================
+
+-- Execute tool with undo integration
+function M.execute_tool_with_undo_integration(tool_name, parameters, request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.execute_tool_with_undo_integration(tool_name, parameters, request_id)
+end
+
+-- Execute batch with undo integration
+function M.execute_batch_with_undo_integration(actions, request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.execute_batch_with_undo_integration(actions, request_id)
+end
+
+-- Get AI undo entry
+function M.get_ai_undo_entry(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.get_ai_undo_entry(request_id)
+end
+
+-- Get AI undo entries for request
+function M.get_ai_undo_entries_for_request(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.get_ai_undo_entries_for_request(request_id)
+end
+
+-- Undo AI modification
+function M.undo_ai_modification(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.undo_ai_modification(request_id)
+end
+
+-- Redo AI modification
+function M.redo_ai_modification(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.redo_ai_modification(request_id)
+end
+
+-- Undo multiple AI modifications
+function M.undo_ai_modifications(request_ids)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.undo_ai_modifications(request_ids)
+end
+
+-- Redo multiple AI modifications
+function M.redo_ai_modifications(request_ids)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.redo_ai_modifications(request_ids)
+end
+
+-- Verify undo tree integrity
+function M.verify_undo_tree_integrity()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.verify_undo_tree_integrity()
+end
+
+-- Check undo tree performance
+function M.check_undo_tree_performance()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.check_undo_tree_performance()
+end
+
+-- Optimize undo tree
+function M.optimize_undo_tree()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.optimize_undo_tree()
+end
+
+-- Cleanup old AI undo entries
+function M.cleanup_old_ai_undo_entries()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.cleanup_old_ai_entries()
+end
+
+-- Execute standard undo
+function M.execute_standard_undo()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.execute_standard_undo()
+end
+
+-- Execute standard redo
+function M.execute_standard_redo()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.execute_standard_redo()
+end
+
+-- Get undo integration status
+function M.get_undo_integration_status()
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.get_undo_integration_status()
+end
+
+-- Get AI undo tracking info
+function M.get_ai_undo_tracking_info(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.get_ai_undo_tracking_info(request_id)
+end
+
+-- Navigate to AI undo entry
+function M.navigate_to_ai_undo_entry(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.navigate_to_ai_undo_entry(request_id)
+end
+
+-- Navigate to next AI modification
+function M.navigate_to_next_ai_modification(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.navigate_to_next_ai_modification(request_id)
+end
+
+-- Navigate to previous AI modification
+function M.navigate_to_previous_ai_modification(request_id)
+	local undo = require("paragonic.mcp_undo_integration")
+	return undo.navigate_to_previous_ai_modification(request_id)
+end
+
 return M

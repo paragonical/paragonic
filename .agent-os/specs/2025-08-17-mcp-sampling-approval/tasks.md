@@ -49,16 +49,16 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 4.8 Implement modified tool execution handling
   - [x] 4.9 Verify all tool execution integration tests pass
 
-- [ ] 5. Neovim Undo Integration
-  - [ ] 5.1 Write tests for AI agent file modification undo integration
-  - [ ] 5.2 Implement undo tree integration for AI agent actions
-  - [ ] 5.3 Write tests for granular undo/redo control for AI actions
-  - [ ] 5.4 Implement selective undo/redo for AI agent changes
-  - [ ] 5.5 Write tests for undo tree integrity and performance
-  - [ ] 5.6 Implement undo tree optimization and cleanup
-  - [ ] 5.7 Write tests for integration with standard Neovim undo commands
-  - [ ] 5.8 Implement Neovim undo command integration
-  - [ ] 5.9 Verify all undo integration tests pass
+- [x] 5. Neovim Undo Integration
+  - [x] 5.1 Write tests for AI agent file modification undo integration
+  - [x] 5.2 Implement undo tree integration for AI agent actions
+  - [x] 5.3 Write tests for granular undo/redo control for AI actions
+  - [x] 5.4 Implement selective undo/redo for AI agent changes
+  - [x] 5.5 Write tests for undo tree integrity and performance
+  - [x] 5.6 Implement undo tree optimization and cleanup
+  - [x] 5.7 Write tests for integration with standard Neovim undo commands
+  - [x] 5.8 Implement Neovim undo command integration
+  - [x] 5.9 Verify all undo integration tests pass
 
 - [ ] 6. End-to-End Integration and Testing
   - [ ] 6.1 Write integration tests for complete approval workflow
