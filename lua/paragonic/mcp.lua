@@ -1243,11 +1243,16 @@ end
 
 -- Validate approval request structure and content
 function M.validate_approval_request(request)
-	if not request.params or not request.params.criteria then
+	local criteria = nil
+	
+	-- Handle both direct criteria and params.criteria
+	if request.criteria then
+		criteria = request.criteria
+	elseif request.params and request.params.criteria then
+		criteria = request.params.criteria
+	else
 		return false, "Missing criteria"
 	end
-	
-	local criteria = request.params.criteria
 	
 	-- Check required fields based on approval type
 	if not criteria.approval_type then

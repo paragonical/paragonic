@@ -60,11 +60,11 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 5.8 Implement Neovim undo command integration
   - [x] 5.9 Verify all undo integration tests pass
 
-- [ ] 6. End-to-End Integration and Testing
-  - [ ] 6.1 Write integration tests for complete approval workflow
-  - [ ] 6.2 Test MCP protocol compliance and error handling
-  - [ ] 6.3 Test UI integration across different Neovim contexts
-  - [ ] 6.4 Test security and safety mechanisms
-  - [ ] 6.5 Test performance and concurrent operation handling
-  - [ ] 6.6 Test undo system integration and performance
-  - [ ] 6.7 Verify all integration tests pass
+- [x] 6. End-to-End Integration and Testing
+  - [x] 6.1 Write integration tests for complete approval workflow
+  - [x] 6.2 Test MCP protocol compliance and error handling
+  - [x] 6.3 Test UI integration across different Neovim contexts
+  - [x] 6.4 Test security and safety mechanisms
+  - [x] 6.5 Test performance and concurrent operation handling
+  - [x] 6.6 Test undo system integration and performance
+  - [x] 6.7 Verify all integration tests pass
