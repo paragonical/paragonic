@@ -191,6 +191,9 @@ function M.generate_batch_action_content(request, lines)
 			table.insert(lines, action_text)
 		end
 		table.insert(lines, "│")
+		table.insert(lines, "│  [y] Approve All  [n] Deny All  [p] Partial Approval  [q] Quit")
+		table.insert(lines, "│")
+		table.insert(lines, "│  Note: Press 'p' for partial approval with space toggling")
 	end
 	
 	return lines
@@ -442,29 +445,129 @@ function M.show_partial_approval_menu(dialog)
 		return false
 	end
 	
-	-- Create selection items
-	local items = {}
-	for i, action in ipairs(request.actions) do
-		table.insert(items, i .. ". " .. (action.description or action.type .. ": " .. (action.file or "unknown")))
+	-- Create a custom partial approval dialog
+	M.create_partial_approval_dialog(dialog, request.actions)
+end
+
+-- Create partial approval dialog with space toggling
+function M.create_partial_approval_dialog(original_dialog, actions)
+	-- Create buffer for partial approval
+	local buf = vim.api.nvim_create_buf(false, true)
+	
+	-- Set buffer content
+	local lines = {}
+	table.insert(lines, "┌─ Partial Approval ──────────────────────────────────┐")
+	table.insert(lines, "│ Select actions to approve:                          │")
+	table.insert(lines, "│                                                     │")
+	
+	local selected_actions = {}
+	
+	for i, action in ipairs(actions) do
+		local action_text = string.format("│ [ ] %d. %s", i, action.description or action.type .. ": " .. (action.file or "unknown"))
+		table.insert(lines, action_text)
+		selected_actions[i] = false -- Start with none selected
 	end
 	
-	-- Show selection dialog
-	vim.ui.select(items, {
-		prompt = "Select actions to approve (space to toggle, enter to confirm):",
-		format_item = function(item)
-			return item
+	table.insert(lines, "│                                                     │")
+	table.insert(lines, "│ Controls:                                           │")
+	table.insert(lines, "│   <Space> - Toggle selection                        │")
+	table.insert(lines, "│   <Enter> - Confirm selection                       │")
+	table.insert(lines, "│   <Esc>  - Cancel                                  │")
+	table.insert(lines, "└─────────────────────────────────────────────────────┘")
+	
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_buf_set_option(buf, "modifiable", false)
+	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+	vim.api.nvim_buf_set_option(buf, "filetype", "approval")
+	
+	-- Create window
+	local width = 60
+	local height = #lines
+	local row = math.floor((vim.o.lines - height) / 2) - 1
+	local col = math.floor((vim.o.columns - width) / 2)
+	
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded"
+	})
+	
+	-- Set window options
+	vim.api.nvim_win_set_option(win, "wrap", false)
+	vim.api.nvim_win_set_option(win, "cursorline", true)
+	
+	-- Set up keymaps for partial approval
+	local function update_display()
+		local new_lines = {}
+		table.insert(new_lines, "┌─ Partial Approval ──────────────────────────────────┐")
+		table.insert(new_lines, "│ Select actions to approve:                          │")
+		table.insert(new_lines, "│                                                     │")
+		
+		for i, action in ipairs(actions) do
+			local checkbox = selected_actions[i] and "[X]" or "[ ]"
+			local action_text = string.format("│ %s %d. %s", checkbox, i, action.description or action.type .. ": " .. (action.file or "unknown"))
+			table.insert(new_lines, action_text)
 		end
-	}, function(choices)
-		if choices then
-			local approved_indices = {}
-			for i, selected in ipairs(choices) do
-				if selected then
-					table.insert(approved_indices, i)
-				end
+		
+		table.insert(new_lines, "│                                                     │")
+		table.insert(new_lines, "│ Controls:                                           │")
+		table.insert(new_lines, "│   <Space> - Toggle selection                        │")
+		table.insert(new_lines, "│   <Enter> - Confirm selection                       │")
+		table.insert(new_lines, "│   <Esc>  - Cancel                                  │")
+		table.insert(new_lines, "└─────────────────────────────────────────────────────┘")
+		
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, new_lines)
+	end
+	
+	-- Space to toggle selection
+	vim.keymap.set("n", "<Space>", function()
+		local cursor_line = vim.api.nvim_win_get_cursor(win)[1]
+		local action_index = cursor_line - 3 -- Account for header lines
+		
+		if action_index >= 1 and action_index <= #actions then
+			selected_actions[action_index] = not selected_actions[action_index]
+			update_display()
+		end
+	end, {buffer = buf, noremap = true, silent = true})
+	
+	-- Enter to confirm
+	vim.keymap.set("n", "<CR>", function()
+		local approved_indices = {}
+		for i, selected in ipairs(selected_actions) do
+			if selected then
+				table.insert(approved_indices, i)
 			end
-			M.handle_partial_approval(dialog, approved_indices)
 		end
-	end)
+		
+		-- Close partial approval dialog
+		vim.api.nvim_win_close(win, true)
+		vim.api.nvim_buf_delete(buf, {force = true})
+		
+		-- Handle the partial approval
+		M.handle_partial_approval(original_dialog, approved_indices)
+	end, {buffer = buf, noremap = true, silent = true})
+	
+	-- Escape to cancel
+	vim.keymap.set("n", "<Esc>", function()
+		vim.api.nvim_win_close(win, true)
+		vim.api.nvim_buf_delete(buf, {force = true})
+	end, {buffer = buf, noremap = true, silent = true})
+	
+	-- q to cancel
+	vim.keymap.set("n", "q", function()
+		vim.api.nvim_win_close(win, true)
+		vim.api.nvim_buf_delete(buf, {force = true})
+	end, {buffer = buf, noremap = true, silent = true})
+	
+	-- Initial display
+	update_display()
+	
+	-- Set cursor to first action
+	vim.api.nvim_win_set_cursor(win, {4, 0})
 end
 
 -- Handle partial approval for batch actions
