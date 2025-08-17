@@ -2299,17 +2299,130 @@ function M.format_model_name(model_name)
 	return model_selection.format_model_name(model_name)
 end
 
+-- Approval configuration functions
+function M.toggle_yolo_mode()
+	local config = get_approval_config()
+	if config then
+		return config.toggle_yolo_mode()
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.enable_yolo_mode()
+	local config = get_approval_config()
+	if config then
+		return config.enable_yolo_mode()
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.disable_yolo_mode()
+	local config = get_approval_config()
+	if config then
+		return config.disable_yolo_mode()
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.add_auto_approval_tool(tool_name)
+	local config = get_approval_config()
+	if config then
+		return config.add_auto_approval_tool(tool_name)
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.remove_auto_approval_tool(tool_name)
+	local config = get_approval_config()
+	if config then
+		return config.remove_auto_approval_tool(tool_name)
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.add_auto_approval_directory(directory)
+	local config = get_approval_config()
+	if config then
+		return config.add_auto_approval_directory(directory)
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.add_auto_approval_extension(extension)
+	local config = get_approval_config()
+	if config then
+		return config.add_auto_approval_extension(extension)
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.show_approval_config()
+	local config = get_approval_config()
+	if config then
+		return config.show_status()
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.save_approval_config(file_path)
+	local config = get_approval_config()
+	if config then
+		return config.save_config(file_path)
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+function M.load_approval_config(file_path)
+	local config = get_approval_config()
+	if config then
+		return config.load_config_from_file(file_path)
+	else
+		vim.notify("Approval configuration not available", vim.log.levels.ERROR)
+		return false
+	end
+end
+
 -- ============================================================================
 -- Tool Execution Integration Functions
 -- ============================================================================
 
--- Auto-approved tools configuration
+-- Auto-approved tools configuration (legacy - now handled by approval_config)
 M.auto_approved_tools = {
 	"agent_session_info",
 	"agent_search_files",
 	"file_search",
 	"buffer_navigate"
 }
+
+-- Load approval configuration
+local approval_config = nil
+local function get_approval_config()
+	if not approval_config then
+		local success, config = pcall(require, "paragonic.approval_config")
+		if success then
+			approval_config = config
+		end
+	end
+	return approval_config
+end
 
 -- Tool execution tracking
 M.tool_execution_status = {}
@@ -2333,12 +2446,21 @@ function M.execute_tool_with_approval(tool_name, parameters, request_id)
 		return false, "Tool not found: " .. tool_name
 	end
 	
-	-- Check if tool is auto-approved
+	-- Check if tool is auto-approved using new configuration system
 	local is_auto_approved = false
-	for _, auto_tool in ipairs(M.auto_approved_tools) do
-		if auto_tool == tool_name then
-			is_auto_approved = true
-			break
+	local auto_approval_reason = ""
+	
+	local config = get_approval_config()
+	if config then
+		is_auto_approved, auto_approval_reason = config.should_auto_approve_tool(tool_name, parameters)
+	else
+		-- Fallback to legacy auto-approval list
+		for _, auto_tool in ipairs(M.auto_approved_tools) do
+			if auto_tool == tool_name then
+				is_auto_approved = true
+				auto_approval_reason = "Tool in legacy auto-approval list"
+				break
+			end
 		end
 	end
 	
@@ -2361,7 +2483,7 @@ function M.execute_tool_with_approval(tool_name, parameters, request_id)
 		local success = M.approve_request(request_id, {
 			approved = true,
 			auto_approved = true,
-			reason = "Auto-approved tool"
+			reason = auto_approval_reason or "Auto-approved tool"
 		})
 		
 		if success then
