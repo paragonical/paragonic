@@ -27,16 +27,16 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 2.8 Implement concurrent request handling and cleanup
   - [x] 2.9 Verify all approval state tests pass
 
-- [ ] 3. Approval UI Components
-  - [ ] 3.1 Write tests for approval dialog creation and display
-  - [ ] 3.2 Implement approval dialog UI components
-  - [ ] 3.3 Write tests for user interaction handling
-  - [ ] 3.4 Implement user interaction (approve/deny/modify) handling
-  - [ ] 3.5 Write tests for dialog timeout and auto-cancellation
-  - [ ] 3.6 Implement timeout and auto-cancellation mechanisms
-  - [ ] 3.7 Write tests for UI state management during approval process
-  - [ ] 3.8 Implement UI state management and error handling
-  - [ ] 3.9 Verify all approval UI tests pass
+- [x] 3. Approval UI Components
+  - [x] 3.1 Write tests for approval dialog creation and display
+  - [x] 3.2 Implement approval dialog UI components
+  - [x] 3.3 Write tests for user interaction handling
+  - [x] 3.4 Implement user interaction (approve/deny/modify) handling
+  - [x] 3.5 Write tests for dialog timeout and auto-cancellation
+  - [x] 3.6 Implement timeout and auto-cancellation mechanisms
+  - [x] 3.7 Write tests for UI state management during approval process
+  - [x] 3.8 Implement UI state management and error handling
+  - [x] 3.9 Verify all approval UI tests pass
 
 - [ ] 4. Tool Execution Integration
   - [ ] 4.1 Write tests for approval workflow integration with existing tool calls

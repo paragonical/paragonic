@@ -2120,4 +2120,74 @@ function M.clear_approval_state()
 	end
 end
 
+-- ============================================================================
+-- Approval UI Integration Functions
+-- ============================================================================
+
+-- Create approval dialog
+function M.create_approval_dialog(request_id)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.create_approval_dialog(request_id)
+end
+
+-- Display approval dialog
+function M.display_approval_dialog(dialog)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.display_approval_dialog(dialog)
+end
+
+-- Handle user approval
+function M.handle_user_approval(dialog, result)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.handle_user_approval(dialog, result)
+end
+
+-- Handle user denial
+function M.handle_user_denial(dialog, result)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.handle_user_denial(dialog, result)
+end
+
+-- Close approval dialog
+function M.close_approval_dialog(dialog)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.close_approval_dialog(dialog)
+end
+
+-- Check if dialog is open
+function M.is_dialog_open(dialog)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.is_dialog_open(dialog)
+end
+
+-- Get dialog state
+function M.get_dialog_state(dialog)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.get_dialog_state(dialog)
+end
+
+-- Create decision point dialog
+function M.create_decision_point_dialog(request_id)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.create_decision_point_dialog(request_id)
+end
+
+-- Handle option selection
+function M.handle_option_selection(dialog, option_index)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.handle_option_selection(dialog, option_index)
+end
+
+-- Create batch action dialog
+function M.create_batch_action_dialog(request_id)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.create_batch_action_dialog(request_id)
+end
+
+-- Handle partial approval
+function M.handle_partial_approval(dialog, approved_indices)
+	local ui = require("paragonic.mcp_approval_ui")
+	return ui.handle_partial_approval(dialog, approved_indices)
+end
+
 return M
