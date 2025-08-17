@@ -311,7 +311,7 @@ impl<'a> AstFormatter<'a> {
         is_ordered: bool,
         item_number: usize,
     ) -> ParagonicResult<()> {
-        // Add appropriate indentation based on current nesting level
+        // Add indentation for nested lists (but not base left margin)
         for _ in 0..self.current_indent {
             self.output.push(' ');
         }
@@ -323,7 +323,7 @@ impl<'a> AstFormatter<'a> {
             self.output.push_str("- ");
         }
 
-        // Increase indentation for nested content
+        // Track nesting level for nested lists
         let old_indent = self.current_indent;
         self.current_indent += self.config.base_indent;
 
@@ -338,7 +338,7 @@ impl<'a> AstFormatter<'a> {
                         self.output.push('\n');
                         first_child = false;
                     } else {
-                        // For subsequent paragraphs, add proper indentation
+                        // For subsequent paragraphs, add indentation for continuation
                         for _ in 0..self.current_indent {
                             self.output.push(' ');
                         }
