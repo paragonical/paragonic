@@ -179,9 +179,11 @@ function test_polished_chat_approval()
 	print("")
 	print("🔄 Status indicators:")
 	print("   🔄 = Pending approval")
-	print("   ✅ = Approved")
-	print("   ❌ = Denied")
+	print("   🆗 = Approved (with timestamp)")
+	print("   ⛔ = Denied (with timestamp)")
 	print("   ⏰ = Timed out")
+	print("")
+	print("💡 Completed requests (🆗/⛔) can be ignored - press Enter to see details")
 end
 
 -- Test individual marker interaction

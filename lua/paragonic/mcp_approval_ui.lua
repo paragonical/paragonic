@@ -9,8 +9,8 @@ local M = {}
 M.config = {
 	sigil_marker = "󰭙", -- Account question icon
 	pending_prefix = "🔄",
-	approved_prefix = "✅",
-	denied_prefix = "❌",
+	approved_prefix = "🆗", -- Squared OK
+	denied_prefix = "⛔", -- No entry
 	timeout_prefix = "⏰",
 	marker_color = "WarningMsg",
 	pending_color = "Comment",
@@ -121,11 +121,31 @@ function M.update_approval_marker(approval_id, status, result)
 		new_prefix = M.config.timeout_prefix
 	end
 	
-	local new_marker_line = string.format("%s %s [%s] %s", 
+	-- Format timestamp
+	local timestamp = os.date("%H:%M:%S", approval.updated_at)
+	
+	-- Build result text
+	local result_text = ""
+	if status == "approved" then
+		result_text = " - approved at " .. timestamp
+		if result and result.approved then
+			result_text = result_text .. " ✓"
+		end
+	elseif status == "denied" then
+		result_text = " - denied at " .. timestamp
+		if result and result.approved == false then
+			result_text = result_text .. " ✗"
+		end
+	elseif status == "timeout" then
+		result_text = " - timed out at " .. timestamp
+	end
+	
+	local new_marker_line = string.format("%s %s [%s] %s%s", 
 		M.config.sigil_marker,
 		new_prefix,
 		approval.request_type,
-		approval.description
+		approval.description,
+		result_text
 	)
 	
 	-- Update the line in the buffer
@@ -186,6 +206,13 @@ function M.handle_enter_key()
 					M.process_approval(approval_id)
 					return true
 				end
+			end
+			
+			-- Check if it's a completed marker (approved/denied) - can be ignored
+			if line:find(M.config.approved_prefix) or line:find(M.config.denied_prefix) then
+				-- Show info about completed request
+				M.show_completed_request_info(line)
+				return true
 			end
 		end
 	end
@@ -252,6 +279,80 @@ function M.deny_request(approval_id, request)
 	else
 		vim.notify("Failed to deny request", vim.log.levels.ERROR)
 	end
+end
+
+-- Show completed request info
+function M.show_completed_request_info(marker_line)
+	-- Extract information from the marker line
+	local status = "unknown"
+	local timestamp = "unknown"
+	
+	if marker_line:find(M.config.approved_prefix) then
+		status = "approved"
+	elseif marker_line:find(M.config.denied_prefix) then
+		status = "denied"
+	end
+	
+	-- Extract timestamp if present
+	local timestamp_match = marker_line:match("at (%d+:%d+:%d+)")
+	if timestamp_match then
+		timestamp = timestamp_match
+	end
+	
+	-- Extract description
+	local description_match = marker_line:match("%] (.+) -")
+	if description_match then
+		description = description_match
+	else
+		description = "Unknown request"
+	end
+	
+	local info = {
+		"Request Status: " .. status:upper(),
+		"Completed at: " .. timestamp,
+		"Description: " .. description,
+		"",
+		"This request has been completed and can be ignored.",
+		"",
+		"Press any key to close."
+	}
+	
+	-- Show info in a floating window
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, info)
+	vim.api.nvim_buf_set_option(buf, "modifiable", false)
+	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+	
+	local width = 50
+	local height = #info + 2
+	local row = math.floor((vim.o.lines - height) / 2) - 1
+	local col = math.floor((vim.o.columns - width) / 2)
+	
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded"
+	})
+	
+	-- Close on any key
+	vim.keymap.set("n", "<CR>", function()
+		vim.api.nvim_win_close(win, true)
+		vim.api.nvim_buf_delete(buf, {force = true})
+	end, {buffer = buf, noremap = true, silent = true})
+	
+	vim.keymap.set("n", "<Esc>", function()
+		vim.api.nvim_win_close(win, true)
+		vim.api.nvim_buf_delete(buf, {force = true})
+	end, {buffer = buf, noremap = true, silent = true})
+	
+	vim.keymap.set("n", "q", function()
+		vim.api.nvim_win_close(win, true)
+		vim.api.nvim_buf_delete(buf, {force = true})
+	end, {buffer = buf, noremap = true, silent = true})
 end
 
 -- Show request details in a floating window

@@ -76,9 +76,9 @@ AI: First, let me create the main application file.
 
 **After Processing:**
 ```
-󰭙 ✅ [tool_execution] Create main.py with application header
-󰭙 ❌ [tool_execution] Create requirements.txt with dependencies
-󰭙 ✅ [decision_point] Choose testing framework for the project
+󰭙 🆗 [tool_execution] Create main.py with application header - approved at 14:32:15 ✓
+󰭙 ⛔ [tool_execution] Create requirements.txt with dependencies - denied at 14:32:45 ✗
+󰭙 🆗 [decision_point] Choose testing framework for the project - approved at 14:33:10 ✓
 󰭙 🔄 [batch_action] Create project documentation and config files
 ```
 
@@ -97,9 +97,11 @@ AI: First, let me create the main application file.
 ### Status Indicators
 
 - **🔄 Pending** - Waiting for user approval
-- **✅ Approved** - Request has been approved
-- **❌ Denied** - Request has been denied
+- **🆗 Approved** - Request has been approved (with timestamp)
+- **⛔ Denied** - Request has been denied (with timestamp)
 - **⏰ Timeout** - Request timed out automatically
+
+**Note:** Completed requests (🆗/⛔) can be ignored. Press Enter on them to see completion details.
 
 ## Request Types
 
