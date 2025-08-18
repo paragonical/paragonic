@@ -141,6 +141,45 @@ diesel::table! {
 }
 
 diesel::table! {
+    human_assistance_requests (id) {
+        id -> Uuid,
+        requester_id -> Uuid,
+        problem_description -> Text,
+        required_skills -> Jsonb,
+        #[max_length = 50]
+        difficulty_level -> Varchar,
+        #[max_length = 50]
+        urgency_level -> Varchar,
+        estimated_completion_hours -> Nullable<Int4>,
+        available_experts -> Nullable<Jsonb>,
+        assigned_expert_id -> Nullable<Uuid>,
+        #[max_length = 50]
+        request_status -> Varchar,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    human_learning_states (id) {
+        id -> Uuid,
+        person_id -> Uuid,
+        learning_unit_id -> Uuid,
+        #[max_length = 50]
+        learning_state -> Varchar,
+        current_score -> Int4,
+        last_practiced -> Nullable<Timestamptz>,
+        practice_frequency_days -> Int4,
+        next_practice_date -> Nullable<Timestamptz>,
+        total_practice_sessions -> Int4,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     isrl_profiles (id) {
         id -> Uuid,
         person_id -> Nullable<Uuid>,
@@ -239,6 +278,24 @@ diesel::table! {
         metadata -> Nullable<Jsonb>,
         started_at -> Nullable<Timestamptz>,
         completed_at -> Nullable<Timestamptz>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    learning_units (id) {
+        id -> Uuid,
+        skill_area_id -> Uuid,
+        #[max_length = 255]
+        title -> Varchar,
+        content -> Text,
+        #[max_length = 50]
+        unit_type -> Varchar,
+        difficulty_level -> Int4,
+        estimated_time_minutes -> Nullable<Int4>,
+        dependencies -> Nullable<Jsonb>,
+        metadata -> Nullable<Jsonb>,
         created_at -> Nullable<Timestamptz>,
         updated_at -> Nullable<Timestamptz>,
     }
@@ -389,6 +446,32 @@ diesel::table! {
         estimated_time_minutes -> Nullable<Int4>,
         tags -> Nullable<Jsonb>,
         metadata -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    practice_sessions (id) {
+        id -> Uuid,
+        person_id -> Uuid,
+        #[max_length = 50]
+        session_type -> Varchar,
+        #[max_length = 255]
+        title -> Varchar,
+        description -> Nullable<Text>,
+        #[max_length = 50]
+        enrollment_level -> Varchar,
+        target_duration_minutes -> Nullable<Int4>,
+        actual_duration_minutes -> Nullable<Int4>,
+        learning_units -> Nullable<Jsonb>,
+        #[max_length = 50]
+        session_status -> Varchar,
+        completion_percentage -> Nullable<Int4>,
+        metadata -> Nullable<Jsonb>,
+        scheduled_at -> Nullable<Timestamptz>,
+        started_at -> Nullable<Timestamptz>,
+        completed_at -> Nullable<Timestamptz>,
         created_at -> Nullable<Timestamptz>,
         updated_at -> Nullable<Timestamptz>,
     }
@@ -564,14 +647,18 @@ diesel::joinable!(conversations -> agents (agent_id));
 diesel::joinable!(conversations -> organizations (organization_id));
 diesel::joinable!(expertise_profiles -> people (person_id));
 diesel::joinable!(goals -> projects (project_id));
+diesel::joinable!(human_learning_states -> learning_units (learning_unit_id));
+diesel::joinable!(human_learning_states -> people (person_id));
 diesel::joinable!(isrl_profiles -> people (person_id));
 diesel::joinable!(learning_analytics -> people (person_id));
 diesel::joinable!(learning_analytics -> skill_areas (skill_area_id));
 diesel::joinable!(learning_sessions -> people (person_id));
+diesel::joinable!(learning_units -> skill_areas (skill_area_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(pattern_executions -> system_patterns (pattern_id));
 diesel::joinable!(pattern_learning_metrics -> system_patterns (pattern_id));
 diesel::joinable!(practice_items -> skill_areas (skill_area_id));
+diesel::joinable!(practice_sessions -> people (person_id));
 diesel::joinable!(projects -> organizations (organization_id));
 diesel::joinable!(session_items -> learning_sessions (session_id));
 diesel::joinable!(session_items -> practice_items (practice_item_id));
@@ -592,11 +679,14 @@ diesel::allow_tables_to_appear_in_same_query!(
     embeddings,
     expertise_profiles,
     goals,
+    human_assistance_requests,
+    human_learning_states,
     isrl_profiles,
     knowledge_metrics,
     knowledge_streams,
     learning_analytics,
     learning_sessions,
+    learning_units,
     messages,
     optimization_history,
     organization_hierarchies,
@@ -606,6 +696,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     pattern_relationships,
     people,
     practice_items,
+    practice_sessions,
     projects,
     query_analytics,
     session_items,

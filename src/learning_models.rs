@@ -590,3 +590,155 @@ impl std::str::FromStr for TrendDirection {
         }
     }
 }
+
+/// Learning unit model - atomic pieces of knowledge/skill
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable, Associations)]
+#[diesel(table_name = learning_units)]
+#[diesel(belongs_to(SkillArea))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct LearningUnit {
+    pub id: Uuid,
+    pub skill_area_id: Uuid,
+    pub title: String,
+    pub content: String,
+    pub unit_type: String, // "concept", "skill", "value", "culture", "procedure"
+    pub difficulty_level: i32, // Scaled by 100 (e.g., 3500 = 35.00)
+    pub estimated_time_minutes: Option<i32>,
+    pub dependencies: Option<Value>, // Array of unit IDs that must be mastered first
+    pub metadata: Option<Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// New learning unit for insertion
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = learning_units)]
+pub struct NewLearningUnit {
+    pub skill_area_id: Uuid,
+    pub title: String,
+    pub content: String,
+    pub unit_type: String,
+    pub difficulty_level: i32, // Scaled by 100 (e.g., 3500 = 35.00)
+    pub estimated_time_minutes: Option<i32>,
+    pub dependencies: Option<Value>,
+    pub metadata: Option<Value>,
+}
+
+/// Human learning state for each unit
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable, Associations)]
+#[diesel(table_name = human_learning_states)]
+#[diesel(belongs_to(crate::models::Person))]
+#[diesel(belongs_to(LearningUnit))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct HumanLearningState {
+    pub id: Uuid,
+    pub person_id: Uuid,
+    pub learning_unit_id: Uuid,
+    pub learning_state: String, // "not_seen", "forgotten", "recalled"
+    pub current_score: i32, // Scaled by 100 (0-10000)
+    pub last_practiced: Option<DateTime<Utc>>,
+    pub practice_frequency_days: i32, // Days between practices based on score
+    pub next_practice_date: Option<DateTime<Utc>>,
+    pub total_practice_sessions: i32,
+    pub metadata: Option<Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// New human learning state for insertion
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = human_learning_states)]
+pub struct NewHumanLearningState {
+    pub person_id: Uuid,
+    pub learning_unit_id: Uuid,
+    pub learning_state: String,
+    pub current_score: i32, // Scaled by 100 (0-10000)
+    pub practice_frequency_days: i32,
+    pub next_practice_date: Option<DateTime<Utc>>,
+    pub metadata: Option<Value>,
+}
+
+/// Completion estimates for learning progress
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionEstimates {
+    pub eighty_percent_completion: DateTime<Utc>,
+    pub ninety_five_percent_completion: DateTime<Utc>,
+    pub current_mastery_percentage: i32,
+    pub estimated_remaining_days: i32,
+}
+
+/// Practice session model for human-driven learning
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable, Associations)]
+#[diesel(table_name = practice_sessions)]
+#[diesel(belongs_to(crate::models::Person))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct PracticeSession {
+    pub id: Uuid,
+    pub person_id: Uuid,
+    pub session_type: String, // "adaptive_practice", "focused_review", "assessment"
+    pub title: String,
+    pub description: Option<String>,
+    pub enrollment_level: String, // "light", "moderate", "intensive"
+    pub target_duration_minutes: Option<i32>,
+    pub actual_duration_minutes: Option<i32>,
+    pub learning_units: Option<Value>, // Array of unit IDs in this session
+    pub session_status: String, // "scheduled", "in_progress", "completed", "cancelled"
+    pub completion_percentage: Option<i32>, // Scaled by 100
+    pub metadata: Option<Value>,
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// New practice session for insertion
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = practice_sessions)]
+pub struct NewPracticeSession {
+    pub person_id: Uuid,
+    pub session_type: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub enrollment_level: String,
+    pub target_duration_minutes: Option<i32>,
+    pub learning_units: Option<Value>,
+    pub session_status: String,
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub metadata: Option<Value>,
+}
+
+/// Human assistance request model for AI agents calling upon skilled humans
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable, Associations)]
+#[diesel(table_name = human_assistance_requests)]
+#[diesel(belongs_to(crate::models::Person))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct HumanAssistanceRequest {
+    pub id: Uuid,
+    pub requester_id: Uuid, // AI agent or person requesting assistance
+    pub problem_description: String,
+    pub required_skills: Value, // Array of required skill areas
+    pub difficulty_level: String, // "easy", "medium", "hard", "expert"
+    pub urgency_level: String, // "low", "medium", "high", "critical"
+    pub estimated_completion_hours: Option<i32>,
+    pub available_experts: Option<Value>, // Array of expert person IDs
+    pub assigned_expert_id: Option<Uuid>,
+    pub request_status: String, // "open", "assigned", "in_progress", "completed", "cancelled"
+    pub metadata: Option<Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// New human assistance request for insertion
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
+#[diesel(table_name = human_assistance_requests)]
+pub struct NewHumanAssistanceRequest {
+    pub requester_id: Uuid,
+    pub problem_description: String,
+    pub required_skills: Value,
+    pub difficulty_level: String,
+    pub urgency_level: String,
+    pub estimated_completion_hours: Option<i32>,
+    pub available_experts: Option<Value>,
+    pub metadata: Option<Value>,
+}

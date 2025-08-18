@@ -6,16 +6,16 @@
 
 ## Overview
 
-Implement a comprehensive human skill building system that leverages interleaved spaced repetition recall practice to help developers continuously improve their skills while working with AI agents. This system will track learning progress, generate personalized practice sessions, and create marketable expertise profiles for the fractional organization network.
+Implement a comprehensive **human-driven learning system** that enables humans to continuously develop skills while collaborating with AI agents. This system puts humans in control of their learning journey, with AI identifying optimal learning units and dependencies, while humans make their own learning judgments. The system creates a sustainable partnership where both humans and AI agents continuously improve, with humans developing deep expertise that AI agents can call upon for challenging problems.
 
 ## User Stories
 
-### Continuous Skill Development
+### Human-Driven Learning
 
-As a developer working with AI agents, I want my skills to continuously improve through structured practice sessions, so that I can maintain and enhance my expertise while collaborating with AI on projects.
+As a human working with AI agents, I want to control my own learning journey through self-directed practice sessions, so that I can develop deep expertise while maintaining agency over my skill development.
 
 **Detailed Workflow:**
-The system will analyze the developer's work patterns, identify skill areas that need reinforcement, and automatically schedule interleaved practice sessions. These sessions will mix different skill areas to improve retention and transfer learning, while tracking progress over time to ensure continuous improvement.
+The system will present me with learning units identified by AI, and I will make my own judgments about my learning state (not seen, forgotten, recalled). The system will adapt practice frequency based on my judgments and provide clear completion estimates for mastery goals. I can choose my learning intensity and track my progress toward expertise.
 
 ### Marketable Expertise Profiles
 
@@ -24,19 +24,19 @@ As a developer in the fractional organization network, I want my learning progre
 **Detailed Workflow:**
 The system will create comprehensive expertise profiles based on learning metrics, skill assessments, and project contributions. These profiles will include skill levels, learning velocity, and demonstrated competencies that can be shared with organizations seeking fractional expertise.
 
-### Adaptive Learning Paths
+### Flexible Learning Enrollment
 
-As a developer, I want my learning sessions to adapt to my current skill level and learning pace, so that I can maximize my learning efficiency and avoid wasting time on content I've already mastered.
-
-**Detailed Workflow:**
-The system will continuously assess the developer's current skill levels through practice sessions and project work, adjusting the difficulty and frequency of practice items to maintain optimal learning challenge levels.
-
-### Adjacent Skill Development
-
-As a developer, I want to discover and develop skills that are adjacent to my current expertise, so that I can expand my value proposition and explore new opportunities in the fractional organization network.
+As a human learner, I want to choose my own learning intensity and see clear completion estimates, so that I can balance learning with other commitments and stay motivated toward mastery goals.
 
 **Detailed Workflow:**
-The system will analyze the developer's current skill profile and identify adjacent skills that would enhance their expertise. It will recommend learning paths that build upon existing strengths while expanding into related domains, creating a more comprehensive and marketable skill portfolio.
+The system will allow me to choose between light, moderate, or intensive learning enrollment levels, and provide clear estimates for when I'll reach 80% and 95% mastery based on my current performance and practice frequency. The system will adapt practice scheduling based on my learning judgments and progress.
+
+### Future AI-Human Partnership
+
+As a human developing expertise, I want to eventually become the go-to expert that AI agents call upon for challenging problems, so that I can contribute unique human value in the AI collaboration ecosystem.
+
+**Detailed Workflow:**
+Once the learning system is well-established, AI agents will be able to identify humans with specific expertise and call upon them for assistance with hard problems. This creates a true partnership where humans develop deep expertise that AI agents can leverage, rather than humans becoming dependent on AI assistance.
 
 ## Spec Scope
 
