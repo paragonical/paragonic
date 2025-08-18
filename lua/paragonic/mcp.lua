@@ -247,6 +247,181 @@ function M.initialize_mcp_server()
 			},
 		},
 		{
+			name = "create_assistance_request",
+			description = "Create a human assistance request for complex problems or expert guidance",
+			inputSchema = {
+				type = "object",
+				properties = {
+					problem_description = {
+						type = "string",
+						description = "Detailed description of the problem or task requiring assistance",
+						minLength = 10,
+						maxLength = 2000,
+					},
+					required_skills = {
+						type = "array",
+						items = {
+							type = "string",
+						},
+						description = "List of skills or expertise areas needed",
+						minItems = 1,
+						maxItems = 10,
+					},
+					difficulty_level = {
+						type = "string",
+						enum = { "beginner", "intermediate", "advanced", "expert" },
+						description = "Difficulty level of the problem",
+						default = "intermediate",
+					},
+					urgency_level = {
+						type = "string",
+						enum = { "low", "medium", "high", "critical" },
+						description = "Urgency level of the request",
+						default = "medium",
+					},
+					estimated_completion_hours = {
+						type = "integer",
+						description = "Estimated time to complete the task in hours",
+						minimum = 1,
+						maximum = 168,
+					},
+					context_files = {
+						type = "array",
+						items = {
+							type = "string",
+							custom_type = "file_path",
+						},
+						description = "List of relevant files that provide context for the request",
+					},
+					additional_context = {
+						type = "string",
+						description = "Additional context or notes for the expert",
+						maxLength = 1000,
+					},
+				},
+				required = { "problem_description", "required_skills" },
+			},
+			patterns = {
+				{
+					pattern_id = "human_driven_learning",
+					relationship_type = "input",
+					description = "Used to request human assistance during learning sessions",
+				},
+				{
+					pattern_id = "knowledge_extraction",
+					relationship_type = "enhance",
+					description = "Enhances knowledge extraction by requesting expert input",
+				},
+			},
+			usage_guidance = "Use this tool when you encounter complex problems that require human expertise or when you need guidance beyond your current capabilities. Provide a clear problem description and specify the required skills. Include relevant context files if available.",
+			success_metrics = {
+				success_rate = 0.85,
+				usage_count = 0,
+				last_used = nil,
+			},
+		},
+		{
+			name = "get_assistance_requests",
+			description = "Retrieve assistance requests for the current user or session",
+			inputSchema = {
+				type = "object",
+				properties = {
+					status = {
+						type = "string",
+						enum = { "pending", "in_progress", "completed", "cancelled" },
+						description = "Filter by request status",
+					},
+					urgency_level = {
+						type = "string",
+						enum = { "low", "medium", "high", "critical" },
+						description = "Filter by urgency level",
+					},
+					limit = {
+						type = "integer",
+						description = "Maximum number of requests to return",
+						minimum = 1,
+						maximum = 50,
+						default = 10,
+					},
+					include_details = {
+						type = "boolean",
+						description = "Include full request details",
+						default = true,
+					},
+				},
+			},
+			patterns = {
+				{
+					pattern_id = "human_driven_learning",
+					relationship_type = "output",
+					description = "Used to track assistance requests during learning sessions",
+				},
+				{
+					pattern_id = "progress_tracking",
+					relationship_type = "enhance",
+					description = "Enhances progress tracking by monitoring assistance needs",
+				},
+			},
+			usage_guidance = "Use this tool to check the status of your assistance requests or to review past requests. You can filter by status and urgency level to focus on relevant requests.",
+			success_metrics = {
+				success_rate = 0.95,
+				usage_count = 0,
+				last_used = nil,
+			},
+		},
+		{
+			name = "update_assistance_request",
+			description = "Update an existing assistance request with new information or status",
+			inputSchema = {
+				type = "object",
+				properties = {
+					request_id = {
+						type = "string",
+						description = "ID of the assistance request to update",
+					},
+					status = {
+						type = "string",
+						enum = { "pending", "in_progress", "completed", "cancelled" },
+						description = "New status for the request",
+					},
+					additional_context = {
+						type = "string",
+						description = "Additional context or updates to the request",
+						maxLength = 1000,
+					},
+					expert_feedback = {
+						type = "string",
+						description = "Feedback or solution provided by the expert",
+						maxLength = 2000,
+					},
+					completion_notes = {
+						type = "string",
+						description = "Notes about how the problem was resolved",
+						maxLength = 1000,
+					},
+				},
+				required = { "request_id" },
+			},
+			patterns = {
+				{
+					pattern_id = "human_driven_learning",
+					relationship_type = "enhance",
+					description = "Enhances human-driven learning by tracking request updates",
+				},
+				{
+					pattern_id = "progress_tracking",
+					relationship_type = "input",
+					description = "Used to update progress tracking with assistance outcomes",
+				},
+			},
+			usage_guidance = "Use this tool to update the status of your assistance requests, add new context, or record expert feedback. This helps track the resolution of complex problems.",
+			success_metrics = {
+				success_rate = 0.90,
+				usage_count = 0,
+				last_used = nil,
+			},
+		},
+		{
 			name = "agent_search_files",
 			description = "Search for files in the current directory and subdirectories",
 			inputSchema = {

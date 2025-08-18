@@ -1141,6 +1141,166 @@ function M.agent_save_file()
 	vim.notify("Saved file: " .. file_path, vim.log.levels.INFO)
 end
 
+-- Assistance request functions
+function M.create_assistance_request(args)
+	-- Validate required parameters
+	if not args.problem_description or not args.required_skills then
+		return {
+			success = false,
+			error = "problem_description and required_skills are required"
+		}
+	end
+
+	-- Generate unique request ID
+	local request_id = "assist_" .. os.time() .. "_" .. math.random(1000, 9999)
+
+	-- Get current session context
+	local session_info = M.get_agent_session_info({
+		include_buffers = true,
+		include_patterns = true,
+		include_history = true
+	})
+
+	-- Create assistance request
+	local request = {
+		id = request_id,
+		problem_description = args.problem_description,
+		required_skills = args.required_skills,
+		difficulty_level = args.difficulty_level or "intermediate",
+		urgency_level = args.urgency_level or "medium",
+		estimated_completion_hours = args.estimated_completion_hours,
+		context_files = args.context_files or {},
+		additional_context = args.additional_context,
+		session_context = session_info,
+		status = "pending",
+		created_at = os.time(),
+		updated_at = os.time()
+	}
+
+	-- Store the request (in a real implementation, this would go to a database)
+	-- For now, we'll store it in memory
+	if not M.assistance_requests then
+		M.assistance_requests = {}
+	end
+	M.assistance_requests[request_id] = request
+
+	-- Notify user
+	vim.notify("Assistance request created: " .. request_id, vim.log.levels.INFO)
+	vim.notify("Problem: " .. args.problem_description:sub(1, 100) .. "...", vim.log.levels.INFO)
+	vim.notify("Required skills: " .. table.concat(args.required_skills, ", "), vim.log.levels.INFO)
+
+	return {
+		success = true,
+		request_id = request_id,
+		request = request
+	}
+end
+
+function M.get_assistance_requests(args)
+	args = args or {}
+	
+	if not M.assistance_requests then
+		M.assistance_requests = {}
+	end
+
+	local requests = {}
+	local count = 0
+
+	for id, request in pairs(M.assistance_requests) do
+		-- Apply filters
+		if args.status and request.status ~= args.status then
+			goto continue
+		end
+		if args.urgency_level and request.urgency_level ~= args.urgency_level then
+			goto continue
+		end
+
+		-- Add to results
+		local result = {
+			id = id,
+			problem_description = request.problem_description,
+			required_skills = request.required_skills,
+			difficulty_level = request.difficulty_level,
+			urgency_level = request.urgency_level,
+			status = request.status,
+			created_at = request.created_at,
+			updated_at = request.updated_at
+		}
+
+		if args.include_details then
+			result.estimated_completion_hours = request.estimated_completion_hours
+			result.context_files = request.context_files
+			result.additional_context = request.additional_context
+			result.session_context = request.session_context
+		end
+
+		table.insert(requests, result)
+		count = count + 1
+
+		-- Apply limit
+		if args.limit and count >= args.limit then
+			break
+		end
+
+		::continue::
+	end
+
+	-- Sort by creation time (newest first)
+	table.sort(requests, function(a, b)
+		return a.created_at > b.created_at
+	end)
+
+	return {
+		success = true,
+		requests = requests,
+		total = count
+	}
+end
+
+function M.update_assistance_request(args)
+	if not args.request_id then
+		return {
+			success = false,
+			error = "request_id is required"
+		}
+	end
+
+	if not M.assistance_requests or not M.assistance_requests[args.request_id] then
+		return {
+			success = false,
+			error = "Assistance request not found: " .. args.request_id
+		}
+	end
+
+	local request = M.assistance_requests[args.request_id]
+
+	-- Update fields
+	if args.status then
+		request.status = args.status
+	end
+	if args.additional_context then
+		request.additional_context = (request.additional_context or "") .. "\n\n" .. args.additional_context
+	end
+	if args.expert_feedback then
+		request.expert_feedback = args.expert_feedback
+	end
+	if args.completion_notes then
+		request.completion_notes = args.completion_notes
+	end
+
+	request.updated_at = os.time()
+
+	-- Notify user of status changes
+	if args.status and args.status ~= request.status then
+		vim.notify("Assistance request " .. args.request_id .. " status updated to: " .. args.status, vim.log.levels.INFO)
+	end
+
+	return {
+		success = true,
+		request = request
+	}
+end
+
 -- Pattern integration functions
 function M.execute_session_pattern(pattern_name, context)
 	if not agent_collaboration_mode or not active_agent_id then

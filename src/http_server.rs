@@ -17,6 +17,7 @@ use tokio_stream::{Stream, StreamExt};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use rand::Rng;
 
 // Import modules for MCP tool implementations
 use crate::embeddings::create_embedding;
@@ -156,7 +157,25 @@ impl McpHttpServer {
         }
         
         // Get total count
-        let total = match query.count().get_result::<i64>(&mut conn) {
+        let mut count_query = learning_units::table.into_boxed();
+        
+        if let Some(skill_area_id) = skill_area_id {
+            count_query = count_query.filter(learning_units::skill_area_id.eq(skill_area_id));
+        }
+        
+        if let Some(unit_type) = &unit_type {
+            count_query = count_query.filter(learning_units::unit_type.eq(unit_type));
+        }
+        
+        if let Some(difficulty_min) = difficulty_min {
+            count_query = count_query.filter(learning_units::difficulty_level.ge(difficulty_min));
+        }
+        
+        if let Some(difficulty_max) = difficulty_max {
+            count_query = count_query.filter(learning_units::difficulty_level.le(difficulty_max));
+        }
+        
+        let total = match count_query.count().get_result::<i64>(&mut conn) {
             Ok(count) => count,
             Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
         };
@@ -304,8 +323,7 @@ impl McpHttpServer {
         
         // Query database
         use crate::schema::learning_units;
-        let unit = match learning_units::table
-            .find(unit_id)
+        let unit = match diesel::QueryDsl::find(learning_units::table, unit_id)
             .first::<crate::learning_models::LearningUnit>(&mut conn)
         {
             Ok(unit) => unit,
@@ -353,8 +371,7 @@ impl McpHttpServer {
         use crate::schema::learning_units;
         
         // Get current unit to build update
-        let current_unit = match learning_units::table
-            .find(unit_id)
+        let current_unit = match diesel::QueryDsl::find(learning_units::table, unit_id)
             .first::<crate::learning_models::LearningUnit>(&mut conn)
         {
             Ok(unit) => unit,
@@ -371,7 +388,7 @@ impl McpHttpServer {
         let metadata = body.get("metadata").cloned().or(current_unit.metadata);
         
         // Update database
-        match diesel::update(learning_units::table.find(unit_id))
+        match diesel::update(diesel::QueryDsl::find(learning_units::table, unit_id))
             .set((
                 learning_units::title.eq(title),
                 learning_units::content.eq(content),
@@ -417,7 +434,7 @@ impl McpHttpServer {
         
         // Delete from database
         use crate::schema::learning_units;
-        match diesel::delete(learning_units::table.find(unit_id))
+        match diesel::delete(diesel::QueryDsl::find(learning_units::table, unit_id))
             .execute(&mut conn)
         {
             Ok(rows_affected) => {
@@ -472,26 +489,36 @@ impl McpHttpServer {
             query = query.filter(practice_sessions::session_status.eq(session_status));
         }
         
-        // Get total count and paginated results
+        // Get total count
+        let mut count_query = practice_sessions::table.into_boxed();
+        
+        if let Some(person_id) = person_id {
+            count_query = count_query.filter(practice_sessions::person_id.eq(person_id));
+        }
+        
+        if let Some(session_type) = &session_type {
+            count_query = count_query.filter(practice_sessions::session_type.eq(session_type));
+        }
+        
+        if let Some(session_status) = &session_status {
+            count_query = count_query.filter(practice_sessions::session_status.eq(session_status));
+        }
+        
+        let total = match count_query.count().get_result::<i64>(&mut conn) {
+            Ok(count) => count,
+            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        };
+        
+        // Get paginated results
         let offset = (page - 1) * per_page;
-        let (total, sessions) = {
-            let count_query = query.clone();
-            let total = match count_query.count().get_result::<i64>(&mut conn) {
-                Ok(count) => count,
-                Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-            };
-            
-            let sessions = match query
-                .order(practice_sessions::created_at.desc())
-                .offset(offset)
-                .limit(per_page)
-                .load::<crate::learning_models::PracticeSession>(&mut conn)
-            {
-                Ok(sessions) => sessions,
-                Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-            };
-            
-            (total, sessions)
+        let sessions = match query
+            .order(practice_sessions::created_at.desc())
+            .offset(offset)
+            .limit(per_page)
+            .load::<crate::learning_models::PracticeSession>(&mut conn)
+        {
+            Ok(sessions) => sessions,
+            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
         };
         
         // Convert to JSON response
@@ -638,8 +665,7 @@ impl McpHttpServer {
         
         // Query database
         use crate::schema::practice_sessions;
-        let session = match practice_sessions::table
-            .find(session_id)
+        let session = match diesel::QueryDsl::find(practice_sessions::table, session_id)
             .first::<crate::learning_models::PracticeSession>(&mut conn)
         {
             Ok(session) => session,
@@ -693,8 +719,7 @@ impl McpHttpServer {
         use crate::schema::practice_sessions;
         
         // Get current session to build update
-        let current_session = match practice_sessions::table
-            .find(session_id)
+        let current_session = match diesel::QueryDsl::find(practice_sessions::table, session_id)
             .first::<crate::learning_models::PracticeSession>(&mut conn)
         {
             Ok(session) => session,
@@ -727,7 +752,7 @@ impl McpHttpServer {
         }
         
         // Update database
-        match diesel::update(practice_sessions::table.find(session_id))
+        match diesel::update(diesel::QueryDsl::find(practice_sessions::table, session_id))
             .set((
                 practice_sessions::title.eq(title),
                 practice_sessions::description.eq(description),
@@ -1018,8 +1043,7 @@ impl McpHttpServer {
         
         // Query database
         use crate::schema::human_assistance_requests;
-        let request = match human_assistance_requests::table
-            .find(request_id)
+        let request = match diesel::QueryDsl::find(human_assistance_requests::table, request_id)
             .first::<crate::learning_models::HumanAssistanceRequest>(&mut conn)
         {
             Ok(request) => request,
@@ -1069,8 +1093,7 @@ impl McpHttpServer {
         use crate::schema::human_assistance_requests;
         
         // Get current request to build update
-        let current_request = match human_assistance_requests::table
-            .find(request_id)
+        let current_request = match diesel::QueryDsl::find(human_assistance_requests::table, request_id)
             .first::<crate::learning_models::HumanAssistanceRequest>(&mut conn)
         {
             Ok(request) => request,
@@ -1087,7 +1110,7 @@ impl McpHttpServer {
         let metadata = body.get("metadata").cloned().or(current_request.metadata);
         
         // Update database
-        match diesel::update(human_assistance_requests::table.find(request_id))
+        match diesel::update(diesel::QueryDsl::find(human_assistance_requests::table, request_id))
             .set((
                 human_assistance_requests::request_status.eq(request_status),
                 human_assistance_requests::assigned_expert_id.eq(assigned_expert_id),
@@ -2116,6 +2139,27 @@ impl McpHttpServer {
             // Pattern Management Tools
             "list_patterns" => Self::handle_list_patterns(server, Some(&arguments_clone)).await,
             "execute_pattern" => Self::handle_execute_pattern(server, Some(&arguments_clone)).await,
+            // Agent Tools (placeholder - implement these handlers as needed)
+            "agent_edit_file" => Ok(serde_json::json!({
+                "success": false,
+                "error": "agent_edit_file handler not implemented"
+            })),
+            "agent_create_file" => Ok(serde_json::json!({
+                "success": false,
+                "error": "agent_create_file handler not implemented"
+            })),
+            "agent_save_file" => Ok(serde_json::json!({
+                "success": false,
+                "error": "agent_save_file handler not implemented"
+            })),
+            "agent_session_info" => Ok(serde_json::json!({
+                "success": false,
+                "error": "agent_session_info handler not implemented"
+            })),
+            // Assistance Request Tools
+            "create_assistance_request" => Self::handle_create_assistance_request(server, Some(&arguments_clone)).await,
+            "get_assistance_requests" => Self::handle_get_assistance_requests(server, Some(&arguments_clone)).await,
+            "update_assistance_request" => Self::handle_update_assistance_request(server, Some(&arguments_clone)).await,
             // Unknown tool
             _ => {
                 error!("Unknown tool: {}", name);
@@ -2873,6 +2917,177 @@ impl McpHttpServer {
         Ok(serde_json::json!({
             "success": true,
             "message": "Task deleted"
+        }))
+    }
+
+    // Assistance Request Management
+    async fn handle_create_assistance_request(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Extract required parameters
+        let problem_description = params
+            .get("problem_description")
+            .and_then(|p| p.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let required_skills = params
+            .get("required_skills")
+            .and_then(|s| s.as_array())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Validate required skills is an array of strings
+        let skills: Vec<String> = required_skills
+            .iter()
+            .filter_map(|s| s.as_str().map(|s| s.to_string()))
+            .collect();
+        
+        if skills.is_empty() {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        
+        // Extract optional parameters
+        let difficulty_level = params
+            .get("difficulty_level")
+            .and_then(|d| d.as_str())
+            .unwrap_or("intermediate");
+        
+        let urgency_level = params
+            .get("urgency_level")
+            .and_then(|u| u.as_str())
+            .unwrap_or("medium");
+        
+        let estimated_completion_hours = params
+            .get("estimated_completion_hours")
+            .and_then(|e| e.as_u64());
+        
+        let context_files = params
+            .get("context_files")
+            .and_then(|c| c.as_array())
+            .map(|arr| arr.iter().filter_map(|f| f.as_str().map(|s| s.to_string())).collect::<Vec<String>>())
+            .unwrap_or_default();
+        
+        let additional_context = params
+            .get("additional_context")
+            .and_then(|a| a.as_str());
+        
+        // Generate unique request ID
+        let request_id = format!("assist_{}_{}", 
+            chrono::Utc::now().timestamp(), 
+            rand::thread_rng().gen::<u32>()
+        );
+        
+        // Create the assistance request
+        let request = serde_json::json!({
+            "id": request_id,
+            "problem_description": problem_description,
+            "required_skills": skills,
+            "difficulty_level": difficulty_level,
+            "urgency_level": urgency_level,
+            "estimated_completion_hours": estimated_completion_hours,
+            "context_files": context_files,
+            "additional_context": additional_context,
+            "status": "pending",
+            "created_at": chrono::Utc::now().to_rfc3339(),
+            "updated_at": chrono::Utc::now().to_rfc3339()
+        });
+        
+        Ok(serde_json::json!({
+            "success": true,
+            "request_id": request_id,
+            "request": request
+        }))
+    }
+
+    async fn handle_get_assistance_requests(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let default_params = serde_json::json!({});
+        let params = params.unwrap_or(&default_params);
+        
+        // Extract optional filter parameters
+        let status = params.get("status").and_then(|s| s.as_str());
+        let difficulty_level = params.get("difficulty_level").and_then(|d| d.as_str());
+        let urgency_level = params.get("urgency_level").and_then(|u| u.as_str());
+        
+        // Placeholder implementation - return sample data
+        let mut requests = vec![
+            serde_json::json!({
+                "id": "assist_1234567890_1234",
+                "problem_description": "Implement a complex algorithm for data processing",
+                "required_skills": ["algorithm design", "data structures", "optimization"],
+                "difficulty_level": "advanced",
+                "urgency_level": "high",
+                "estimated_completion_hours": 8,
+                "status": "pending",
+                "created_at": "2024-01-15T10:30:00Z",
+                "updated_at": "2024-01-15T10:30:00Z"
+            }),
+            serde_json::json!({
+                "id": "assist_1234567891_5678",
+                "problem_description": "Debug a memory leak in the application",
+                "required_skills": ["debugging", "memory management", "profiling"],
+                "difficulty_level": "intermediate",
+                "urgency_level": "medium",
+                "estimated_completion_hours": 4,
+                "status": "in_progress",
+                "created_at": "2024-01-14T14:20:00Z",
+                "updated_at": "2024-01-15T09:15:00Z"
+            })
+        ];
+        
+        // Apply filters if provided
+        if let Some(status_filter) = status {
+            requests.retain(|r| r["status"] == status_filter);
+        }
+        
+        if let Some(difficulty_filter) = difficulty_level {
+            requests.retain(|r| r["difficulty_level"] == difficulty_filter);
+        }
+        
+        if let Some(urgency_filter) = urgency_level {
+            requests.retain(|r| r["urgency_level"] == urgency_filter);
+        }
+        
+        Ok(serde_json::json!({
+            "success": true,
+            "requests": requests,
+            "total": requests.len()
+        }))
+    }
+
+    async fn handle_update_assistance_request(
+        _server: &Self,
+        params: Option<&Value>,
+    ) -> Result<Value, StatusCode> {
+        let params = params.ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let request_id = params
+            .get("request_id")
+            .and_then(|r| r.as_str())
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        // Extract update fields
+        let status = params.get("request_status").and_then(|s| s.as_str());
+        let assigned_expert_id = params.get("assigned_expert_id").and_then(|e| e.as_str());
+        let metadata = params.get("metadata");
+        
+        // Placeholder implementation - simulate update
+        let updated_request = serde_json::json!({
+            "id": request_id,
+            "status": status.unwrap_or("pending"),
+            "assigned_expert_id": assigned_expert_id,
+            "metadata": metadata,
+            "updated_at": chrono::Utc::now().to_rfc3339()
+        });
+        
+        Ok(serde_json::json!({
+            "success": true,
+            "request": updated_request,
+            "message": "Assistance request updated successfully"
         }))
     }
 

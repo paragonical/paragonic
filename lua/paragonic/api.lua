@@ -216,6 +216,26 @@ function M.get_status()
 	}
 end
 
+-- Call a tool with arguments
+function M.call_tool(tool_name, arguments)
+	if not api_state.initialized then
+		return { success = false, error = "API layer not initialized" }
+	end
+
+	debug.debug_print("📤 Tool call: " .. tool_name, "debug")
+
+	local response, err = transport.send_request("tools/call", {
+		name = tool_name,
+		arguments = arguments or {},
+	})
+
+	if not response then
+		return { success = false, error = "Request failed: " .. tostring(err) }
+	end
+
+	return normalize_response(response, tool_name)
+end
+
 -- Cleanup API layer
 function M.cleanup()
 	debug.debug_print("🔧 Cleaning up API layer", "info")
