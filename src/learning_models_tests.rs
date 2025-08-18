@@ -107,18 +107,60 @@ fn test_skill_area_name_uniqueness() {
     let pool = establish_test_connection();
     let mut conn = pool.get().expect("Failed to get connection");
 
-    let difficulty_levels = json!({
-        "beginner": 1,
-        "intermediate": 2,
-        "advanced": 3,
-        "expert": 4
+    let skill_graph = json!({
+        "nodes": [
+            {
+                "id": "beginner",
+                "name": "Beginner Level",
+                "description": "Basic concepts"
+            },
+            {
+                "id": "intermediate",
+                "name": "Intermediate Level", 
+                "description": "Intermediate concepts"
+            },
+            {
+                "id": "advanced",
+                "name": "Advanced Level",
+                "description": "Advanced concepts"
+            },
+            {
+                "id": "expert",
+                "name": "Expert Level",
+                "description": "Expert concepts"
+            }
+        ],
+        "edges": [
+            {
+                "from": "beginner",
+                "to": "intermediate",
+                "weight": 0.8
+            },
+            {
+                "from": "intermediate",
+                "to": "advanced",
+                "weight": 0.9
+            },
+            {
+                "from": "advanced",
+                "to": "expert",
+                "weight": 1.0
+            }
+        ],
+        "difficulty_weights": {
+            "beginner": 1,
+            "intermediate": 2,
+            "advanced": 3,
+            "expert": 4
+        }
     });
 
     let new_skill_area = NewSkillArea {
         name: "Unique Skill Area".to_string(),
         category: "Development".to_string(),
         description: None,
-        difficulty_levels,
+        skill_graph,
+        learning_objectives: None,
         metadata: None,
     };
 
@@ -138,7 +180,8 @@ fn test_skill_area_name_uniqueness() {
         name: "Unique Skill Area".to_string(), // Same name
         category: "Different Category".to_string(),
         description: None,
-        difficulty_levels,
+        skill_graph,
+        learning_objectives: None,
         metadata: None,
     };
 
@@ -160,19 +203,61 @@ fn test_skill_area_difficulty_levels_validation() {
     let pool = establish_test_connection();
     let mut conn = pool.get().expect("Failed to get connection");
 
-    // Test with valid difficulty levels
-    let valid_difficulty_levels = json!({
-        "beginner": 1,
-        "intermediate": 2,
-        "advanced": 3,
-        "expert": 4
+    // Test with valid skill graph
+    let valid_skill_graph = json!({
+        "nodes": [
+            {
+                "id": "beginner",
+                "name": "Beginner Level",
+                "description": "Basic concepts"
+            },
+            {
+                "id": "intermediate",
+                "name": "Intermediate Level", 
+                "description": "Intermediate concepts"
+            },
+            {
+                "id": "advanced",
+                "name": "Advanced Level",
+                "description": "Advanced concepts"
+            },
+            {
+                "id": "expert",
+                "name": "Expert Level",
+                "description": "Expert concepts"
+            }
+        ],
+        "edges": [
+            {
+                "from": "beginner",
+                "to": "intermediate",
+                "weight": 0.8
+            },
+            {
+                "from": "intermediate",
+                "to": "advanced",
+                "weight": 0.9
+            },
+            {
+                "from": "advanced",
+                "to": "expert",
+                "weight": 1.0
+            }
+        ],
+        "difficulty_weights": {
+            "beginner": 1,
+            "intermediate": 2,
+            "advanced": 3,
+            "expert": 4
+        }
     });
 
     let new_skill_area = NewSkillArea {
         name: "Valid Skill Area".to_string(),
         category: "Development".to_string(),
         description: None,
-        difficulty_levels: valid_difficulty_levels,
+        skill_graph: valid_skill_graph,
+        learning_objectives: None,
         metadata: None,
     };
 
@@ -181,9 +266,11 @@ fn test_skill_area_difficulty_levels_validation() {
         .get_result(&mut conn)
         .expect("Failed to insert skill area with valid difficulty levels");
 
-    assert!(skill_area.difficulty_levels.is_object());
-    assert_eq!(skill_area.difficulty_levels["beginner"], 1);
-    assert_eq!(skill_area.difficulty_levels["expert"], 4);
+    let graph = skill_area.skill_graph.as_object().unwrap();
+    assert!(graph.contains_key("difficulty_weights"));
+    let weights = graph["difficulty_weights"].as_object().unwrap();
+    assert_eq!(weights["beginner"], 1);
+    assert_eq!(weights["expert"], 4);
 
     // Clean up
     diesel::delete(skill_areas::table.find(skill_area.id))
