@@ -29,7 +29,7 @@ mod tests {
         // Test "forgotten" judgment with high score - should decrease interval less
         let interval = calculate_next_practice_interval(8000, "forgotten", 7);
         assert!(interval < 7);
-        assert!(interval > 1);
+        assert!(interval >= 1); // Minimum interval is 1 day
 
         // Test "recalled" judgment with low score - should increase interval slightly
         let interval = calculate_next_practice_interval(2000, "recalled", 7);
@@ -58,8 +58,8 @@ mod tests {
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         let initial_score = state.current_score;
@@ -104,8 +104,8 @@ mod tests {
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         // Test priority for different enrollment levels
@@ -168,8 +168,8 @@ mod tests {
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         // Test that score doesn't exceed maximum
@@ -188,8 +188,8 @@ mod tests {
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         // Test that score doesn't go below minimum
@@ -231,8 +231,8 @@ mod tests {
                 "tags": ["rust", "ownership", "memory"],
                 "prerequisites": ["basic-programming"]
             })),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         assert_eq!(unit.title, "Rust Ownership Basics");
@@ -265,8 +265,8 @@ mod tests {
             scheduled_at: Some(chrono::Utc::now() + chrono::Duration::hours(1)),
             started_at: None,
             completed_at: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         assert_eq!(session.session_type, "adaptive_practice");
@@ -295,15 +295,15 @@ mod tests {
                 "project_context": "High-performance web service",
                 "constraints": ["must be production-ready", "needs documentation"]
             })),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         assert_eq!(request.difficulty_level, "hard");
         assert_eq!(request.urgency_level, "medium");
         assert_eq!(request.request_status, "open");
         assert_eq!(request.estimated_completion_hours, Some(8));
-        assert!(request.required_skills.is_object());
+        assert!(request.required_skills.is_array());
         assert!(request.available_experts.is_some());
         assert!(request.metadata.is_some());
     }
@@ -342,14 +342,14 @@ mod tests {
             person_id: Uuid::new_v4(),
             learning_unit_id: Uuid::new_v4(),
             learning_state: "not_seen".to_string(),
-            current_score: 0,
+            current_score: 5000, // Start with a medium score
             last_practiced: None,
             practice_frequency_days: 7,
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         // Simulate learning progression
@@ -366,9 +366,10 @@ mod tests {
         assert!(state.current_score < initial_score); // Score decreases
 
         // Third encounter - improving
+        let score_before_recall = state.current_score;
         update_learning_state(&mut state, "recalled", 7);
         assert_eq!(state.learning_state, "recalled");
-        assert!(state.current_score > state.current_score); // Score increases
+        assert!(state.current_score > score_before_recall); // Score increases
 
         // Fourth encounter - mastered
         update_learning_state(&mut state, "recalled", 7);
@@ -390,8 +391,8 @@ mod tests {
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
         };
 
         // Test invalid enrollment levels

@@ -607,8 +607,8 @@ pub struct LearningUnit {
     pub estimated_time_minutes: Option<i32>,
     pub dependencies: Option<Value>, // Array of unit IDs that must be mastered first
     pub metadata: Option<Value>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// New learning unit for insertion
@@ -642,8 +642,8 @@ pub struct HumanLearningState {
     pub next_practice_date: Option<DateTime<Utc>>,
     pub total_practice_sessions: i32,
     pub metadata: Option<Value>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// New human learning state for insertion
@@ -688,8 +688,8 @@ pub struct PracticeSession {
     pub scheduled_at: Option<DateTime<Utc>>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// New practice session for insertion
@@ -724,8 +724,8 @@ pub struct HumanAssistanceRequest {
     pub assigned_expert_id: Option<Uuid>,
     pub request_status: String, // "open", "assigned", "in_progress", "completed", "cancelled"
     pub metadata: Option<Value>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// New human assistance request for insertion
@@ -995,8 +995,8 @@ pub fn generate_practice_session(
                     next_practice_date: None,
                     total_practice_sessions: 0,
                     metadata: None,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
+                                created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
                 });
             
             ready_units.push((unit.clone(), state));
@@ -1014,7 +1014,8 @@ pub fn generate_practice_session(
     let units_per_session = match enrollment_level {
         "light" => 3,
         "moderate" => 5,
-        "intensive" => 8
+        "intensive" => 8,
+        _ => 5, // Default to moderate
     };
     
     let selected_units: Vec<Uuid> = ready_units.iter()
@@ -1047,8 +1048,8 @@ pub fn generate_practice_session(
         scheduled_at: Some(chrono::Utc::now()),
         started_at: None,
         completed_at: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
+        created_at: Some(chrono::Utc::now()),
+        updated_at: Some(chrono::Utc::now()),
     })
 }
 
@@ -1077,8 +1078,8 @@ pub fn process_human_judgment(
             next_practice_date: None,
             total_practice_sessions: 0,
             metadata: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+                                created_at: Some(chrono::Utc::now()),
+                    updated_at: Some(chrono::Utc::now()),
         });
     
     // Update learning state based on judgment
@@ -1099,7 +1100,14 @@ pub fn process_human_judgment(
         
         diesel::insert_into(human_learning_states::table)
             .values(&new_state)
-            .get_result(conn)
+            .execute(conn)?;
+        
+        // Fetch the inserted record
+        human_learning_states::table
+            .filter(human_learning_states::person_id.eq(learning_state.person_id))
+            .filter(human_learning_states::learning_unit_id.eq(learning_state.learning_unit_id))
+            .first::<HumanLearningState>(conn)
+            .map_err(|e| crate::error::ParagonicError::Database(e.to_string()))
     } else {
         // Existing state - update
         diesel::update(human_learning_states::table.find(learning_state.id))
@@ -1112,7 +1120,12 @@ pub fn process_human_judgment(
                 human_learning_states::total_practice_sessions.eq(learning_state.total_practice_sessions),
                 human_learning_states::updated_at.eq(chrono::Utc::now()),
             ))
-            .get_result(conn)
+            .execute(conn)?;
+        
+        // Fetch the updated record
+        human_learning_states::table.find(learning_state.id)
+            .first::<HumanLearningState>(conn)
+            .map_err(|e| crate::error::ParagonicError::Database(e.to_string()))
     }
 }
 
@@ -1173,5 +1186,13 @@ pub fn create_human_assistance_request(
     
     diesel::insert_into(human_assistance_requests::table)
         .values(&new_request)
-        .get_result(conn)
+        .execute(conn)?;
+    
+    // Fetch the inserted record
+    human_assistance_requests::table
+        .filter(human_assistance_requests::requester_id.eq(requester_id))
+        .filter(human_assistance_requests::problem_description.eq(problem_description))
+        .order(human_assistance_requests::created_at.desc())
+        .first::<HumanAssistanceRequest>(conn)
+        .map_err(|e| crate::error::ParagonicError::Database(e.to_string()))
 }
