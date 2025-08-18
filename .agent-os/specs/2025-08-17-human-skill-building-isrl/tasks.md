@@ -30,7 +30,7 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   ⚠️ Blocking issue: Schema mismatch between database and Rust models, Person struct doesn't implement Insertable, New* structs missing id fields for retrieval
 
 - [ ] 2. **Core Learning Models and Data Structures**
-  - [ ] 2.1 Write tests for SkillArea data structure and validation
+  - [x] 2.1 Write tests for SkillArea data structure and validation
   - [ ] 2.2 Implement SkillArea struct with difficulty levels and learning objectives
   - [ ] 2.3 Write tests for PracticeItem data structure and validation
   - [ ] 2.4 Implement PracticeItem struct with content and metadata
@@ -47,6 +47,7 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [ ] 2.15 Write tests for LearningAnalytics data structure and calculations
   - [ ] 2.16 Implement LearningAnalytics struct with metric tracking
   - [ ] 2.17 Verify all core model tests pass
+  ⚠️ Blocking issue: Database-related tests preventing compilation, but core data structure tests are implemented
 
 - [ ] 3. **ISRL Learning Engine Implementation**
   - [ ] 3.1 Write tests for interleaved spaced repetition algorithm

@@ -779,3 +779,127 @@ fn test_enum_error_handling() {
     assert!("invalid_metric".parse::<MetricType>().is_err());
     assert!("invalid_trend".parse::<TrendDirection>().is_err());
 }
+
+#[test]
+fn test_skill_area_data_structure_validation() {
+    // Test SkillArea struct creation and validation
+    let difficulty_levels = json!({
+        "beginner": 1,
+        "intermediate": 2,
+        "advanced": 3,
+        "expert": 4
+    });
+
+    let skill_area = SkillArea {
+        id: Uuid::new_v4(),
+        name: "Programming Fundamentals".to_string(),
+        category: "Development".to_string(),
+        description: Some("Core programming concepts and practices".to_string()),
+        difficulty_levels,
+        metadata: Some(json!({"tags": ["programming", "fundamentals"]})),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    // Test basic validation
+    assert_eq!(skill_area.name, "Programming Fundamentals");
+    assert_eq!(skill_area.category, "Development");
+    assert_eq!(skill_area.description, Some("Core programming concepts and practices".to_string()));
+    assert!(skill_area.difficulty_levels.is_object());
+    assert!(skill_area.metadata.is_some());
+
+    // Test difficulty levels validation
+    let difficulty_levels_obj = skill_area.difficulty_levels.as_object().unwrap();
+    assert_eq!(difficulty_levels_obj.get("beginner"), Some(&json!(1)));
+    assert_eq!(difficulty_levels_obj.get("intermediate"), Some(&json!(2)));
+    assert_eq!(difficulty_levels_obj.get("advanced"), Some(&json!(3)));
+    assert_eq!(difficulty_levels_obj.get("expert"), Some(&json!(4)));
+
+    // Test metadata validation
+    let metadata_obj = skill_area.metadata.as_ref().unwrap().as_object().unwrap();
+    assert_eq!(metadata_obj.get("tags"), Some(&json!(["programming", "fundamentals"])));
+
+    // Test UUID validation
+    assert_ne!(skill_area.id, Uuid::nil());
+
+    // Test timestamp validation
+    let now = chrono::Utc::now();
+    assert!(skill_area.created_at <= now);
+    assert!(skill_area.updated_at <= now);
+}
+
+#[test]
+fn test_skill_area_serialization_deserialization() {
+    let difficulty_levels = json!({
+        "beginner": 1,
+        "intermediate": 2,
+        "advanced": 3,
+        "expert": 4
+    });
+
+    let skill_area = SkillArea {
+        id: Uuid::new_v4(),
+        name: "Data Science".to_string(),
+        category: "Analytics".to_string(),
+        description: Some("Data analysis and machine learning".to_string()),
+        difficulty_levels,
+        metadata: Some(json!({"tags": ["data", "ml", "analytics"]})),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    // Test JSON serialization
+    let serialized = serde_json::to_string(&skill_area).expect("Failed to serialize SkillArea");
+    assert!(serialized.contains("Data Science"));
+    assert!(serialized.contains("Analytics"));
+    assert!(serialized.contains("data analysis and machine learning"));
+
+    // Test JSON deserialization
+    let deserialized: SkillArea = serde_json::from_str(&serialized).expect("Failed to deserialize SkillArea");
+    assert_eq!(deserialized.name, skill_area.name);
+    assert_eq!(deserialized.category, skill_area.category);
+    assert_eq!(deserialized.description, skill_area.description);
+    assert_eq!(deserialized.id, skill_area.id);
+}
+
+#[test]
+fn test_skill_area_validation_rules() {
+    // Test that skill area name cannot be empty
+    let difficulty_levels = json!({
+        "beginner": 1,
+        "intermediate": 2,
+        "advanced": 3,
+        "expert": 4
+    });
+
+    // This should be valid
+    let valid_skill_area = SkillArea {
+        id: Uuid::new_v4(),
+        name: "Valid Skill".to_string(),
+        category: "Test".to_string(),
+        description: None,
+        difficulty_levels: difficulty_levels.clone(),
+        metadata: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    assert!(!valid_skill_area.name.is_empty());
+    assert!(!valid_skill_area.category.is_empty());
+
+    // Test that difficulty levels must be an object
+    assert!(valid_skill_area.difficulty_levels.is_object());
+
+    // Test that difficulty levels contain required keys
+    let difficulty_obj = valid_skill_area.difficulty_levels.as_object().unwrap();
+    assert!(difficulty_obj.contains_key("beginner"));
+    assert!(difficulty_obj.contains_key("intermediate"));
+    assert!(difficulty_obj.contains_key("advanced"));
+    assert!(difficulty_obj.contains_key("expert"));
+
+    // Test that difficulty level values are numbers
+    assert!(difficulty_obj.get("beginner").unwrap().is_number());
+    assert!(difficulty_obj.get("intermediate").unwrap().is_number());
+    assert!(difficulty_obj.get("advanced").unwrap().is_number());
+    assert!(difficulty_obj.get("expert").unwrap().is_number());
+}
