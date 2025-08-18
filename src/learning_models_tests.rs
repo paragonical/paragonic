@@ -1070,3 +1070,373 @@ fn test_skill_area_validation_rules() {
     assert!(weights_obj.get("basic").unwrap().is_number());
     assert!(weights_obj.get("advanced").unwrap().is_number());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::get_pool;
+    use diesel::prelude::*;
+    use serde_json::json;
+
+    /// Test the adaptive scheduling algorithm
+    #[test]
+    fn test_calculate_next_practice_interval() {
+        // Test "not_seen" judgment - should schedule for tomorrow
+        let interval = calculate_next_practice_interval(0, "not_seen", 7);
+        assert_eq!(interval, 1);
+
+        // Test "forgotten" judgment with low score - should decrease interval
+        let interval = calculate_next_practice_interval(2000, "forgotten", 7);
+        assert!(interval < 7);
+        assert!(interval >= 1);
+
+        // Test "forgotten" judgment with high score - should decrease interval less
+        let interval = calculate_next_practice_interval(8000, "forgotten", 7);
+        assert!(interval < 7);
+        assert!(interval > 1);
+
+        // Test "recalled" judgment with low score - should increase interval slightly
+        let interval = calculate_next_practice_interval(2000, "recalled", 7);
+        assert!(interval > 7);
+
+        // Test "recalled" judgment with high score - should increase interval significantly
+        let interval = calculate_next_practice_interval(8000, "recalled", 7);
+        assert!(interval > 14); // Should be at least 2x longer
+
+        // Test unknown judgment - should use base frequency
+        let interval = calculate_next_practice_interval(5000, "unknown", 7);
+        assert_eq!(interval, 7);
+    }
+
+    /// Test learning state updates based on human judgments
+    #[test]
+    fn test_update_learning_state() {
+        let mut state = HumanLearningState {
+            id: Uuid::new_v4(),
+            person_id: Uuid::new_v4(),
+            learning_unit_id: Uuid::new_v4(),
+            learning_state: "not_seen".to_string(),
+            current_score: 5000, // 50%
+            last_practiced: None,
+            practice_frequency_days: 7,
+            next_practice_date: None,
+            total_practice_sessions: 0,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let initial_score = state.current_score;
+        let initial_sessions = state.total_practice_sessions;
+
+        // Test "not_seen" judgment
+        update_learning_state(&mut state, "not_seen", 7);
+        assert_eq!(state.learning_state, "not_seen");
+        assert_eq!(state.current_score, initial_score); // No change for first encounter
+        assert_eq!(state.total_practice_sessions, initial_sessions + 1);
+        assert!(state.last_practiced.is_some());
+        assert_eq!(state.practice_frequency_days, 1); // Schedule for tomorrow
+
+        // Test "forgotten" judgment
+        update_learning_state(&mut state, "forgotten", 7);
+        assert_eq!(state.learning_state, "forgotten");
+        assert!(state.current_score < initial_score); // Score should decrease
+        assert!(state.current_score >= 3000); // Should not decrease below 30%
+        assert_eq!(state.total_practice_sessions, initial_sessions + 2);
+        assert!(state.practice_frequency_days < 7); // More frequent practice
+
+        // Test "recalled" judgment
+        update_learning_state(&mut state, "recalled", 7);
+        assert_eq!(state.learning_state, "recalled");
+        assert!(state.current_score > 3000); // Score should increase
+        assert!(state.current_score <= 10000); // Should not exceed 100%
+        assert_eq!(state.total_practice_sessions, initial_sessions + 3);
+        assert!(state.practice_frequency_days > 7); // Less frequent practice
+    }
+
+    /// Test unit priority calculation for practice session generation
+    #[test]
+    fn test_calculate_unit_priority() {
+        let state = HumanLearningState {
+            id: Uuid::new_v4(),
+            person_id: Uuid::new_v4(),
+            learning_unit_id: Uuid::new_v4(),
+            learning_state: "not_seen".to_string(),
+            current_score: 0,
+            last_practiced: None,
+            practice_frequency_days: 7,
+            next_practice_date: None,
+            total_practice_sessions: 0,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // Test priority for different enrollment levels
+        let light_priority = calculate_unit_priority(&state, "light");
+        let moderate_priority = calculate_unit_priority(&state, "moderate");
+        let intensive_priority = calculate_unit_priority(&state, "intensive");
+
+        assert!(light_priority < moderate_priority);
+        assert!(moderate_priority < intensive_priority);
+
+        // Test priority for different learning states
+        let mut forgotten_state = state.clone();
+        forgotten_state.learning_state = "forgotten".to_string();
+        forgotten_state.current_score = 3000;
+
+        let mut recalled_state = state.clone();
+        recalled_state.learning_state = "recalled".to_string();
+        recalled_state.current_score = 8000;
+
+        let not_seen_priority = calculate_unit_priority(&state, "moderate");
+        let forgotten_priority = calculate_unit_priority(&forgotten_state, "moderate");
+        let recalled_priority = calculate_unit_priority(&recalled_state, "moderate");
+
+        assert!(not_seen_priority > recalled_priority); // Not seen should be higher priority
+        assert!(forgotten_priority > recalled_priority); // Forgotten should be higher priority
+        assert!(not_seen_priority > forgotten_priority); // Not seen should be highest priority
+    }
+
+    /// Test completion estimation algorithm
+    #[test]
+    fn test_estimate_completion_dates() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        // Create test data
+        let person_id = Uuid::new_v4();
+        let skill_area_id = Uuid::new_v4();
+
+        // Test with no learning units
+        let estimates = estimate_completion_dates(&person_id, &skill_area_id, &mut conn).unwrap();
+        assert_eq!(estimates.current_mastery_percentage, 0);
+        assert_eq!(estimates.estimated_remaining_days, 0);
+
+        // Note: More comprehensive tests would require setting up test data
+        // in the database, which is complex due to the current schema issues
+    }
+
+    /// Test human judgment processing
+    #[test]
+    fn test_process_human_judgment() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        let person_id = Uuid::new_v4();
+        let learning_unit_id = Uuid::new_v4();
+
+        // Test processing a "not_seen" judgment
+        let result = process_human_judgment(&person_id, &learning_unit_id, "not_seen", &mut conn);
+        assert!(result.is_ok());
+
+        let learning_state = result.unwrap();
+        assert_eq!(learning_state.learning_state, "not_seen");
+        assert_eq!(learning_state.current_score, 0);
+        assert_eq!(learning_state.practice_frequency_days, 1);
+        assert!(learning_state.last_practiced.is_some());
+
+        // Test processing a "recalled" judgment
+        let result = process_human_judgment(&person_id, &learning_unit_id, "recalled", &mut conn);
+        assert!(result.is_ok());
+
+        let learning_state = result.unwrap();
+        assert_eq!(learning_state.learning_state, "recalled");
+        assert!(learning_state.current_score > 0);
+        assert!(learning_state.practice_frequency_days > 1);
+    }
+
+    /// Test practice session generation
+    #[test]
+    fn test_generate_practice_session() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        let person_id = Uuid::new_v4();
+        let skill_area_id = Uuid::new_v4();
+
+        // Test generating a light practice session
+        let session = generate_practice_session(&person_id, &skill_area_id, "light", 30, &mut conn);
+        assert!(session.is_ok());
+
+        let session = session.unwrap();
+        assert_eq!(session.enrollment_level, "light");
+        assert_eq!(session.session_type, "adaptive_practice");
+        assert_eq!(session.session_status, "scheduled");
+        assert!(session.metadata.is_some());
+
+        // Test generating an intensive practice session
+        let session = generate_practice_session(&person_id, &skill_area_id, "intensive", 60, &mut conn);
+        assert!(session.is_ok());
+
+        let session = session.unwrap();
+        assert_eq!(session.enrollment_level, "intensive");
+        assert_eq!(session.target_duration_minutes, Some(60));
+    }
+
+    /// Test human assistance request creation
+    #[test]
+    fn test_create_human_assistance_request() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        let requester_id = Uuid::new_v4();
+        let required_skills = vec!["Rust Programming".to_string(), "Database Design".to_string()];
+        let problem_description = "Need help with complex async Rust patterns";
+
+        let request = create_human_assistance_request(
+            &requester_id,
+            &problem_description,
+            &required_skills,
+            "hard",
+            "medium",
+            Some(8),
+            &mut conn
+        );
+
+        assert!(request.is_ok());
+
+        let request = request.unwrap();
+        assert_eq!(request.requester_id, requester_id);
+        assert_eq!(request.problem_description, problem_description);
+        assert_eq!(request.difficulty_level, "hard");
+        assert_eq!(request.urgency_level, "medium");
+        assert_eq!(request.estimated_completion_hours, Some(8));
+        assert_eq!(request.request_status, "open");
+    }
+
+    /// Test finding humans with expertise
+    #[test]
+    fn test_find_humans_with_expertise() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        let required_skills = vec!["Rust Programming".to_string()];
+        let minimum_score = 8500; // 85% mastery threshold
+
+        let experts = find_humans_with_expertise(&required_skills, minimum_score, &mut conn);
+        assert!(experts.is_ok());
+
+        // Note: This will return an empty vector if no experts exist in the database
+        let experts = experts.unwrap();
+        // assert!(experts.is_empty() || !experts.is_empty()); // Either empty or has experts
+    }
+
+    /// Test dependency checking for unit readiness
+    #[test]
+    fn test_is_unit_ready_for_presentation() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        let unit_id = Uuid::new_v4();
+        let person_id = Uuid::new_v4();
+
+        // Test with unit that has no dependencies
+        let is_ready = is_unit_ready_for_presentation(&unit_id, &person_id, &mut conn);
+        // This will fail due to unit not existing, but we can test the logic structure
+        assert!(is_ready.is_err()); // Expected since unit doesn't exist in test database
+    }
+
+    /// Integration test: Complete learning workflow
+    #[test]
+    fn test_complete_learning_workflow() {
+        let pool = get_pool().expect("Failed to get connection pool");
+        let mut conn = pool.get().expect("Failed to get connection");
+        
+        let person_id = Uuid::new_v4();
+        let skill_area_id = Uuid::new_v4();
+        let learning_unit_id = Uuid::new_v4();
+
+        // Step 1: Generate initial practice session
+        let session = generate_practice_session(&person_id, &skill_area_id, "moderate", 45, &mut conn);
+        assert!(session.is_ok());
+
+        // Step 2: Process human judgment for a learning unit
+        let judgment_result = process_human_judgment(&person_id, &learning_unit_id, "not_seen", &mut conn);
+        assert!(judgment_result.is_ok());
+
+        let learning_state = judgment_result.unwrap();
+        assert_eq!(learning_state.learning_state, "not_seen");
+        assert_eq!(learning_state.practice_frequency_days, 1);
+
+        // Step 3: Process another judgment (simulating learning progress)
+        let judgment_result = process_human_judgment(&person_id, &learning_unit_id, "recalled", &mut conn);
+        assert!(judgment_result.is_ok());
+
+        let learning_state = judgment_result.unwrap();
+        assert_eq!(learning_state.learning_state, "recalled");
+        assert!(learning_state.current_score > 0);
+        assert!(learning_state.practice_frequency_days > 1);
+
+        // Step 4: Get completion estimates
+        let estimates = estimate_completion_dates(&person_id, &skill_area_id, &mut conn);
+        assert!(estimates.is_ok());
+
+        let estimates = estimates.unwrap();
+        assert!(estimates.current_mastery_percentage >= 0);
+        assert!(estimates.estimated_remaining_days >= 0);
+    }
+
+    /// Test edge cases and error handling
+    #[test]
+    fn test_edge_cases() {
+        // Test with maximum score
+        let interval = calculate_next_practice_interval(10000, "recalled", 7);
+        assert!(interval > 7);
+
+        // Test with minimum score
+        let interval = calculate_next_practice_interval(0, "forgotten", 7);
+        assert!(interval < 7);
+
+        // Test with invalid judgment
+        let interval = calculate_next_practice_interval(5000, "invalid_judgment", 7);
+        assert_eq!(interval, 7); // Should use base frequency
+
+        // Test with zero base frequency
+        let interval = calculate_next_practice_interval(5000, "recalled", 0);
+        assert_eq!(interval, 1); // Should be at least 1 day
+    }
+
+    /// Test learning state score boundaries
+    #[test]
+    fn test_score_boundaries() {
+        let mut state = HumanLearningState {
+            id: Uuid::new_v4(),
+            person_id: Uuid::new_v4(),
+            learning_unit_id: Uuid::new_v4(),
+            learning_state: "not_seen".to_string(),
+            current_score: 10000, // Maximum score
+            last_practiced: None,
+            practice_frequency_days: 7,
+            next_practice_date: None,
+            total_practice_sessions: 0,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // Test that score doesn't exceed maximum
+        update_learning_state(&mut state, "recalled", 7);
+        assert!(state.current_score <= 10000);
+
+        // Test with minimum score
+        let mut state = HumanLearningState {
+            id: Uuid::new_v4(),
+            person_id: Uuid::new_v4(),
+            learning_unit_id: Uuid::new_v4(),
+            learning_state: "not_seen".to_string(),
+            current_score: 0, // Minimum score
+            last_practiced: None,
+            practice_frequency_days: 7,
+            next_practice_date: None,
+            total_practice_sessions: 0,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // Test that score doesn't go below minimum
+        update_learning_state(&mut state, "forgotten", 7);
+        assert!(state.current_score >= 0);
+    }
+}

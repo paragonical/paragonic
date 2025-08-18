@@ -915,7 +915,7 @@ pub fn estimate_completion_dates(
 }
 
 /// Calculate unit priority for practice session generation
-fn calculate_unit_priority(
+pub fn calculate_unit_priority(
     state: &HumanLearningState,
     enrollment_level: &str
 ) -> f64 {
