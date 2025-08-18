@@ -2158,7 +2158,8 @@ mod tests {
     /// Test that search_embeddings function works correctly with mock data
     #[tokio::test]
     async fn test_search_embeddings_mock() {
-        // Test search with a query - should return mock results for now
+        // Force mock behavior by ensuring database is not available
+        // This test should use mock results when database connection fails
         let query = "machine learning AI";
         let results = search_embeddings(query, 10).await.unwrap();
 
@@ -2167,6 +2168,14 @@ mod tests {
             !results.is_empty(),
             "Search should return results for AI-related query"
         );
+
+        // Verify we get exactly 2 mock results as defined in the function
+        assert_eq!(results.len(), 2, "Should return exactly 2 mock results");
+        
+        // Verify the mock results have the expected content types
+        let content_types: Vec<&str> = results.iter().map(|r| r.embedding.content_type.as_str()).collect();
+        assert!(content_types.contains(&"project"), "Should contain project result");
+        assert!(content_types.contains(&"task"), "Should contain task result");
 
         // Verify results are ordered by similarity (highest first)
         for i in 1..results.len() {

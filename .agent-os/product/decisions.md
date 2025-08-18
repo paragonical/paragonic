@@ -468,4 +468,76 @@ The ISRL system provides the optimal foundation for human skill development:
 - **Learning Analytics**: Comprehensive progress tracking and insights
 - **Expertise Profiles**: Marketable skill summaries with learning velocity
 - **AI Integration**: Learning insights shared with AI agents for better collaboration
-- **Database**: Extended schema for learning data and expertise profiles 
+- **Database**: Extended schema for learning data and expertise profiles
+
+## 2025-08-18: REST API and MCP Tools for Learning System Integration
+
+**ID:** DEC-009
+**Status:** Accepted
+**Category:** Technical
+**Stakeholders:** Tech Lead, Development Team, Product Owner
+
+### Decision
+
+Implement REST API endpoints for the human-driven learning system and create MCP tools for AI agents to help create curricula and learning units, enabling the Neovim client to integrate with the learning system and AI agents to contribute to organizational knowledge resources.
+
+### Context
+
+The human-driven learning system needs integration points for both human users (via Neovim client) and AI agents (via MCP tools). This creates a powerful ecosystem where humans can access learning resources through familiar interfaces while AI agents can help create and curate learning content, making these valuable organizational resources.
+
+### Alternatives Considered
+
+1. **Neovim-Only Integration**
+   - Pros: Simpler implementation, direct integration
+   - Cons: Limited AI agent participation, no external tool integration
+
+2. **MCP Tools Only**
+   - Pros: AI agent integration, extensible architecture
+   - Cons: No direct human interface, limited Neovim integration
+
+3. **REST API + MCP Tools (Selected)**
+   - Pros: Full ecosystem integration, AI agent participation, flexible client support
+   - Cons: Higher complexity, requires API design and security considerations
+
+### Rationale
+
+The REST API + MCP Tools approach provides the optimal ecosystem:
+- **Neovim Integration**: REST API enables seamless Neovim client integration
+- **AI Agent Participation**: MCP tools allow AI agents to create and curate learning content
+- **Organizational Resources**: Learning units become valuable organizational knowledge assets
+- **Extensible Architecture**: REST API supports future client integrations
+- **Human-AI Collaboration**: Both humans and AI agents contribute to learning ecosystem
+
+### Consequences
+
+**Positive:**
+- Enables Neovim client integration with learning system
+- Allows AI agents to create curricula and learning units
+- Creates valuable organizational knowledge resources
+- Supports human-AI collaborative learning content creation
+- Provides foundation for future client integrations
+
+**Risks:**
+- Higher implementation complexity
+- Requires API design and security considerations
+- Need for MCP tool specification and implementation
+- Potential for inconsistent content quality from AI agents
+
+**Implementation Plan:**
+1. Design REST API endpoints for learning system operations
+2. Implement core learning system REST API
+3. Create MCP tools for AI agent learning content creation
+4. Integrate REST API with existing HTTP server
+5. Add authentication and authorization for API endpoints
+6. Implement Neovim client integration via REST API
+7. Create AI agent MCP tools for curricula creation
+8. Add learning content validation and quality controls
+
+### Technical Details
+
+- **REST API Endpoints**: Learning units, practice sessions, progress tracking, completion estimates
+- **MCP Tools**: Create learning units, design curricula, suggest practice items, analyze learning patterns
+- **Authentication**: Secure API access for Neovim client and AI agents
+- **Content Validation**: Quality controls for AI-generated learning content
+- **Integration Points**: HTTP server, MCP server, Neovim client, AI agents
+- **Organizational Resources**: Learning units as reusable knowledge assets 

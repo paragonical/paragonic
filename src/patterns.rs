@@ -8483,9 +8483,10 @@ mod database_tests {
 
         let repository = DieselPatternRepository::new();
 
-        // Create a test pattern
+        // Create a test pattern with unique name
+        let unique_name = format!("Test Database Pattern {}", Uuid::new_v4());
         let pattern = SystemPattern::new(
-            "Test Database Pattern".to_string(),
+            unique_name.clone(),
             PatternCategory::SessionManagement,
             MetaLevel::System,
             "Test pattern for database operations".to_string(),
@@ -8511,14 +8512,15 @@ mod database_tests {
         assert_eq!(retrieved_pattern.category, pattern.category);
 
         // Test get by name
-        let retrieved_by_name = repository.get_pattern_by_name("Test Database Pattern")?;
+        let retrieved_by_name = repository.get_pattern_by_name(&unique_name)?;
         assert!(retrieved_by_name.is_some());
         assert_eq!(retrieved_by_name.unwrap().name, pattern.name);
 
-        // Test list patterns
+        // Test list patterns - should find our specific pattern
         let patterns = repository.list_patterns(Some(PatternCategory::SessionManagement), None)?;
-        assert_eq!(patterns.len(), 1);
-        assert_eq!(patterns[0].name, pattern.name);
+        let our_pattern = patterns.iter().find(|p| p.name == unique_name);
+        assert!(our_pattern.is_some());
+        assert_eq!(our_pattern.unwrap().name, pattern.name);
 
         // Test update
         let mut updated_pattern = pattern.clone();
