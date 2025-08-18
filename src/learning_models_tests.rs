@@ -782,12 +782,38 @@ fn test_enum_error_handling() {
 
 #[test]
 fn test_skill_area_data_structure_validation() {
-    // Test SkillArea struct creation and validation
-    let difficulty_levels = json!({
-        "beginner": 1,
-        "intermediate": 2,
-        "advanced": 3,
-        "expert": 4
+    // Test SkillArea struct creation and validation with graph-based structure
+    let skill_graph = json!({
+        "nodes": [
+            {"id": "variables", "name": "Variables", "description": "Understanding variables and data types"},
+            {"id": "functions", "name": "Functions", "description": "Creating and using functions"},
+            {"id": "control_flow", "name": "Control Flow", "description": "Conditionals and loops"},
+            {"id": "data_structures", "name": "Data Structures", "description": "Arrays, objects, and collections"}
+        ],
+        "edges": [
+            {"from": "variables", "to": "functions", "type": "prerequisite"},
+            {"from": "functions", "to": "control_flow", "type": "prerequisite"},
+            {"from": "control_flow", "to": "data_structures", "type": "prerequisite"}
+        ],
+        "difficulty_weights": {
+            "variables": 1,
+            "functions": 2,
+            "control_flow": 3,
+            "data_structures": 4
+        }
+    });
+
+    let learning_objectives = json!({
+        "objectives": [
+            "Understand basic programming concepts",
+            "Write simple functions and programs",
+            "Use control flow effectively",
+            "Work with complex data structures"
+        ],
+        "outcomes": [
+            "Ability to solve basic programming problems",
+            "Understanding of program structure and flow"
+        ]
     });
 
     let skill_area = SkillArea {
@@ -795,7 +821,8 @@ fn test_skill_area_data_structure_validation() {
         name: "Programming Fundamentals".to_string(),
         category: "Development".to_string(),
         description: Some("Core programming concepts and practices".to_string()),
-        difficulty_levels,
+        skill_graph,
+        learning_objectives: Some(learning_objectives),
         metadata: Some(json!({"tags": ["programming", "fundamentals"]})),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -805,15 +832,38 @@ fn test_skill_area_data_structure_validation() {
     assert_eq!(skill_area.name, "Programming Fundamentals");
     assert_eq!(skill_area.category, "Development");
     assert_eq!(skill_area.description, Some("Core programming concepts and practices".to_string()));
-    assert!(skill_area.difficulty_levels.is_object());
+    assert!(skill_area.skill_graph.is_object());
+    assert!(skill_area.learning_objectives.is_some());
     assert!(skill_area.metadata.is_some());
 
-    // Test difficulty levels validation
-    let difficulty_levels_obj = skill_area.difficulty_levels.as_object().unwrap();
-    assert_eq!(difficulty_levels_obj.get("beginner"), Some(&json!(1)));
-    assert_eq!(difficulty_levels_obj.get("intermediate"), Some(&json!(2)));
-    assert_eq!(difficulty_levels_obj.get("advanced"), Some(&json!(3)));
-    assert_eq!(difficulty_levels_obj.get("expert"), Some(&json!(4)));
+    // Test skill graph validation
+    let graph_obj = skill_area.skill_graph.as_object().unwrap();
+    assert!(graph_obj.contains_key("nodes"));
+    assert!(graph_obj.contains_key("edges"));
+    assert!(graph_obj.contains_key("difficulty_weights"));
+
+    // Test nodes validation
+    let nodes = graph_obj.get("nodes").unwrap().as_array().unwrap();
+    assert_eq!(nodes.len(), 4);
+    assert_eq!(nodes[0]["id"], "variables");
+    assert_eq!(nodes[0]["name"], "Variables");
+
+    // Test edges validation
+    let edges = graph_obj.get("edges").unwrap().as_array().unwrap();
+    assert_eq!(edges.len(), 3);
+    assert_eq!(edges[0]["from"], "variables");
+    assert_eq!(edges[0]["to"], "functions");
+    assert_eq!(edges[0]["type"], "prerequisite");
+
+    // Test difficulty weights validation
+    let weights = graph_obj.get("difficulty_weights").unwrap().as_object().unwrap();
+    assert_eq!(weights.get("variables"), Some(&json!(1)));
+    assert_eq!(weights.get("data_structures"), Some(&json!(4)));
+
+    // Test learning objectives validation
+    let objectives_obj = skill_area.learning_objectives.as_ref().unwrap().as_object().unwrap();
+    assert!(objectives_obj.contains_key("objectives"));
+    assert!(objectives_obj.contains_key("outcomes"));
 
     // Test metadata validation
     let metadata_obj = skill_area.metadata.as_ref().unwrap().as_object().unwrap();
@@ -830,11 +880,21 @@ fn test_skill_area_data_structure_validation() {
 
 #[test]
 fn test_skill_area_serialization_deserialization() {
-    let difficulty_levels = json!({
-        "beginner": 1,
-        "intermediate": 2,
-        "advanced": 3,
-        "expert": 4
+    let skill_graph = json!({
+        "nodes": [
+            {"id": "data_analysis", "name": "Data Analysis", "description": "Basic data analysis concepts"},
+            {"id": "statistics", "name": "Statistics", "description": "Statistical methods and concepts"},
+            {"id": "machine_learning", "name": "Machine Learning", "description": "ML algorithms and techniques"}
+        ],
+        "edges": [
+            {"from": "data_analysis", "to": "statistics", "type": "prerequisite"},
+            {"from": "statistics", "to": "machine_learning", "type": "prerequisite"}
+        ],
+        "difficulty_weights": {
+            "data_analysis": 1,
+            "statistics": 3,
+            "machine_learning": 5
+        }
     });
 
     let skill_area = SkillArea {
@@ -842,7 +902,11 @@ fn test_skill_area_serialization_deserialization() {
         name: "Data Science".to_string(),
         category: "Analytics".to_string(),
         description: Some("Data analysis and machine learning".to_string()),
-        difficulty_levels,
+        skill_graph,
+        learning_objectives: Some(json!({
+            "objectives": ["Understand data analysis", "Apply statistical methods", "Build ML models"],
+            "outcomes": ["Proficiency in data science workflows"]
+        })),
         metadata: Some(json!({"tags": ["data", "ml", "analytics"]})),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -865,11 +929,18 @@ fn test_skill_area_serialization_deserialization() {
 #[test]
 fn test_skill_area_validation_rules() {
     // Test that skill area name cannot be empty
-    let difficulty_levels = json!({
-        "beginner": 1,
-        "intermediate": 2,
-        "advanced": 3,
-        "expert": 4
+    let skill_graph = json!({
+        "nodes": [
+            {"id": "basic", "name": "Basic Concepts", "description": "Fundamental concepts"},
+            {"id": "advanced", "name": "Advanced Concepts", "description": "Advanced concepts"}
+        ],
+        "edges": [
+            {"from": "basic", "to": "advanced", "type": "prerequisite"}
+        ],
+        "difficulty_weights": {
+            "basic": 1,
+            "advanced": 3
+        }
     });
 
     // This should be valid
@@ -878,7 +949,8 @@ fn test_skill_area_validation_rules() {
         name: "Valid Skill".to_string(),
         category: "Test".to_string(),
         description: None,
-        difficulty_levels: difficulty_levels.clone(),
+        skill_graph: skill_graph.clone(),
+        learning_objectives: None,
         metadata: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -887,19 +959,27 @@ fn test_skill_area_validation_rules() {
     assert!(!valid_skill_area.name.is_empty());
     assert!(!valid_skill_area.category.is_empty());
 
-    // Test that difficulty levels must be an object
-    assert!(valid_skill_area.difficulty_levels.is_object());
+    // Test that skill graph must be an object
+    assert!(valid_skill_area.skill_graph.is_object());
 
-    // Test that difficulty levels contain required keys
-    let difficulty_obj = valid_skill_area.difficulty_levels.as_object().unwrap();
-    assert!(difficulty_obj.contains_key("beginner"));
-    assert!(difficulty_obj.contains_key("intermediate"));
-    assert!(difficulty_obj.contains_key("advanced"));
-    assert!(difficulty_obj.contains_key("expert"));
+    // Test that skill graph contains required keys
+    let graph_obj = valid_skill_area.skill_graph.as_object().unwrap();
+    assert!(graph_obj.contains_key("nodes"));
+    assert!(graph_obj.contains_key("edges"));
+    assert!(graph_obj.contains_key("difficulty_weights"));
 
-    // Test that difficulty level values are numbers
-    assert!(difficulty_obj.get("beginner").unwrap().is_number());
-    assert!(difficulty_obj.get("intermediate").unwrap().is_number());
-    assert!(difficulty_obj.get("advanced").unwrap().is_number());
-    assert!(difficulty_obj.get("expert").unwrap().is_number());
+    // Test that nodes is an array
+    assert!(graph_obj.get("nodes").unwrap().is_array());
+
+    // Test that edges is an array
+    assert!(graph_obj.get("edges").unwrap().is_array());
+
+    // Test that difficulty weights is an object
+    let weights_obj = graph_obj.get("difficulty_weights").unwrap().as_object().unwrap();
+    assert!(weights_obj.contains_key("basic"));
+    assert!(weights_obj.contains_key("advanced"));
+
+    // Test that difficulty weight values are numbers
+    assert!(weights_obj.get("basic").unwrap().is_number());
+    assert!(weights_obj.get("advanced").unwrap().is_number());
 }

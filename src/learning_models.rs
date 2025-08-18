@@ -12,7 +12,8 @@ use uuid::Uuid;
 
 use crate::schema::*;
 
-/// Skill area model representing different areas of expertise
+/// Skill area model representing different areas of expertise as a directed graph
+/// where difficulty is determined by prerequisite knowledge and dependencies
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, Identifiable)]
 #[diesel(table_name = skill_areas)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -21,7 +22,15 @@ pub struct SkillArea {
     pub name: String,
     pub category: String,
     pub description: Option<String>,
-    pub difficulty_levels: Value,
+    /// Graph structure: nodes are skills, edges are prerequisites
+    /// Format: {
+    ///   "nodes": [{"id": "skill1", "name": "Variables", "description": "Understanding variables"}],
+    ///   "edges": [{"from": "skill1", "to": "skill2", "type": "prerequisite"}],
+    ///   "difficulty_weights": {"skill1": 1, "skill2": 3} // based on prerequisite depth
+    /// }
+    pub skill_graph: Value,
+    /// Learning objectives and outcomes for this skill area
+    pub learning_objectives: Option<Value>,
     pub metadata: Option<Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -34,7 +43,8 @@ pub struct NewSkillArea {
     pub name: String,
     pub category: String,
     pub description: Option<String>,
-    pub difficulty_levels: Value,
+    pub skill_graph: Value,
+    pub learning_objectives: Option<Value>,
     pub metadata: Option<Value>,
 }
 
