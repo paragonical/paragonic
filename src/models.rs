@@ -1,14 +1,13 @@
 //! Data models for Paragonic
-//! 
+//!
 //! This module defines the core data structures used throughout the application,
 //! including projects, goals, tasks, agents, and conversations.
 
-use serde::{Deserialize, Serialize};
-use diesel::prelude::*;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use serde_json::Value;
 use crate::vector::Vector;
+use chrono::{DateTime, Utc};
+use diesel::prelude::*;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::schema::*;
 
@@ -847,7 +846,7 @@ mod tests {
             updated_at: Some(Utc::now()),
             organization_id: None,
         };
-        
+
         assert_eq!(project.name, "Test Project");
         assert_eq!(project.description, Some("A test project".to_string()));
     }
@@ -858,7 +857,7 @@ mod tests {
         let status = GoalStatus::Active;
         let serialized = serde_json::to_string(&status).unwrap();
         assert_eq!(serialized, "\"active\"");
-        
+
         let deserialized: GoalStatus = serde_json::from_str(&serialized).unwrap();
         matches!(deserialized, GoalStatus::Active);
     }
@@ -876,7 +875,7 @@ mod tests {
             created_at: Some(Utc::now()),
             updated_at: Some(Utc::now()),
         };
-        
+
         assert_eq!(task.priority, Some(5));
         assert_eq!(task.status, Some("pending".to_string()));
     }
@@ -891,7 +890,7 @@ mod tests {
             content: "Hello, world!".to_string(),
             created_at: Some(Utc::now()),
         };
-        
+
         assert_eq!(message.role, MessageRole::User.to_string());
         assert_eq!(message.content, "Hello, world!");
     }
@@ -904,7 +903,7 @@ mod tests {
             description: Some("A new project".to_string()),
             organization_id: None,
         };
-        
+
         assert_eq!(request.name, "New Project");
         assert_eq!(request.description, Some("A new project".to_string()));
         assert_eq!(request.organization_id, None);
@@ -924,7 +923,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        
+
         assert_eq!(org.name, "Test Organization");
         assert_eq!(org.domain, Some("test.com".to_string()));
         matches!(org.status, OrganizationStatus::Active);
@@ -945,10 +944,13 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        
+
         assert_eq!(person.name, "John Doe");
         assert_eq!(person.email, Some("john@example.com".to_string()));
-        assert_eq!(person.expertise_areas, Some(vec!["Rust".to_string(), "AI".to_string()]));
+        assert_eq!(
+            person.expertise_areas,
+            Some(vec!["Rust".to_string(), "AI".to_string()])
+        );
         matches!(person.availability_status, AvailabilityStatus::Available);
     }
 
@@ -956,7 +958,7 @@ mod tests {
     #[test]
     fn test_isrl_profile_creation() {
         use rust_decimal::Decimal;
-        
+
         let profile = IsrlProfile {
             id: Uuid::new_v4(),
             person_id: Uuid::new_v4(),
@@ -971,7 +973,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        
+
         assert_eq!(profile.skill_name, "Rust Programming");
         assert_eq!(profile.proficiency_level, 7);
         assert_eq!(profile.success_rate, Decimal::new(85, 2));
@@ -994,7 +996,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        
+
         assert_eq!(association.role, "Senior Developer");
         assert_eq!(association.allocation_percentage, 75);
         assert!(association.person_id.is_some());
@@ -1016,11 +1018,11 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        
+
         assert_eq!(embedding.content_type, "message");
         assert_eq!(embedding.content_text, "Hello, world!");
         assert_eq!(embedding.embedding_model, "nomic-embed-text");
         assert_eq!(embedding.embedding_vector.as_ref().unwrap().values.len(), 2);
         assert!(embedding.metadata.is_some());
     }
-} 
+}

@@ -1,350 +1,636 @@
 --[[
 Paragonic Backend Module
-Handles RPC client initialization and backend management
+Handles MCP HTTP client initialization and backend management
 --]]
 
 local M = {}
 
--- RPC client instance
+-- MCP-backed client instance (shim that exposes the old RPC-like API)
 M._rpc_client = nil
 
--- Get RPC client, initializing backend if needed
+-- Create MCP client shim that matches the existing RPC client's methods
+local function create_mcp_client()
+	local debug = require("paragonic.debug")
+	local config = require("paragonic.config")
+	local mcp = require("paragonic.mcp_http_transport")
+
+	local client = {}
+
+	function client:connect()
+		local base_url = config.get and (config.get("backend_base_url") or config.get("base_url")) or nil
+		base_url = base_url or "http://localhost:3000"
+
+		debug.debug_print("🔧 MCP connect(): base_url=" .. tostring(base_url), "debug")
+
+		local ok, err = mcp.init({
+			base_url = base_url,
+			protocol_version = "2025-06-18",
+			initialization_timeout = 30,
+			request_timeout = 60,
+		})
+		if not ok then
+			debug.debug_print("❌ MCP init failed: " .. tostring(err), "error")
+			return false, err
+		end
+
+		-- Set up MCP callbacks for streaming
+		mcp.set_callbacks({
+			on_streaming_chunk = function(request_id, chunk)
+				debug.debug_print(
+					"📥 Received streaming chunk for request " .. request_id .. ": " .. (chunk.chunk or "no content"),
+					"debug"
+				)
+				debug.debug_print("📥 Chunk type: " .. (chunk.chunk_type or "unknown"), "debug")
+				debug.debug_print("📥 Chunk index: " .. (chunk.chunk_index or "unknown"), "debug")
+
+				-- Store the chunk for the chat system to retrieve
+				if not client.streaming_chunks then
+					client.streaming_chunks = {}
+				end
+				table.insert(client.streaming_chunks, chunk)
+				debug.debug_print("📥 Total chunks stored: " .. #client.streaming_chunks, "debug")
+			end,
+			on_streaming_complete = function(request_id, chunks, final_response)
+				debug.debug_print("✅ Streaming complete for request " .. request_id, "success")
+				debug.debug_print("📊 Total chunks received: " .. #chunks, "debug")
+
+				-- Store final response if provided
+				if final_response then
+					client.final_response = final_response
+				end
+
+				-- Mark streaming as complete
+				client.is_streaming = false
+			end,
+			on_streaming_error = function(request_id, error)
+				debug.debug_print(
+					"❌ Streaming error for request " .. request_id .. ": " .. (error or "unknown error"),
+					"error"
+				)
+				client.is_streaming = false
+				client.streaming_error = error
+			end,
+		})
+
+		local ok2, err2 = mcp.initialize_session({
+			name = "paragonic.nvim",
+			version = "1.0.0",
+			capabilities = { tools = {}, resources = {}, notifications = {} },
+		})
+		if not ok2 then
+			debug.debug_print("❌ MCP initialize_session failed: " .. tostring(err2), "error")
+			return false, err2
+		end
+
+		debug.debug_print("✅ MCP connected and session initialized", "success")
+
+		return true
+	end
+
+	function client:is_connected()
+		local ok = mcp.is_ready()
+		return ok and true or false
+	end
+
+	function client:reconnect()
+		debug.debug_print("🔧 MCP reconnect()", "debug")
+		mcp.cleanup()
+		return self:connect()
+	end
+
+	function client:disconnect()
+		debug.debug_print("🔧 MCP disconnect()", "debug")
+		mcp.shutdown()
+		return true
+	end
+
+	function client:hello()
+		-- Use tools/list as a lightweight liveness check
+		local resp, err = mcp.send_request({ jsonrpc = "2.0", method = "tools/list", params = {} })
+		return resp, err
+	end
+
+	-- Model Management (using MCP tools)
+	function client:list_models()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "list_models",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	-- Chat/AI (using MCP completion and tools)
+	function client:chat_completion(model, message)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "completion/complete",
+			params = {
+				prompt = message,
+				model = model or "deepseek-r1:1.5b",
+				options = {},
+				_meta = {
+					progressToken = "chat_" .. os.time() .. "_" .. math.random(1000, 9999),
+				},
+			},
+		})
+		return resp, err
+	end
+
+	function client:formatted_chat_completion(model, message, format_config)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "formatted_chat_completion",
+				arguments = {
+					model = model or "deepseek-r1:1.5b",
+					message = message,
+					format_config = format_config or {},
+				},
+			},
+		})
+		return resp, err
+	end
+
+	function client:streaming_chat_completion(params)
+		-- Check connection first
+		if not self:is_connected() then
+			debug.debug_print("⚠️ Connection lost, attempting to reconnect...", "warn")
+			local reconnect_success, reconnect_err = self:reconnect()
+			if not reconnect_success then
+				debug.debug_print("❌ Reconnection failed: " .. tostring(reconnect_err), "error")
+				return nil, "connection_failed: " .. tostring(reconnect_err)
+			end
+			debug.debug_print("✅ Reconnected successfully", "info")
+		end
+
+		-- Clear any previous streaming chunks
+		client.streaming_chunks = {}
+		client.streaming_error = nil
+		client.final_response = nil
+
+		-- Mark as streaming
+		client.is_streaming = true
+
+		local request = {
+			jsonrpc = "2.0",
+			method = "streaming_chat_completion",
+			id = math.random(1000, 9999),
+			params = params or {},
+			_meta = {
+				progressToken = "streaming_" .. os.time() .. "_" .. math.random(1000, 9999),
+			},
+		}
+
+		-- Debug: Log the request being sent
+		debug.debug_print("📤 Sending streaming request:", "debug")
+		debug.debug_print("   Method: " .. request.method, "debug")
+		debug.debug_print("   ID: " .. tostring(request.id), "debug")
+		debug.debug_print("   Params: " .. (params and params.message and params.message:sub(1, 50) or "none"), "debug")
+
+		local resp, err = mcp.send_request(request)
+
+		if not resp then
+			client.is_streaming = false
+			debug.debug_print("❌ Streaming request failed: " .. tostring(err), "error")
+			return resp, err
+		end
+
+		-- Check if this is a streaming response
+		if resp.result and resp.result.type == "streaming_chunks" then
+			client.current_streaming_request_id = resp.result.progressToken
+			debug.debug_print(
+				"🔄 Received streaming chunks: " .. (resp.result.chunks and #resp.result.chunks or 0) .. " chunks",
+				"info"
+			)
+
+			-- Store the chunks for the chat system to retrieve
+			if resp.result.chunks then
+				client.streaming_chunks = resp.result.chunks
+			end
+
+			-- Mark streaming as complete since we got all chunks
+			client.is_streaming = false
+
+			return resp
+		else
+			-- Regular response, not streaming
+			client.is_streaming = false
+			return resp, err
+		end
+	end
+
+	function client:get_streaming_chunks()
+		local chunks = client.streaming_chunks or {}
+		return chunks
+	end
+
+	function client:add_streaming_chunk(chunk)
+		if not client.streaming_chunks then
+			client.streaming_chunks = {}
+		end
+		table.insert(client.streaming_chunks, chunk)
+		debug.debug_print("📥 Added chunk to streaming buffer: " .. (chunk.chunk_type or "unknown"), "debug")
+	end
+
+	function client:clear_streaming_chunks()
+		client.streaming_chunks = {}
+	end
+
+	function client:set_streaming_active(active)
+		client.is_streaming = active
+		local debug = require("paragonic.debug")
+		if active then
+			debug.debug_print("🔄 Streaming marked as active", "debug")
+		else
+			debug.debug_print("🔄 Streaming marked as inactive", "debug")
+		end
+	end
+
+	function client:is_streaming_complete()
+		if not client.current_streaming_request_id then
+			return true -- No active streaming
+		end
+
+		return mcp.is_streaming_complete(client.current_streaming_request_id)
+	end
+
+	function client:cancel_streaming()
+		if not client.current_streaming_request_id then
+			return false, "No active streaming to cancel"
+		end
+
+		local success, err = mcp.cancel_streaming(client.current_streaming_request_id)
+		if success then
+			client.is_streaming = false
+			client.current_streaming_request_id = nil
+			debug.debug_print("🛑 Streaming cancelled", "info")
+		end
+
+		return success, err
+	end
+
+	function client:get_next_chunk(params)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "get_next_chunk",
+			params = params or {},
+		})
+		return resp, err
+	end
+
+	function client:debug_markdown_test(params)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "debug_markdown_test",
+			params = params or {},
+		})
+		return resp, err
+	end
+
+	-- Config/Projects (using MCP tools)
+	function client:get_projects()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "list_projects",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	function client:create_project(name, description)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "create_project",
+				arguments = {
+					name = name,
+					description = description or "",
+				},
+			},
+		})
+		return resp, err
+	end
+
+	function client:get_config()
+		-- For now use resources/read on a mock config resource
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "resources/read",
+			params = { uri = "neovim://session" },
+		})
+		return resp, err
+	end
+
+	-- File Operations (using MCP tools)
+	function client:save_config(config_data)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "write_file",
+				arguments = {
+					file_path = "config.json",
+					content = vim.json.encode(config_data),
+				},
+			},
+		})
+		return resp, err
+	end
+
+	-- Search/Knowledge (using MCP tools)
+	function client:search_embeddings(query, limit)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "search_embeddings",
+				arguments = {
+					query = query,
+					limit = limit or 10,
+				},
+			},
+		})
+		return resp, err
+	end
+
+	function client:find_similar_content(query, content_type, limit, threshold)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "find_similar_content",
+				arguments = {
+					query = query,
+					content_type = content_type or "all",
+					limit = limit or 10,
+					threshold = threshold or 0.7,
+				},
+			},
+		})
+		return resp, err
+	end
+
+	-- Knowledge Management (using MCP tools)
+	function client:add_knowledge(content, content_type, metadata)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "add_knowledge",
+				arguments = {
+					content = content,
+					content_type = content_type or "text",
+					metadata = metadata or {},
+				},
+			},
+		})
+		return resp, err
+	end
+
+	function client:get_knowledge_summary()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "get_knowledge_summary",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	-- Pattern Management (using MCP tools)
+	function client:list_patterns()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "list_patterns",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	function client:execute_pattern(pattern_name, context)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "execute_pattern",
+				arguments = {
+					pattern_name = pattern_name,
+					context = context or {},
+				},
+			},
+		})
+		return resp, err
+	end
+
+	function client:create_pattern(pattern_data)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "create_pattern",
+				arguments = pattern_data,
+			},
+		})
+		return resp, err
+	end
+
+	-- Session Management (using MCP tools)
+	function client:get_session_info()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "get_session_info",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	function client:update_session_context(context)
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "update_session_context",
+				arguments = {
+					context = context or {},
+				},
+			},
+		})
+		return resp, err
+	end
+
+	-- Debug and Testing
+	function client:test_connection()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "test_connection",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	function client:get_debug_info()
+		local resp, err = mcp.send_request({
+			jsonrpc = "2.0",
+			method = "tools/call",
+			params = {
+				name = "get_debug_info",
+				arguments = {},
+			},
+		})
+		return resp, err
+	end
+
+	-- Initialize streaming state
+	client.streaming_chunks = {}
+	client.is_streaming = false
+	client.current_streaming_request_id = nil
+	client.streaming_error = nil
+	client.final_response = nil
+
+	return client
+end
+
+-- Initialize backend
+function M.init()
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔧 Initializing Paragonic backend", "info")
+
+	-- Create MCP client
+	M._rpc_client = create_mcp_client()
+
+	debug.debug_print("✅ Paragonic backend initialized", "success")
+	return true
+end
+
+-- Get RPC client instance
 function M._get_rpc_client()
-    if not M._rpc_client then
-        -- Return nil immediately - let calling functions handle initialization
-        -- This prevents freezing during buffer operations
-        return nil
-    end
-    
-    -- Check if the client is still connected and try to reconnect if needed
-    if not M._rpc_client:is_connected() then
-        local debug = require("paragonic.debug")
-        debug.debug_print("🔧 RPC client disconnected, attempting reconnection...", "info")
-        local success = M._rpc_client:reconnect()
-        if not success then
-            debug.debug_print("❌ Reconnection failed, returning nil", "error")
-            return nil
-        end
-        debug.debug_print("✅ RPC client reconnected successfully", "success")
-    end
-    
-    return M._rpc_client
+	return M._rpc_client
 end
 
--- Initialize Rust backend
-function M._initialize_backend()
-    local debug = require("paragonic.debug")
-    debug.debug_print("🔧 _initialize_backend() called", "debug")
-    
-    -- Only initialize once
-    if M._rpc_client then
-        debug.debug_print("✅ RPC client already exists, returning true", "info")
-        return true
-    end
-    
-    debug.debug_print("🔧 Starting backend initialization...", "info")
-    
-    -- Create RPC client with timeout
-    debug.debug_print("🔧 Step 1: About to require paragonic.rpc...", "debug")
-    local success, rpc = pcall(require, "paragonic.rpc")
-    if not success then
-        debug.debug_print("❌ Failed to require paragonic.rpc: " .. tostring(rpc), "error")
-        return false
-    end
-    debug.debug_print("✅ paragonic.rpc module loaded successfully", "success")
-    
-    debug.debug_print("🔧 Step 2: About to create RPC client with rpc.new()...", "debug")
-    local success2, client = pcall(function() return rpc.new("127.0.0.1:3000") end)
-    if not success2 then
-        debug.debug_print("❌ Failed to create RPC client: " .. tostring(client), "error")
-        return false
-    end
-    M._rpc_client = client
-    debug.debug_print("✅ RPC client created successfully", "success")
-    
-    -- Set a timeout for the connection attempt
-    local connection_timeout = 5000 -- 5 seconds
-    local max_retries = 2
-    local retry_count = 0
-    
-    debug.debug_print("🔧 Step 3: About to start connection attempts...", "debug")
-    
-    while retry_count <= max_retries do
-        local start_time = vim.loop.hrtime() / 1000000
-        
-        debug.debug_print("🔧 Attempt " .. (retry_count + 1) .. "/" .. (max_retries + 1) .. ": About to call connect()...", "debug")
-        
-        -- Connect to the Rust backend with timeout
-        debug.debug_print("🔧 Calling M._rpc_client:connect()...", "debug")
-        local success, err = M._rpc_client:connect()
-        debug.debug_print("✅ connect() call completed, success=" .. tostring(success), "debug")
-        
-        if not success then
-            local end_time = vim.loop.hrtime() / 1000000
-            local duration = end_time - start_time
-            
-            retry_count = retry_count + 1
-            
-            if duration > connection_timeout then
-                debug.debug_print("❌ Connection timed out after " .. string.format("%.1f", duration) .. "ms (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", "error")
-            else
-                debug.debug_print("❌ Connection failed: " .. (err or "unknown error") .. " (attempt " .. retry_count .. "/" .. (max_retries + 1) .. ")", "error")
-            end
-            
-            if retry_count > max_retries then
-                debug.debug_print("❌ Failed to connect after " .. (max_retries + 1) .. " attempts", "error")
-                M._rpc_client = nil
-                return false
-            end
-            
-            -- Wait a bit before retrying
-            debug.debug_print("⏳ Waiting 1 second before retry...", "info")
-            vim.wait(1000)
-        else
-            debug.debug_print("✅ Connection successful!", "success")
-            break
-        end
-    end
-    
-    -- Test connection with hello call (also with timeout)
-    debug.debug_print("🔧 Step 4: About to test connection with hello call...", "debug")
-    local hello_start = vim.loop.hrtime() / 1000000
-    debug.debug_print("🔧 Calling M._rpc_client:hello()...", "debug")
-    local response = M._rpc_client:hello()
-    debug.debug_print("✅ hello() call completed, response=" .. tostring(response ~= nil), "debug")
-    local hello_end = vim.loop.hrtime() / 1000000
-    local hello_duration = hello_end - hello_start
-    
-    if not response then
-        if hello_duration > connection_timeout then
-            debug.debug_print("❌ Hello call timed out after " .. string.format("%.1f", hello_duration) .. "ms", "error")
-        else
-            debug.debug_print("❌ Hello call failed - no response", "error")
-        end
-        
-        M._rpc_client:disconnect()
-        M._rpc_client = nil
-        return false
-    end
-    
-    debug.debug_print("✅ Backend initialization completed successfully in " .. string.format("%.1f", hello_duration) .. "ms", "success")
-    return true
+-- Connect to backend
+function M.connect()
+	if not M._rpc_client then
+		M.init()
+	end
+
+	local debug = require("paragonic.debug")
+	debug.debug_print("🔧 Connecting to Paragonic backend", "info")
+
+	local success, err = M._rpc_client:connect()
+	if success then
+		debug.debug_print("✅ Connected to Paragonic backend", "success")
+	else
+		debug.debug_print("❌ Failed to connect to Paragonic backend: " .. tostring(err), "error")
+	end
+
+	return success, err
 end
 
--- Force reconnection to the backend (useful when server restarts)
-function M.force_reconnect()
-    local debug = require("paragonic.debug")
-    debug.debug_print("🔧 force_reconnect() called", "debug")
-    
-    if not M._rpc_client then
-        debug.debug_print("🔧 No RPC client exists, initializing backend...", "info")
-        return M._initialize_backend()
-    end
-    
-    debug.debug_print("🔧 Forcing reconnection of existing RPC client...", "info")
-    
-    -- Disconnect current client
-    M._rpc_client:disconnect()
-    
-    -- Try to reconnect
-    local success = M._rpc_client:reconnect()
-    
-    if success then
-        debug.debug_print("✅ Force reconnection successful", "success")
-        return true
-    else
-        debug.debug_print("❌ Force reconnection failed, reinitializing backend...", "error")
-        
-        -- If reconnection fails, reinitialize the entire backend
-        M._rpc_client = nil
-        return M._initialize_backend()
-    end
-end
-
--- Manually initialize backend when needed
+-- Initialize backend (for backward compatibility with chat module)
 function M.initialize_backend()
-    if not M._rpc_client then
-        M._initialize_backend()
-    end
-    return M._rpc_client ~= nil
+	if not M._rpc_client then
+		M.init()
+	end
+
+	local success, err = M._rpc_client:connect()
+	return success, err
 end
 
--- Get list of available models
-function M.get_available_models()
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        -- Return default models to prevent freezing
-        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Get models list with timeout
-    local success, response = pcall(function()
-        return rpc_client:list_models()
-    end)
-    
-    if not success or not response then
-        -- Return default models on failure
-        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Parse JSON response
-    local utils = require("paragonic.utils")
-    local parsed_response = utils.parse_json_response(response)
-    if not parsed_response then
-        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Check for error in response
-    if parsed_response.error then
-        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
-    
-    -- Extract models list
-    if parsed_response.result and parsed_response.result.models then
-        return parsed_response.result.models
-    else
-        return {"deepseek-r1:1.5b", "llama2", "llama3.2:3b", "nomic-embed-text:latest"}
-    end
+-- Disconnect from backend
+function M.disconnect()
+	if M._rpc_client then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔧 Disconnecting from Paragonic backend", "info")
+
+		local success = M._rpc_client:disconnect()
+		if success then
+			debug.debug_print("✅ Disconnected from Paragonic backend", "success")
+		else
+			debug.debug_print("❌ Failed to disconnect from Paragonic backend", "error")
+		end
+
+		return success
+	end
+	return false
 end
 
--- Get list of projects
-function M.get_projects()
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Get projects list
-    local response = rpc_client:get_projects()
-    if not response then
-        return nil, "Failed to get projects list"
-    end
-    
-    -- Parse JSON response
-    local utils = require("paragonic.utils")
-    local parsed_response = utils.parse_json_response(response)
-    if not parsed_response then
-        return nil, "Failed to parse projects response"
-    end
-    
-    -- Check for error in response
-    if parsed_response.error then
-        return nil, "Projects error: " .. (parsed_response.error.message or "Unknown error")
-    end
-    
-    -- Extract projects list
-    if parsed_response.result and parsed_response.result.projects then
-        return parsed_response.result.projects
-    else
-        return nil, "Unexpected projects response format"
-    end
+-- Check if connected
+function M.is_connected()
+	if M._rpc_client then
+		return M._rpc_client:is_connected()
+	end
+	return false
 end
 
--- Create a new project
-function M.create_project(name, description)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Create project
-    local response = rpc_client:create_project(name, description)
-    if not response then
-        return nil, "Failed to create project"
-    end
-    
-    return response
+-- Reconnect to backend
+function M.reconnect()
+	if M._rpc_client then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔧 Reconnecting to Paragonic backend", "info")
+
+		local success, err = M._rpc_client:reconnect()
+		if success then
+			debug.debug_print("✅ Reconnected to Paragonic backend", "success")
+		else
+			debug.debug_print("❌ Failed to reconnect to Paragonic backend: " .. tostring(err), "error")
+		end
+
+		return success, err
+	end
+	return false, "No RPC client available"
 end
 
--- Get configuration from backend
-function M.get_config()
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Get configuration
-    local response = rpc_client:get_config()
-    if not response then
-        return nil, "Failed to get configuration"
-    end
-    
-    -- Return the full JSON-RPC response as a string
-    return response
+-- Get backend status
+function M.get_status()
+	if not M._rpc_client then
+		return {
+			initialized = false,
+			connected = false,
+			streaming = false,
+		}
+	end
+
+	return {
+		initialized = true,
+		connected = M._rpc_client:is_connected(),
+		streaming = M._rpc_client.is_streaming or false,
+		streaming_chunks_count = #(M._rpc_client.streaming_chunks or {}),
+		current_streaming_request_id = M._rpc_client.current_streaming_request_id,
+		streaming_error = M._rpc_client.streaming_error,
+	}
 end
 
--- Save configuration to backend
-function M.save_config(config_data)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Save configuration
-    local response = rpc_client:save_config(config_data)
-    if not response then
-        return nil, "Failed to save configuration"
-    end
-    
-    return response
-end
+-- Clean up backend
+function M.cleanup()
+	if M._rpc_client then
+		local debug = require("paragonic.debug")
+		debug.debug_print("🔧 Cleaning up Paragonic backend", "info")
 
--- Search functionality
-function M.search_embeddings(query, limit)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Use default limit if not specified
-    limit = limit or 10
-    
-    -- Perform search
-    local response = rpc_client:search_embeddings(query, limit)
-    if not response then
-        return nil, "Failed to perform search"
-    end
-    
-    return response
-end
+		M._rpc_client:disconnect()
+		M._rpc_client = nil
 
-function M.find_similar_content(query, content_type, limit, threshold)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Use default values if not specified
-    limit = limit or 10
-    threshold = threshold or 0.0
-    
-    -- Perform filtered search
-    local response = rpc_client:find_similar_content(query, content_type, limit, threshold)
-    if not response then
-        return nil, "Failed to perform filtered search"
-    end
-    
-    return response
-end
-
-function M.hybrid_search(query, content_type, limit, threshold, include_text_filtering)
-    local rpc_client = M._get_rpc_client()
-    if not rpc_client then
-        return nil, "Backend not available"
-    end
-    
-    -- Use default values if not specified
-    limit = limit or 10
-    threshold = threshold or 0.0
-    include_text_filtering = include_text_filtering ~= false -- Default to true
-    
-    -- Perform hybrid search
-    local response = rpc_client:hybrid_search(query, content_type, limit, threshold, include_text_filtering)
-    if not response then
-        return nil, "Failed to perform hybrid search"
-    end
-    
-    return response
+		debug.debug_print("✅ Paragonic backend cleaned up", "success")
+	end
 end
 
 return M

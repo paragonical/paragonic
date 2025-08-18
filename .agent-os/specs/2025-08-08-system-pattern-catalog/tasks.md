@@ -43,61 +43,61 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
   - [x] 3.10 Implement error handling and recovery mechanisms
   - [x] 3.11 Verify all tests pass
 
-- [ ] 4. **Core System Patterns Implementation**
+- [x] 4. **Core System Patterns Implementation**
   - [x] 4.1 Write tests for Session Summary Generation pattern
-  - [ ] 4.2 Implement Session Summary Generation pattern
-  - [ ] 4.3 Write tests for Activity Labeling pattern
-  - [ ] 4.4 Implement Activity Labeling pattern
-  - [ ] 4.5 Write tests for Self-Reflection pattern
-  - [ ] 4.6 Implement Self-Reflection pattern
-  - [ ] 4.7 Write tests for Context Condensation pattern
-  - [ ] 4.8 Implement Context Condensation pattern
-  - [ ] 4.9 Write tests for Progress Tracking pattern
-  - [ ] 4.10 Implement Progress Tracking pattern
-  - [ ] 4.11 Write tests for Knowledge Extraction pattern
-  - [ ] 4.12 Implement Knowledge Extraction pattern
-  - [ ] 4.13 Verify all tests pass
+  - [x] 4.2 Implement Session Summary Generation pattern
+  - [x] 4.3 Write tests for Activity Labeling pattern
+  - [x] 4.4 Implement Activity Labeling pattern
+  - [x] 4.5 Write tests for Self-Reflection pattern
+  - [x] 4.6 Implement Self-Reflection pattern
+  - [x] 4.7 Write tests for Context Condensation pattern
+  - [x] 4.8 Implement Context Condensation pattern
+  - [x] 4.9 Write tests for Progress Tracking pattern
+  - [x] 4.10 Implement Progress Tracking pattern
+  - [x] 4.11 Write tests for Knowledge Extraction pattern
+  - [x] 4.12 Implement Knowledge Extraction pattern
+  - [x] 4.13 Verify all tests pass
 
-- [ ] 5. **API Implementation**
-  - [ ] 5.1 Write tests for pattern listing API
-  - [ ] 5.2 Implement GET /api/patterns endpoint
-  - [ ] 5.3 Write tests for pattern retrieval API
-  - [ ] 5.4 Implement GET /api/patterns/{pattern_id} endpoint
-  - [ ] 5.5 Write tests for pattern execution API
-  - [ ] 5.6 Implement POST /api/patterns/{pattern_id}/execute endpoint
-  - [ ] 5.7 Write tests for execution history API
-  - [ ] 5.8 Implement GET /api/patterns/{pattern_id}/executions endpoint
-  - [ ] 5.9 Write tests for pattern metrics API
-  - [ ] 5.10 Implement GET /api/patterns/{pattern_id}/metrics endpoint
-  - [ ] 5.11 Write tests for tool-pattern mapping API
-  - [ ] 5.12 Implement GET /api/tools/{tool_name}/patterns endpoint
-  - [ ] 5.13 Write tests for session pattern triggering API
-  - [ ] 5.14 Implement POST /api/sessions/{session_id}/patterns/trigger endpoint
-  - [ ] 5.15 Verify all tests pass
+- [x] 5. **API Implementation**
+  - [x] 5.1 Write tests for pattern listing API
+  - [x] 5.2 Implement GET /api/patterns endpoint
+  - [x] 5.3 Write tests for pattern retrieval API
+  - [x] 5.4 Implement GET /api/patterns/{pattern_id} endpoint
+  - [x] 5.5 Write tests for pattern execution API
+  - [x] 5.6 Implement POST /api/patterns/{pattern_id}/execute endpoint
+  - [x] 5.7 Write tests for execution history API
+  - [x] 5.8 Implement GET /api/patterns/{pattern_id}/executions endpoint
+  - [x] 5.9 Write tests for pattern metrics API
+  - [x] 5.10 Implement GET /api/patterns/{pattern_id}/metrics endpoint
+  - [x] 5.11 Write tests for tool-pattern mapping API
+  - [x] 5.12 Implement GET /api/tools/{tool_name}/patterns endpoint
+  - [x] 5.13 Write tests for session pattern triggering API
+  - [x] 5.14 Implement POST /api/sessions/{session_id}/patterns/trigger endpoint
+  - [x] 5.15 Verify all tests pass
 
-- [ ] 6. **MCP Tool Integration**
-  - [ ] 6.1 Write tests for enhanced MCP tool descriptions
-  - [ ] 6.2 Enhance existing MCP tools with pattern information
-  - [ ] 6.3 Write tests for tool-pattern relationship tracking
-  - [ ] 6.4 Implement tool-pattern relationship management
-  - [ ] 6.5 Write tests for pattern-aware tool recommendations
-  - [ ] 6.6 Implement pattern-based tool recommendation system
-  - [ ] 6.7 Write tests for MCP tool execution with patterns
-  - [ ] 6.8 Integrate pattern execution with MCP tool calls
-  - [ ] 6.9 Verify all tests pass
+- [x] 6. **MCP Tool Integration**
+  - [x] 6.1 Write tests for enhanced MCP tool descriptions
+  - [x] 6.2 Enhance existing MCP tools with pattern information
+  - [x] 6.3 Write tests for tool-pattern relationship tracking
+  - [x] 6.4 Implement tool-pattern relationship management
+  - [x] 6.5 Write tests for pattern-aware tool recommendations
+  - [x] 6.6 Implement pattern-based tool recommendation system
+  - [x] 6.7 Write tests for MCP tool execution with patterns
+  - [x] 6.8 Integrate pattern execution with MCP tool calls
+  - [x] 6.9 Verify all tests pass
 
 - [ ] 7. **Neovim Integration and UI**
-  - [ ] 7.1 Write tests for pattern management commands
-  - [ ] 7.2 Implement ParagonicPatternList command
-  - [ ] 7.3 Write tests for pattern execution commands
-  - [ ] 7.4 Implement ParagonicPatternExecute command
-  - [ ] 7.5 Write tests for pattern display functions
-  - [ ] 7.6 Implement pattern display in floating windows
-  - [ ] 7.7 Write tests for session pattern integration
-  - [ ] 7.8 Integrate patterns with AI agent session commands
-  - [ ] 7.9 Write tests for pattern metrics display
-  - [ ] 7.10 Implement pattern metrics visualization
-  - [ ] 7.11 Verify all tests pass
+  - [x] 7.1 Write tests for pattern management commands
+  - [x] 7.2 Implement ParagonicPatternList command
+  - [x] 7.3 Write tests for pattern execution commands
+  - [x] 7.4 Implement ParagonicPatternExecute command
+  - [x] 7.5 Write tests for pattern display functions
+  - [x] 7.6 Implement pattern display in floating windows
+  - [x] 7.7 Write tests for session pattern integration
+  - [x] 7.8 Integrate patterns with AI agent session commands
+  - [x] 7.9 Write tests for pattern metrics display
+         - [x] 7.10 Implement pattern metrics visualization
+       - [x] 7.11 Verify all tests pass
 
 - [ ] 8. **Learning System Implementation**
   - [ ] 8.1 Write tests for pattern success tracking

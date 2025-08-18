@@ -3,10 +3,10 @@ local M = {}
 
 -- Test thinking streaming with mock data
 function M.test_thinking_streaming()
-    local chat = require("paragonic.chat")
-    
-    -- Mock thinking content that simulates what a thinking model would output
-    local mock_thinking_content = [[
+	local chat = require("paragonic.chat")
+
+	-- Mock thinking content that simulates what a thinking model would output
+	local mock_thinking_content = [[
 <think>
 Alright, so I need to figure out how to create a parts list for a Stirling engine. Hmm, okay, let me think about this step by step. First, I remember that a Stirling engine is an internal combustion engine, but it uses a different working fluid and operates differently than a Carnot engine. The main components must be different from those of an internal combustion engine.
 
@@ -45,121 +45,121 @@ Creating a comprehensive parts list for a Stirling engine:
 - **Piston areas:** Large (16 cm²) for high-pressure, small (8 cm²) for low-pressure
 ]]
 
-    -- Test the thinking content processing
-    local thinking_state = {
-        in_thinking = false,
-        thinking_step_count = 0,
-        current_content = "",
-        final_content = ""
-    }
-    
-    local processed_chunks = {}
-    
-    -- Simulate the chunk processing function
-    local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
-        table.insert(processed_chunks, {
-            chunk = chunk,
-            chunk_type = chunk_type,
-            chunk_index = chunk_index
-        })
-    end
-    
-    -- Process the mock content in chunks
-    local chunk_size = 50
-    for i = 1, #mock_thinking_content, chunk_size do
-        local chunk = mock_thinking_content:sub(i, i + chunk_size - 1)
-        -- This would normally be called by the streaming function
-        -- For now, we'll just simulate the processing
-        if chunk:match("<think>") then
-            on_chunk("󰧑   <think>\n", 0, 1, "thinking_start")
-        elseif chunk:match("</think>") then
-            on_chunk("</think>\n", 0, 1, "thinking_end")
-        elseif chunk:match("^%s*>%s*") then
-            on_chunk("〻   " .. chunk .. "\n", 0, 1, "thinking_step")
-        else
-            on_chunk(chunk, 0, 1, "regular_content")
-        end
-    end
-    
-    -- Verify the processing worked correctly
-    local success = true
-    local errors = {}
-    
-    -- Check that we have thinking start and end
-    local has_thinking_start = false
-    local has_thinking_end = false
-    local thinking_steps = 0
-    
-    for _, chunk_data in ipairs(processed_chunks) do
-        if chunk_data.chunk_type == "thinking_start" then
-            has_thinking_start = true
-        elseif chunk_data.chunk_type == "thinking_end" then
-            has_thinking_end = true
-        elseif chunk_data.chunk_type == "thinking_step" then
-            thinking_steps = thinking_steps + 1
-        end
-    end
-    
-    if not has_thinking_start then
-        table.insert(errors, "Missing thinking start")
-        success = false
-    end
-    
-    if not has_thinking_end then
-        table.insert(errors, "Missing thinking end")
-        success = false
-    end
-    
-    if thinking_steps == 0 then
-        table.insert(errors, "No thinking steps detected")
-        success = false
-    end
-    
-    -- Print results
-    print("=== Thinking Streaming Test Results ===")
-    print("Success:", success)
-    if #errors > 0 then
-        print("Errors:")
-        for _, error in ipairs(errors) do
-            print("  - " .. error)
-        end
-    end
-    print("Thinking steps detected:", thinking_steps)
-    print("Total chunks processed:", #processed_chunks)
-    
-    return success
+	-- Test the thinking content processing
+	local thinking_state = {
+		in_thinking = false,
+		thinking_step_count = 0,
+		current_content = "",
+		final_content = "",
+	}
+
+	local processed_chunks = {}
+
+	-- Simulate the chunk processing function
+	local function on_chunk(chunk, chunk_index, total_chunks, chunk_type)
+		table.insert(processed_chunks, {
+			chunk = chunk,
+			chunk_type = chunk_type,
+			chunk_index = chunk_index,
+		})
+	end
+
+	-- Process the mock content in chunks
+	local chunk_size = 50
+	for i = 1, #mock_thinking_content, chunk_size do
+		local chunk = mock_thinking_content:sub(i, i + chunk_size - 1)
+		-- This would normally be called by the streaming function
+		-- For now, we'll just simulate the processing
+		if chunk:match("<think>") then
+			on_chunk("󰧑   <think>\n", 0, 1, "thinking_start")
+		elseif chunk:match("</think>") then
+			on_chunk("</think>\n", 0, 1, "thinking_end")
+		elseif chunk:match("^%s*>%s*") then
+			on_chunk("〻   " .. chunk .. "\n", 0, 1, "thinking_step")
+		else
+			on_chunk(chunk, 0, 1, "regular_content")
+		end
+	end
+
+	-- Verify the processing worked correctly
+	local success = true
+	local errors = {}
+
+	-- Check that we have thinking start and end
+	local has_thinking_start = false
+	local has_thinking_end = false
+	local thinking_steps = 0
+
+	for _, chunk_data in ipairs(processed_chunks) do
+		if chunk_data.chunk_type == "thinking_start" then
+			has_thinking_start = true
+		elseif chunk_data.chunk_type == "thinking_end" then
+			has_thinking_end = true
+		elseif chunk_data.chunk_type == "thinking_step" then
+			thinking_steps = thinking_steps + 1
+		end
+	end
+
+	if not has_thinking_start then
+		table.insert(errors, "Missing thinking start")
+		success = false
+	end
+
+	if not has_thinking_end then
+		table.insert(errors, "Missing thinking end")
+		success = false
+	end
+
+	if thinking_steps == 0 then
+		table.insert(errors, "No thinking steps detected")
+		success = false
+	end
+
+	-- Print results
+	print("=== Thinking Streaming Test Results ===")
+	print("Success:", success)
+	if #errors > 0 then
+		print("Errors:")
+		for _, error in ipairs(errors) do
+			print("  - " .. error)
+		end
+	end
+	print("Thinking steps detected:", thinking_steps)
+	print("Total chunks processed:", #processed_chunks)
+
+	return success
 end
 
 -- Test the thinking streaming command (mock version)
 function M.test_thinking_command()
-    print("=== Testing Thinking Command ===")
-    
-    -- This would normally test the actual command
-    -- For now, we'll just verify the function exists
-    local chat = require("paragonic.chat")
-    
-    if chat.send_message_command_thinking then
-        print("✅ send_message_command_thinking function exists")
-        return true
-    else
-        print("❌ send_message_command_thinking function not found")
-        return false
-    end
+	print("=== Testing Thinking Command ===")
+
+	-- This would normally test the actual command
+	-- For now, we'll just verify the function exists
+	local chat = require("paragonic.chat")
+
+	if chat.send_message_command_thinking then
+		print("✅ send_message_command_thinking function exists")
+		return true
+	else
+		print("❌ send_message_command_thinking function not found")
+		return false
+	end
 end
 
 -- Run all tests
 function M.run_all_tests()
-    print("Running thinking streaming tests...")
-    
-    local test1_success = M.test_thinking_streaming()
-    local test2_success = M.test_thinking_command()
-    
-    local all_success = test1_success and test2_success
-    
-    print("=== Overall Test Results ===")
-    print("All tests passed:", all_success)
-    
-    return all_success
+	print("Running thinking streaming tests...")
+
+	local test1_success = M.test_thinking_streaming()
+	local test2_success = M.test_thinking_command()
+
+	local all_success = test1_success and test2_success
+
+	print("=== Overall Test Results ===")
+	print("All tests passed:", all_success)
+
+	return all_success
 end
 
 return M

@@ -56,6 +56,276 @@
       "template_file": "session-summary.tmpl",
       "tags": ["session", "summary", "reflection"],
       "priority": "high"
+    },
+    {
+      "id": "activity-labeling",
+      "name": "Activity Labeling",
+      "category": "ActivityLabeling",
+      "meta_level": "System",
+      "description": "Automatically label and categorize activities during AI agent sessions",
+      "workflow_steps": [
+        {
+          "step": 1,
+          "action": "analyze_activity_context",
+          "description": "Analyze current activity context and patterns"
+        },
+        {
+          "step": 2,
+          "action": "identify_activity_type",
+          "description": "Identify the primary type of activity being performed"
+        },
+        {
+          "step": 3,
+          "action": "extract_technologies",
+          "description": "Extract technologies and tools being used"
+        },
+        {
+          "step": 4,
+          "action": "determine_scope",
+          "description": "Determine the scope and complexity of the activity"
+        },
+        {
+          "step": 5,
+          "action": "generate_activity_label",
+          "description": "Generate descriptive activity label"
+        }
+      ],
+      "output_format": {
+        "activity_label": "string",
+        "activity_type": "string",
+        "technologies": ["string"],
+        "scope": "string",
+        "complexity": "string"
+      },
+      "trigger_conditions": {
+        "session_duration_minutes": 5,
+        "file_operations": true,
+        "message_count": 3
+      },
+      "success_criteria": {
+        "label_accuracy": 0.8,
+        "technology_identification": true,
+        "scope_determination": true
+      },
+      "template_file": "activity-label.tmpl",
+      "tags": ["activity", "labeling", "categorization"],
+      "priority": "medium"
+    },
+    {
+      "id": "self-reflection",
+      "name": "Self-Reflection",
+      "category": "SelfReflection",
+      "meta_level": "Hybrid",
+      "description": "Enable AI agents to reflect on their performance and identify areas for improvement",
+      "workflow_steps": [
+        {
+          "step": 1,
+          "action": "analyze_performance_metrics",
+          "description": "Analyze performance metrics and session data"
+        },
+        {
+          "step": 2,
+          "action": "identify_strengths",
+          "description": "Identify areas of strength and success"
+        },
+        {
+          "step": 3,
+          "action": "identify_weaknesses",
+          "description": "Identify areas for improvement and weaknesses"
+        },
+        {
+          "step": 4,
+          "action": "generate_insights",
+          "description": "Generate insights and learning opportunities"
+        },
+        {
+          "step": 5,
+          "action": "suggest_improvements",
+          "description": "Suggest specific improvements and next steps"
+        }
+      ],
+      "output_format": {
+        "performance_analysis": "object",
+        "strengths": ["string"],
+        "weaknesses": ["string"],
+        "insights": ["string"],
+        "improvements": ["string"],
+        "reflection_summary": "string"
+      },
+      "trigger_conditions": {
+        "session_duration_minutes": 45,
+        "message_count": 15,
+        "performance_threshold": 0.7
+      },
+      "success_criteria": {
+        "reflection_depth": 0.8,
+        "improvement_suggestions": 3,
+        "insight_quality": 0.7
+      },
+      "template_file": "self-reflection.tmpl",
+      "tags": ["reflection", "learning", "improvement"],
+      "priority": "high"
+    },
+    {
+      "id": "context-summarization",
+      "name": "Context Summarization",
+      "category": "ContextSummarization",
+      "meta_level": "System",
+      "description": "Condense and summarize context information for efficient processing",
+      "workflow_steps": [
+        {
+          "step": 1,
+          "action": "extract_session_context",
+          "description": "Extract relevant context from session data"
+        },
+        {
+          "step": 2,
+          "action": "identify_key_points",
+          "description": "Identify key points and important information"
+        },
+        {
+          "step": 3,
+          "action": "categorize_information",
+          "description": "Categorize information by type and relevance"
+        },
+        {
+          "step": 4,
+          "action": "generate_summary",
+          "description": "Generate concise context summary"
+        },
+        {
+          "step": 5,
+          "action": "validate_clarity",
+          "description": "Validate clarity and completeness of summary"
+        }
+      ],
+      "output_format": {
+        "summary": "string",
+        "key_points": ["string"],
+        "categories": "object",
+        "context_metadata": "object"
+      },
+      "trigger_conditions": {
+        "context_size_threshold": 1000,
+        "session_duration_minutes": 20,
+        "information_density": 0.6
+      },
+      "success_criteria": {
+        "summary_length_ratio": 0.3,
+        "key_points_count": 5,
+        "clarity_score": 0.8
+      },
+      "template_file": "context-summary.tmpl",
+      "tags": ["context", "summarization", "condensation"],
+      "priority": "medium"
+    },
+    {
+      "id": "progress-tracking",
+      "name": "Progress Tracking",
+      "category": "ProgressTracking",
+      "meta_level": "System",
+      "description": "Track and assess progress towards goals and objectives",
+      "workflow_steps": [
+        {
+          "step": 1,
+          "action": "collect_progress_metrics",
+          "description": "Collect progress metrics and performance data"
+        },
+        {
+          "step": 2,
+          "action": "analyze_progress_trends",
+          "description": "Analyze progress trends and patterns"
+        },
+        {
+          "step": 3,
+          "action": "identify_milestones",
+          "description": "Identify achieved milestones and accomplishments"
+        },
+        {
+          "step": 4,
+          "action": "calculate_velocity",
+          "description": "Calculate development velocity and efficiency"
+        },
+        {
+          "step": 5,
+          "action": "generate_progress_report",
+          "description": "Generate comprehensive progress report"
+        }
+      ],
+      "output_format": {
+        "metrics": "object",
+        "trends": ["string"],
+        "milestones": ["string"],
+        "velocity": "float",
+        "report": "string"
+      },
+      "trigger_conditions": {
+        "session_duration_minutes": 15,
+        "file_changes": true,
+        "progress_threshold": 0.1
+      },
+      "success_criteria": {
+        "metric_accuracy": 0.9,
+        "trend_identification": true,
+        "milestone_detection": true
+      },
+      "template_file": "progress-report.tmpl",
+      "tags": ["progress", "tracking", "metrics"],
+      "priority": "medium"
+    },
+    {
+      "id": "knowledge-extraction",
+      "name": "Knowledge Extraction",
+      "category": "KnowledgeExtraction",
+      "meta_level": "System",
+      "description": "Extract reusable knowledge and insights from AI agent interactions",
+      "workflow_steps": [
+        {
+          "step": 1,
+          "action": "identify_knowledge_patterns",
+          "description": "Identify patterns and knowledge structures"
+        },
+        {
+          "step": 2,
+          "action": "extract_reusable_content",
+          "description": "Extract reusable content and solutions"
+        },
+        {
+          "step": 3,
+          "action": "categorize_knowledge",
+          "description": "Categorize knowledge by domain and type"
+        },
+        {
+          "step": 4,
+          "action": "tag_knowledge",
+          "description": "Apply tags and metadata for organization"
+        },
+        {
+          "step": 5,
+          "action": "assess_reusability",
+          "description": "Assess reusability and value of extracted knowledge"
+        }
+      ],
+      "output_format": {
+        "knowledge_patterns": ["string"],
+        "reusable_content": ["string"],
+        "categories": ["string"],
+        "tags": ["string"],
+        "reusability_score": "float"
+      },
+      "trigger_conditions": {
+        "session_duration_minutes": 30,
+        "knowledge_density": 0.5,
+        "solution_count": 2
+      },
+      "success_criteria": {
+        "pattern_identification": 0.7,
+        "content_extraction": 0.8,
+        "categorization_accuracy": 0.8
+      },
+      "template_file": "knowledge-extraction.tmpl",
+      "tags": ["knowledge", "extraction", "reusability"],
+      "priority": "high"
     }
   ]
 }

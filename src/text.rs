@@ -1,6 +1,6 @@
 // Using markdown crate for parsing and custom terminal formatting
-use serde::{Deserialize, Serialize};
 use crate::error::{ParagonicError, ParagonicResult};
+use serde::{Deserialize, Serialize};
 
 /// Configuration for text formatting
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,23 +47,21 @@ impl TextFormatter {
         Self { config }
     }
 
-
-
     /// Format markdown source for specified line width with basic formatting
     pub fn format_markdown(&self, text: &str) -> ParagonicResult<String> {
         // Calculate target line width: 65% of max_width - 3 characters
         let target_width = ((self.config.max_width as f64 * 0.65) as usize).saturating_sub(3);
-        
+
         let mut result = String::new();
         let lines: Vec<&str> = text.lines().collect();
-        
+
         for (i, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 result.push_str("\n");
                 continue;
             }
-            
+
             // Handle different markdown elements
             if trimmed.starts_with('#') {
                 // Headers - keep as-is but ensure proper spacing
@@ -100,25 +98,23 @@ impl TextFormatter {
                 result.push_str("\n");
             }
         }
-        
+
         Ok(result.trim().to_string())
     }
-    
-
 
     /// Convert HTML to plain text
     fn html_to_plain_text(&self, html: &str) -> ParagonicResult<String> {
         // Simple HTML to plain text conversion
         // This is a basic implementation - for production, consider using a proper HTML parser
-        
+
         let mut text = html.to_string();
-        
+
         // Remove HTML tags
         text = regex::Regex::new(r"<[^>]*>")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&text, "")
             .to_string();
-        
+
         // Decode common HTML entities
         text = text.replace("&amp;", "&");
         text = text.replace("&lt;", "<");
@@ -126,16 +122,16 @@ impl TextFormatter {
         text = text.replace("&quot;", "\"");
         text = text.replace("&#39;", "'");
         text = text.replace("&nbsp;", " ");
-        
+
         // Normalize whitespace
         text = regex::Regex::new(r"\s+")
             .map_err(|e| ParagonicError::InvalidInput(format!("Invalid regex: {}", e)))?
             .replace_all(&text, " ")
             .to_string();
-        
+
         // Trim leading/trailing whitespace
         text = text.trim().to_string();
-        
+
         Ok(text)
     }
 
@@ -164,9 +160,10 @@ impl TextFormatter {
 
         for word in words {
             let word_length = word.len();
-            
+
             // If adding this word would exceed the line limit
-            if current_length + word_length + 1 > self.config.max_width && !current_line.is_empty() {
+            if current_length + word_length + 1 > self.config.max_width && !current_line.is_empty()
+            {
                 lines.push(current_line.trim().to_string());
                 current_line = word.to_string();
                 current_length = word_length;
@@ -205,7 +202,7 @@ impl TextFormatter {
 
         for word in words {
             let word_length = word.len();
-            
+
             // If adding this word would exceed the line limit
             if current_length + word_length + 1 > width && !current_line.is_empty() {
                 result.push_str(&current_line.trim());
@@ -237,14 +234,14 @@ impl TextFormatter {
         } else {
             text.to_string()
         };
-        
+
         // Add timing information
         formatted.push_str("\n");
         formatted.push_str(&format!(" ⏱️   {:.2}s", duration_sec));
         formatted.push_str("\n");
         formatted.push_str("\n");
         formatted.push_str("∎");
-        
+
         Ok(formatted)
     }
 
@@ -290,7 +287,7 @@ mod tests {
             preserve_paragraphs: false,
             enhanced_structural_spacing: false,
         };
-        
+
         let formatter = TextFormatter::with_config(config);
         assert_eq!(formatter.config.max_width, 60);
         assert_eq!(formatter.config.continuation_indent, 2);
@@ -300,23 +297,22 @@ mod tests {
     #[test]
     fn test_word_wrap() {
         let formatter = TextFormatter::new();
-        let text = "This is a long sentence that should be wrapped to fit within the maximum width limit.";
+        let text =
+            "This is a long sentence that should be wrapped to fit within the maximum width limit.";
         let wrapped = formatter.word_wrap(text).unwrap();
-        
+
         assert!(!wrapped.is_empty());
         for line in &wrapped {
             assert!(line.len() <= formatter.config.max_width);
         }
     }
 
-
-
     #[test]
     fn test_format_markdown() {
         let mut formatter = TextFormatter::new();
         // Set a small max_width for testing
         formatter.config.max_width = 30;
-        
+
         let markdown_text = r#"# Header
 
 This is a long paragraph that should be wrapped to fit within the specified line width.
@@ -334,41 +330,42 @@ fn main() {
     println!("code block");
 }
 ```"#;
-        
+
         let formatted = formatter.format_markdown(markdown_text).unwrap();
-        
+
         // Debug: print the formatted output
         println!("Formatted output:\n{}", formatted);
-        
+
         // Should preserve markdown structure
-        assert!(formatted.contains("# Header"));  // Headers preserved
+        assert!(formatted.contains("# Header")); // Headers preserved
         assert!(formatted.contains("- List item 1")); // Lists preserved
         assert!(formatted.contains("> Blockquote text")); // Blockquotes preserved
         assert!(formatted.contains("1. Numbered item 1")); // Numbered lists preserved
         assert!(formatted.contains("```rust")); // Code blocks preserved
         assert!(formatted.contains("fn main()")); // Code content preserved
-        
+
         // Should wrap long lines
         let lines: Vec<&str> = formatted.lines().collect();
         for line in &lines {
-            if !line.starts_with('#') && !line.starts_with('-') && !line.starts_with('>') && 
-               !line.starts_with('1') && !line.starts_with('2') && !line.starts_with('`') {
+            if !line.starts_with('#')
+                && !line.starts_with('-')
+                && !line.starts_with('>')
+                && !line.starts_with('1')
+                && !line.starts_with('2')
+                && !line.starts_with('`')
+            {
                 // Regular text lines should be wrapped
                 assert!(line.len() <= 30, "Line '{}' exceeds max width of 30", line);
             }
         }
     }
 
-
-
-
-
     #[test]
     fn test_format_with_timing() {
         let formatter = TextFormatter::new();
         let text = "Test message";
         let formatted = formatter.format_with_timing(text, 1.23).unwrap();
-        
+
         assert!(formatted.contains("⏱️   1.23s"));
         assert!(formatted.ends_with("∎"));
     }
@@ -378,7 +375,7 @@ fn main() {
         let formatter = TextFormatter::new();
         let text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.";
         let paragraphs = formatter.split_paragraphs(text);
-        
+
         assert_eq!(paragraphs.len(), 3);
         assert!(paragraphs[0].contains("First paragraph"));
         assert!(paragraphs[1].contains("Second paragraph"));
@@ -390,7 +387,7 @@ fn main() {
         let formatter = TextFormatter::new();
         let html = "<p>This is <strong>bold</strong> and <em>italic</em> text.</p>";
         let plain = formatter.html_to_plain_text(html).unwrap();
-        
+
         assert!(!plain.contains("<"));
         assert!(!plain.contains(">"));
         assert!(plain.contains("bold"));

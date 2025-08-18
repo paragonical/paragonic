@@ -7,11 +7,18 @@ local server_address = "127.0.0.1:3000"
 print("Testing simple format...")
 
 -- Test with minimal format string
-local result = string.format([[
+local result = string.format(
+	[[
 package.path = package.path .. ";%s/lua/?.lua;%s/lua/?/init.lua"
 local request_file = "%s"
 local response_file = "%s"
 local host, port = "%s":match("([^:]+):?(%%d*)")
-]], cwd, cwd, request_file, response_file, server_address)
+]],
+	cwd,
+	cwd,
+	request_file,
+	response_file,
+	server_address
+)
 
-print("Format successful, length:", #result) 
+print("Format successful, length:", #result)
