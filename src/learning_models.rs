@@ -1448,3 +1448,969 @@ pub fn create_human_assistance_request(
         .first::<HumanAssistanceRequest>(conn)
         .map_err(|e| crate::error::ParagonicError::Database(e.to_string()))
 }
+
+/// Skill assessment system for comprehensive skill evaluation
+pub struct SkillAssessmentEngine {
+    /// Assessment history for statistical analysis
+    pub assessment_history: Vec<SkillAssessment>,
+    /// Confidence level for statistical calculations (0.95 = 95%)
+    pub confidence_level: f64,
+    /// Minimum sample size for reliable assessment
+    pub min_sample_size: usize,
+}
+
+impl SkillAssessmentEngine {
+    /// Create a new skill assessment engine
+    pub fn new(confidence_level: f64, min_sample_size: usize) -> Self {
+        Self {
+            assessment_history: Vec::new(),
+            confidence_level,
+            min_sample_size,
+        }
+    }
+
+    /// Add an assessment to the history
+    pub fn add_assessment(&mut self, assessment: SkillAssessment) {
+        self.assessment_history.push(assessment);
+    }
+
+    /// Calculate comprehensive skill score with confidence intervals
+    pub fn calculate_skill_score(&self, skill_area_id: &Uuid) -> SkillScoreResult {
+        let relevant_assessments: Vec<&SkillAssessment> = self.assessment_history
+            .iter()
+            .filter(|a| a.skill_area_id == *skill_area_id)
+            .collect();
+
+        if relevant_assessments.len() < self.min_sample_size {
+            return SkillScoreResult {
+                skill_area_id: *skill_area_id,
+                overall_score: 0,
+                confidence_interval_lower: 0,
+                confidence_interval_upper: 0,
+                sample_size: relevant_assessments.len(),
+                reliability_score: 0,
+                trend_direction: TrendDirection::Stable,
+                assessment_count: relevant_assessments.len(),
+            };
+        }
+
+        // Calculate mean score
+        let scores: Vec<i32> = relevant_assessments
+            .iter()
+            .filter_map(|a| a.score)
+            .collect();
+        
+        let mean_score = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+        
+        // Calculate standard deviation
+        let variance = scores.iter()
+            .map(|&score| {
+                let diff = score as f64 - mean_score;
+                diff * diff
+            })
+            .sum::<f64>() / scores.len() as f64;
+        let std_dev = variance.sqrt();
+        
+        // Calculate confidence interval using t-distribution
+        let t_value = self.get_t_value(scores.len());
+        let margin_of_error = t_value * std_dev / (scores.len() as f64).sqrt();
+        
+        let confidence_lower = (mean_score - margin_of_error).max(0.0).min(10000.0);
+        let confidence_upper = (mean_score + margin_of_error).max(0.0).min(10000.0);
+        
+        // Calculate reliability score based on consistency
+        let reliability = self.calculate_reliability_score(&scores);
+        
+        // Determine trend direction
+        let trend = self.calculate_trend_direction(&relevant_assessments);
+        
+        SkillScoreResult {
+            skill_area_id: *skill_area_id,
+            overall_score: mean_score.round() as i32,
+            confidence_interval_lower: confidence_lower.round() as i32,
+            confidence_interval_upper: confidence_upper.round() as i32,
+            sample_size: scores.len(),
+            reliability_score: reliability,
+            trend_direction: trend,
+            assessment_count: relevant_assessments.len(),
+        }
+    }
+
+    /// Calculate multi-dimensional skill measurement
+    pub fn calculate_multi_dimensional_score(&self, skill_area_id: &Uuid) -> MultiDimensionalScore {
+        let relevant_assessments: Vec<&SkillAssessment> = self.assessment_history
+            .iter()
+            .filter(|a| a.skill_area_id == *skill_area_id)
+            .collect();
+
+        // Calculate different dimensions
+        let accuracy_score = self.calculate_accuracy_dimension(&relevant_assessments);
+        let speed_score = self.calculate_speed_dimension(&relevant_assessments);
+        let confidence_score = self.calculate_confidence_dimension(&relevant_assessments);
+        let retention_score = self.calculate_retention_dimension(&relevant_assessments);
+
+        MultiDimensionalScore {
+            skill_area_id: *skill_area_id,
+            accuracy_score,
+            speed_score,
+            confidence_score,
+            retention_score,
+            overall_composite_score: (accuracy_score + speed_score + confidence_score + retention_score) / 4,
+            dimension_weights: vec![0.3, 0.2, 0.2, 0.3], // Accuracy, Speed, Confidence, Retention
+        }
+    }
+
+    /// Identify skill gaps based on target proficiency levels
+    pub fn identify_skill_gaps(&self, person_id: &Uuid, target_proficiencies: &[(Uuid, i32)]) -> Vec<SkillGap> {
+        let mut skill_gaps = Vec::new();
+        
+        for (skill_area_id, target_score) in target_proficiencies {
+            let current_score = self.calculate_skill_score(skill_area_id);
+            let gap_size = *target_score - current_score.overall_score;
+            
+            if gap_size > 0 {
+                skill_gaps.push(SkillGap {
+                    skill_area_id: *skill_area_id,
+                    current_score: current_score.overall_score,
+                    target_score: *target_score,
+                    gap_size,
+                    priority_level: self.calculate_gap_priority(gap_size, current_score.reliability_score),
+                    recommended_actions: self.generate_recommendations(gap_size, current_score.trend_direction),
+                });
+            }
+        }
+        
+        // Sort by priority level (highest first)
+        skill_gaps.sort_by(|a, b| b.priority_level.partial_cmp(&a.priority_level).unwrap_or(std::cmp::Ordering::Equal));
+        skill_gaps
+    }
+
+    /// Calculate assessment accuracy and reliability
+    pub fn calculate_assessment_quality(&self, skill_area_id: &Uuid) -> AssessmentQuality {
+        let relevant_assessments: Vec<&SkillAssessment> = self.assessment_history
+            .iter()
+            .filter(|a| a.skill_area_id == *skill_area_id)
+            .collect();
+
+        if relevant_assessments.is_empty() {
+            return AssessmentQuality {
+                skill_area_id: *skill_area_id,
+                reliability_score: 0,
+                validity_score: 0,
+                consistency_score: 0,
+                sample_size: 0,
+                quality_level: "insufficient_data".to_string(),
+            };
+        }
+
+        let reliability = self.calculate_reliability_score_from_assessments(&relevant_assessments);
+        let validity = self.calculate_validity_score(&relevant_assessments);
+        let consistency = self.calculate_consistency_score(&relevant_assessments);
+
+        let quality_level = if reliability > 8000 && validity > 8000 && consistency > 8000 {
+            "excellent"
+        } else if reliability > 6000 && validity > 6000 && consistency > 6000 {
+            "good"
+        } else if reliability > 4000 && validity > 4000 && consistency > 4000 {
+            "fair"
+        } else {
+            "poor"
+        };
+
+        AssessmentQuality {
+            skill_area_id: *skill_area_id,
+            reliability_score: reliability,
+            validity_score: validity,
+            consistency_score: consistency,
+            sample_size: relevant_assessments.len(),
+            quality_level: quality_level.to_string(),
+        }
+    }
+
+    /// Track skill progression over time
+    pub fn track_skill_progression(&self, skill_area_id: &Uuid, time_period_days: i32) -> SkillProgression {
+        let cutoff_date = chrono::Utc::now() - chrono::Duration::days(time_period_days as i64);
+        
+        let recent_assessments: Vec<&SkillAssessment> = self.assessment_history
+            .iter()
+            .filter(|a| a.skill_area_id == *skill_area_id && a.created_at >= cutoff_date)
+            .collect();
+
+        let older_assessments: Vec<&SkillAssessment> = self.assessment_history
+            .iter()
+            .filter(|a| a.skill_area_id == *skill_area_id && a.created_at < cutoff_date)
+            .collect();
+
+        let recent_avg = if !recent_assessments.is_empty() {
+            recent_assessments.iter()
+                .filter_map(|a| a.score)
+                .sum::<i32>() as f64 / recent_assessments.len() as f64
+        } else {
+            0.0
+        };
+
+        let older_avg = if !older_assessments.is_empty() {
+            older_assessments.iter()
+                .filter_map(|a| a.score)
+                .sum::<i32>() as f64 / older_assessments.len() as f64
+        } else {
+            0.0
+        };
+
+        let improvement_rate = if older_avg > 0.0 {
+            ((recent_avg - older_avg) / older_avg) * 100.0
+        } else {
+            0.0
+        };
+
+        SkillProgression {
+            skill_area_id: *skill_area_id,
+            time_period_days,
+            initial_score: older_avg.round() as i32,
+            current_score: recent_avg.round() as i32,
+            improvement_rate: improvement_rate.round() as i32,
+            assessment_frequency: recent_assessments.len() as f64 / (time_period_days as f64 / 30.0), // per month
+            trend_strength: self.calculate_trend_strength(&recent_assessments),
+        }
+    }
+
+    // Helper methods
+    fn get_t_value(&self, sample_size: usize) -> f64 {
+        // Simplified t-value lookup for common confidence levels
+        // In a real implementation, this would use a proper t-distribution table
+        match (self.confidence_level, sample_size) {
+            (0.95, n) if n >= 30 => 1.96,
+            (0.95, n) if n >= 20 => 2.09,
+            (0.95, n) if n >= 10 => 2.26,
+            (0.95, _) => 2.78,
+            (0.90, n) if n >= 30 => 1.65,
+            (0.90, n) if n >= 20 => 1.73,
+            (0.90, n) if n >= 10 => 1.81,
+            (0.90, _) => 2.13,
+            _ => 2.0, // Default fallback
+        }
+    }
+
+    fn calculate_reliability_score(&self, scores: &[i32]) -> i32 {
+        if scores.len() < 2 {
+            return 0;
+        }
+
+        // Calculate coefficient of variation (lower is more reliable)
+        let mean = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+        let variance = scores.iter()
+            .map(|&score| {
+                let diff = score as f64 - mean;
+                diff * diff
+            })
+            .sum::<f64>() / scores.len() as f64;
+        let std_dev = variance.sqrt();
+        
+        let coefficient_of_variation = if mean > 0.0 { std_dev / mean } else { 0.0 };
+        
+        // Convert to reliability score (0-10000)
+        let reliability = (1.0 - coefficient_of_variation.min(1.0)) * 10000.0;
+        reliability.round() as i32
+    }
+
+    fn calculate_trend_direction(&self, assessments: &[&SkillAssessment]) -> TrendDirection {
+        if assessments.len() < 3 {
+            return TrendDirection::Stable;
+        }
+
+        // Sort by creation date
+        let mut sorted_assessments = assessments.to_vec();
+        sorted_assessments.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+        // Calculate linear trend
+        let scores: Vec<i32> = sorted_assessments.iter()
+            .filter_map(|a| a.score)
+            .collect();
+
+        if scores.len() < 3 {
+            return TrendDirection::Stable;
+        }
+
+        let n = scores.len() as f64;
+        let x_sum: f64 = (0..scores.len()).map(|i| i as f64).sum();
+        let y_sum: f64 = scores.iter().map(|&s| s as f64).sum();
+        let xy_sum: f64 = scores.iter().enumerate().map(|(i, &s)| i as f64 * s as f64).sum();
+        let x2_sum: f64 = (0..scores.len()).map(|i| (i as f64).powi(2)).sum();
+
+        let slope = (n * xy_sum - x_sum * y_sum) / (n * x2_sum - x_sum * x_sum);
+
+        if slope > 100.0 {
+            TrendDirection::Improving
+        } else if slope < -100.0 {
+            TrendDirection::Declining
+        } else {
+            TrendDirection::Stable
+        }
+    }
+
+    fn calculate_accuracy_dimension(&self, assessments: &[&SkillAssessment]) -> i32 {
+        assessments.iter()
+            .filter_map(|a| a.score)
+            .sum::<i32>() / assessments.len().max(1) as i32
+    }
+
+    fn calculate_speed_dimension(&self, assessments: &[&SkillAssessment]) -> i32 {
+        let speed_scores: Vec<i32> = assessments.iter()
+            .filter_map(|a| a.time_spent_minutes)
+            .map(|time| {
+                // Convert time to speed score (faster = higher score)
+                if time <= 5 { 10000 } // Very fast
+                else if time <= 10 { 8000 } // Fast
+                else if time <= 20 { 6000 } // Moderate
+                else if time <= 30 { 4000 } // Slow
+                else { 2000 } // Very slow
+            })
+            .collect();
+
+        if speed_scores.is_empty() { 5000 } else {
+            speed_scores.iter().sum::<i32>() / speed_scores.len() as i32
+        }
+    }
+
+    fn calculate_confidence_dimension(&self, assessments: &[&SkillAssessment]) -> i32 {
+        assessments.iter()
+            .filter_map(|a| a.confidence_level)
+            .sum::<i32>() / assessments.len().max(1) as i32
+    }
+
+    fn calculate_retention_dimension(&self, assessments: &[&SkillAssessment]) -> i32 {
+        // Calculate retention based on performance consistency over time
+        let scores: Vec<i32> = assessments.iter()
+            .filter_map(|a| a.score)
+            .collect();
+
+        if scores.len() < 2 {
+            return 5000; // Default middle score
+        }
+
+        // Higher consistency = better retention
+        let mean = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+        let variance = scores.iter()
+            .map(|&score| {
+                let diff = score as f64 - mean;
+                diff * diff
+            })
+            .sum::<f64>() / scores.len() as f64;
+        let std_dev = variance.sqrt();
+
+        // Convert to retention score (lower std dev = higher retention)
+        let retention = (1.0 - (std_dev / 10000.0).min(1.0)) * 10000.0;
+        retention.round() as i32
+    }
+
+    fn calculate_gap_priority(&self, gap_size: i32, reliability: i32) -> f64 {
+        // Priority = gap_size * reliability_factor
+        let reliability_factor = reliability as f64 / 10000.0;
+        gap_size as f64 * reliability_factor
+    }
+
+    fn generate_recommendations(&self, gap_size: i32, trend: TrendDirection) -> Vec<String> {
+        let mut recommendations = Vec::new();
+        
+        if gap_size > 3000 {
+            recommendations.push("Intensive focused practice recommended".to_string());
+            recommendations.push("Consider seeking expert guidance".to_string());
+        } else if gap_size > 1000 {
+            recommendations.push("Regular practice sessions recommended".to_string());
+            recommendations.push("Review foundational concepts".to_string());
+        } else {
+            recommendations.push("Light maintenance practice sufficient".to_string());
+        }
+
+        match trend {
+            TrendDirection::Improving => {
+                recommendations.push("Current learning approach is effective".to_string());
+            },
+            TrendDirection::Declining => {
+                recommendations.push("Consider changing learning strategy".to_string());
+                recommendations.push("Review recent practice methods".to_string());
+            },
+            TrendDirection::Stable => {
+                recommendations.push("Maintain current practice routine".to_string());
+            }
+        }
+
+        recommendations
+    }
+
+    fn calculate_reliability_score_from_assessments(&self, assessments: &[&SkillAssessment]) -> i32 {
+        let scores: Vec<i32> = assessments.iter()
+            .filter_map(|a| a.score)
+            .collect();
+        self.calculate_reliability_score(&scores)
+    }
+
+    fn calculate_validity_score(&self, assessments: &[&SkillAssessment]) -> i32 {
+        // Simplified validity calculation based on assessment consistency
+        // In a real implementation, this would compare against external criteria
+        let scores: Vec<i32> = assessments.iter()
+            .filter_map(|a| a.score)
+            .collect();
+
+        if scores.len() < 2 {
+            return 5000; // Default middle score
+        }
+
+        // Calculate how well scores correlate with difficulty levels
+        let difficulty_correlations: Vec<f64> = assessments.iter()
+            .filter_map(|a| {
+                a.score.and_then(|s| a.difficulty_level.map(|d| (s as f64, d as f64)))
+            })
+            .map(|(score, difficulty)| {
+                // Higher scores should correlate with higher difficulty
+                if difficulty > 0.0 { score / difficulty } else { 0.0 }
+            })
+            .collect();
+
+        if difficulty_correlations.is_empty() {
+            return 5000;
+        }
+
+        let avg_correlation = difficulty_correlations.iter().sum::<f64>() / difficulty_correlations.len() as f64;
+        let validity = (avg_correlation / 1000.0).min(1.0) * 10000.0; // Normalize to 0-10000
+        validity.round() as i32
+    }
+
+    fn calculate_consistency_score(&self, assessments: &[&SkillAssessment]) -> i32 {
+        let scores: Vec<i32> = assessments.iter()
+            .filter_map(|a| a.score)
+            .collect();
+        
+        if scores.len() < 2 {
+            return 5000;
+        }
+
+        // Calculate coefficient of variation
+        let mean = scores.iter().sum::<i32>() as f64 / scores.len() as f64;
+        let variance = scores.iter()
+            .map(|&score| {
+                let diff = score as f64 - mean;
+                diff * diff
+            })
+            .sum::<f64>() / scores.len() as f64;
+        let std_dev = variance.sqrt();
+        
+        let coefficient_of_variation = if mean > 0.0 { std_dev / mean } else { 0.0 };
+        
+        // Convert to consistency score (lower CV = higher consistency)
+        let consistency = (1.0 - coefficient_of_variation.min(1.0)) * 10000.0;
+        consistency.round() as i32
+    }
+
+    fn calculate_trend_strength(&self, assessments: &[&SkillAssessment]) -> i32 {
+        if assessments.len() < 3 {
+            return 0;
+        }
+
+        let scores: Vec<i32> = assessments.iter()
+            .filter_map(|a| a.score)
+            .collect();
+
+        if scores.len() < 3 {
+            return 0;
+        }
+
+        // Calculate R-squared value for trend strength
+        let n = scores.len() as f64;
+        let x_sum: f64 = (0..scores.len()).map(|i| i as f64).sum();
+        let y_sum: f64 = scores.iter().map(|&s| s as f64).sum();
+        let xy_sum: f64 = scores.iter().enumerate().map(|(i, &s)| i as f64 * s as f64).sum();
+        let x2_sum: f64 = (0..scores.len()).map(|i| (i as f64).powi(2)).sum();
+        let y2_sum: f64 = scores.iter().map(|&s| (s as f64).powi(2)).sum();
+
+        let slope = (n * xy_sum - x_sum * y_sum) / (n * x2_sum - x_sum * x_sum);
+        let intercept = (y_sum - slope * x_sum) / n;
+
+        let ss_res: f64 = scores.iter().enumerate()
+            .map(|(i, &score)| {
+                let predicted = slope * i as f64 + intercept;
+                let residual = score as f64 - predicted;
+                residual * residual
+            })
+            .sum();
+
+        let ss_tot: f64 = {
+            let mean = y_sum / n;
+            scores.iter()
+                .map(|&score| {
+                    let diff = score as f64 - mean;
+                    diff * diff
+                })
+                .sum()
+        };
+
+        let r_squared = if ss_tot > 0.0 { 1.0 - (ss_res / ss_tot) } else { 0.0 };
+        (r_squared * 10000.0).round() as i32
+    }
+}
+
+/// Result of comprehensive skill assessment
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillScoreResult {
+    pub skill_area_id: Uuid,
+    pub overall_score: i32,
+    pub confidence_interval_lower: i32,
+    pub confidence_interval_upper: i32,
+    pub sample_size: usize,
+    pub reliability_score: i32,
+    pub trend_direction: TrendDirection,
+    pub assessment_count: usize,
+}
+
+/// Multi-dimensional skill measurement
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiDimensionalScore {
+    pub skill_area_id: Uuid,
+    pub accuracy_score: i32,
+    pub speed_score: i32,
+    pub confidence_score: i32,
+    pub retention_score: i32,
+    pub overall_composite_score: i32,
+    pub dimension_weights: Vec<f64>,
+}
+
+/// Skill gap identification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillGap {
+    pub skill_area_id: Uuid,
+    pub current_score: i32,
+    pub target_score: i32,
+    pub gap_size: i32,
+    pub priority_level: f64,
+    pub recommended_actions: Vec<String>,
+}
+
+/// Assessment quality metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssessmentQuality {
+    pub skill_area_id: Uuid,
+    pub reliability_score: i32,
+    pub validity_score: i32,
+    pub consistency_score: i32,
+    pub sample_size: usize,
+    pub quality_level: String,
+}
+
+/// Skill progression tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillProgression {
+    pub skill_area_id: Uuid,
+    pub time_period_days: i32,
+    pub initial_score: i32,
+    pub current_score: i32,
+    pub improvement_rate: i32,
+    pub assessment_frequency: f64,
+    pub trend_strength: i32,
+}
+
+/// Binary search skill evaluation system that leverages skill graph dependencies
+/// to efficiently assess knowledge without redundant testing of prerequisites
+pub struct BinarySearchSkillEvaluator {
+    /// Skill graph structure for dependency analysis
+    pub skill_graph: Value,
+    /// Confidence threshold for inferring prerequisite knowledge
+    pub inference_threshold: i32,
+    /// Maximum depth for dependency inference
+    pub max_inference_depth: usize,
+}
+
+impl BinarySearchSkillEvaluator {
+    /// Create a new binary search skill evaluator
+    pub fn new(skill_graph: Value, inference_threshold: i32, max_inference_depth: usize) -> Self {
+        Self {
+            skill_graph,
+            inference_threshold,
+            max_inference_depth,
+        }
+    }
+
+    /// Perform binary search evaluation along skill graph paths
+    pub fn evaluate_skill_path(&self, skill_area_id: &Uuid, person_id: &Uuid, conn: &mut diesel::PgConnection) -> SkillPathEvaluation {
+        use crate::schema::{human_learning_states, learning_units};
+        
+        // Get all learning units for this skill area
+        let learning_units = learning_units::table
+            .filter(learning_units::skill_area_id.eq(skill_area_id))
+            .load::<LearningUnit>(conn)
+            .unwrap_or_default();
+
+        if learning_units.is_empty() {
+            return SkillPathEvaluation {
+                skill_area_id: *skill_area_id,
+                evaluated_units: Vec::new(),
+                inferred_units: Vec::new(),
+                total_units: 0,
+                evaluation_efficiency: 0.0,
+                confidence_score: 0,
+                skill_mastery_percentage: 0,
+            };
+        }
+
+        // Build dependency graph for this skill area
+        let dependency_graph = self.build_dependency_graph(&learning_units);
+        
+        // Find entry points (units with no dependencies)
+        let entry_points = self.find_entry_points(&dependency_graph);
+        
+        // Perform binary search evaluation starting from entry points
+        let mut evaluated_units = Vec::new();
+        let mut inferred_units = Vec::new();
+        
+        for entry_point in entry_points {
+            let path_evaluation = self.evaluate_skill_path_recursive(
+                &entry_point,
+                &dependency_graph,
+                person_id,
+                conn,
+                0
+            );
+            evaluated_units.extend(path_evaluation.evaluated);
+            inferred_units.extend(path_evaluation.inferred);
+        }
+
+        // Calculate evaluation efficiency
+        let total_units = learning_units.len();
+        let evaluation_efficiency = if total_units > 0 {
+            evaluated_units.len() as f64 / total_units as f64
+        } else {
+            0.0
+        };
+
+        // Calculate overall skill mastery
+        let total_score = evaluated_units.iter().map(|u| u.score).sum::<i32>() +
+                         inferred_units.iter().map(|u| u.score).sum::<i32>();
+        let total_units_scored = evaluated_units.len() + inferred_units.len();
+        let skill_mastery_percentage = if total_units_scored > 0 {
+            total_score / total_units_scored as i32
+        } else {
+            0
+        };
+
+        // Calculate confidence based on evaluation coverage
+        let confidence_score = (evaluation_efficiency * 10000.0).round() as i32;
+
+        SkillPathEvaluation {
+            skill_area_id: *skill_area_id,
+            evaluated_units,
+            inferred_units,
+            total_units,
+            evaluation_efficiency,
+            confidence_score,
+            skill_mastery_percentage,
+        }
+    }
+
+    /// Recursively evaluate a skill path using binary search
+    fn evaluate_skill_path_recursive(
+        &self,
+        unit_id: &Uuid,
+        dependency_graph: &std::collections::HashMap<Uuid, Vec<Uuid>>,
+        person_id: &Uuid,
+        conn: &mut diesel::PgConnection,
+        depth: usize
+    ) -> PathEvaluationResult {
+        use crate::schema::human_learning_states;
+        
+        if depth > self.max_inference_depth {
+            return PathEvaluationResult {
+                evaluated: Vec::new(),
+                inferred: Vec::new(),
+            };
+        }
+
+        // Check if we already have a learning state for this unit
+        let existing_state = human_learning_states::table
+            .filter(human_learning_states::person_id.eq(person_id))
+            .filter(human_learning_states::learning_unit_id.eq(unit_id))
+            .first::<HumanLearningState>(conn);
+
+        match existing_state {
+            Ok(state) => {
+                // We have existing data - use it
+                let unit_evaluation = UnitEvaluation {
+                    unit_id: *unit_id,
+                    score: state.current_score,
+                    evaluation_type: "existing".to_string(),
+                    confidence: state.current_score, // Use score as confidence
+                    dependencies_verified: true,
+                };
+
+                // Check if we can infer knowledge of dependent units
+                let dependents = self.get_dependent_units(unit_id, dependency_graph);
+                let mut inferred = Vec::new();
+                
+                for dependent_id in dependents {
+                    if state.current_score >= self.inference_threshold {
+                        // High score suggests mastery - infer knowledge of dependents
+                        let inferred_score = self.calculate_inferred_score(&state, &dependent_id);
+                        inferred.push(UnitEvaluation {
+                            unit_id: dependent_id,
+                            score: inferred_score,
+                            evaluation_type: "inferred".to_string(),
+                            confidence: (inferred_score as f64 * 0.8).round() as i32, // Lower confidence for inferred
+                            dependencies_verified: true,
+                        });
+                    }
+                }
+
+                PathEvaluationResult {
+                    evaluated: vec![unit_evaluation],
+                    inferred,
+                }
+            },
+            Err(_) => {
+                // No existing data - need to evaluate this unit
+                let unit_evaluation = self.evaluate_unit_directly(unit_id, person_id, conn);
+                
+                // If this unit shows high mastery, infer knowledge of dependents
+                let mut inferred = Vec::new();
+                if unit_evaluation.score >= self.inference_threshold {
+                    let dependents = self.get_dependent_units(unit_id, dependency_graph);
+                    for dependent_id in dependents {
+                        let inferred_score = self.calculate_inferred_score_from_evaluation(&unit_evaluation, &dependent_id);
+                        inferred.push(UnitEvaluation {
+                            unit_id: dependent_id,
+                            score: inferred_score,
+                            evaluation_type: "inferred".to_string(),
+                            confidence: (inferred_score as f64 * 0.8).round() as i32,
+                            dependencies_verified: true,
+                        });
+                    }
+                }
+
+                PathEvaluationResult {
+                    evaluated: vec![unit_evaluation],
+                    inferred,
+                }
+            }
+        }
+    }
+
+    /// Evaluate a unit directly (simulated assessment)
+    fn evaluate_unit_directly(&self, unit_id: &Uuid, person_id: &Uuid, conn: &mut diesel::PgConnection) -> UnitEvaluation {
+        // In a real implementation, this would present the unit to the user for assessment
+        // For now, we'll simulate an assessment based on unit difficulty
+        use crate::schema::learning_units;
+        
+        let unit = learning_units::table
+            .find(unit_id)
+            .first::<LearningUnit>(conn)
+            .unwrap_or_else(|_| LearningUnit {
+                id: *unit_id,
+                skill_area_id: uuid::Uuid::new_v4(),
+                title: "Unknown Unit".to_string(),
+                content: "".to_string(),
+                unit_type: "concept".to_string(),
+                difficulty_level: 5000, // Default middle difficulty
+                estimated_time_minutes: None,
+                dependencies: None,
+                metadata: None,
+                created_at: Some(chrono::Utc::now()),
+                updated_at: Some(chrono::Utc::now()),
+            });
+
+        // Simulate assessment score based on difficulty and some randomness
+        let base_score = 10000 - unit.difficulty_level; // Easier units get higher base scores
+        let random_factor = (rand::random::<f64>() * 2000.0) as i32 - 1000; // ±1000 random variation
+        let simulated_score = (base_score + random_factor).max(0).min(10000);
+
+        UnitEvaluation {
+            unit_id: *unit_id,
+            score: simulated_score,
+            evaluation_type: "direct".to_string(),
+            confidence: 9000, // High confidence for direct evaluation
+            dependencies_verified: true,
+        }
+    }
+
+    /// Calculate inferred score for a dependent unit
+    pub fn calculate_inferred_score(&self, source_state: &HumanLearningState, dependent_unit_id: &Uuid) -> i32 {
+        // Base the inferred score on the source unit's score with some degradation
+        let base_score = source_state.current_score;
+        
+        // Apply degradation factor based on dependency distance
+        // Closer dependencies get higher scores
+        let degradation_factor = 0.9; // 10% degradation per dependency level
+        
+        let inferred_score = (base_score as f64 * degradation_factor).round() as i32;
+        inferred_score.max(0).min(10000)
+    }
+
+    /// Calculate inferred score from a direct evaluation
+    fn calculate_inferred_score_from_evaluation(&self, source_evaluation: &UnitEvaluation, dependent_unit_id: &Uuid) -> i32 {
+        let base_score = source_evaluation.score;
+        let degradation_factor = 0.9;
+        let inferred_score = (base_score as f64 * degradation_factor).round() as i32;
+        inferred_score.max(0).min(10000)
+    }
+
+    /// Build dependency graph from learning units
+    fn build_dependency_graph(&self, learning_units: &[LearningUnit]) -> std::collections::HashMap<Uuid, Vec<Uuid>> {
+        let mut graph = std::collections::HashMap::new();
+        
+        for unit in learning_units {
+            let mut dependencies = Vec::new();
+            if let Some(deps) = &unit.dependencies {
+                if let Ok(dep_ids) = serde_json::from_value::<Vec<String>>(deps.clone()) {
+                    // Convert string IDs to UUIDs (simplified - in real implementation would use proper ID mapping)
+                    for dep_id_str in dep_ids {
+                        if let Ok(dep_uuid) = uuid::Uuid::parse_str(&dep_id_str) {
+                            dependencies.push(dep_uuid);
+                        }
+                    }
+                }
+            }
+            graph.insert(unit.id, dependencies);
+        }
+        
+        graph
+    }
+
+    /// Find entry points (units with no dependencies)
+    pub fn find_entry_points(&self, dependency_graph: &std::collections::HashMap<Uuid, Vec<Uuid>>) -> Vec<Uuid> {
+        dependency_graph.iter()
+            .filter(|(_, deps)| deps.is_empty())
+            .map(|(unit, _)| *unit)
+            .collect()
+    }
+
+    /// Get units that depend on the given unit
+    pub fn get_dependent_units(&self, unit_id: &Uuid, dependency_graph: &std::collections::HashMap<Uuid, Vec<Uuid>>) -> Vec<Uuid> {
+        dependency_graph.iter()
+            .filter(|(_, deps)| deps.contains(unit_id))
+            .map(|(unit, _)| *unit)
+            .collect()
+    }
+
+    /// Optimize learning path by identifying redundant units
+    pub fn optimize_learning_path(&self, skill_area_id: &Uuid, person_id: &Uuid, conn: &mut diesel::PgConnection) -> OptimizedLearningPath {
+        let evaluation = self.evaluate_skill_path(skill_area_id, person_id, conn);
+        
+        // Identify units that need direct evaluation vs can be inferred
+        let units_needing_evaluation = evaluation.evaluated_units.iter()
+            .filter(|u| u.evaluation_type == "direct")
+            .map(|u| u.unit_id)
+            .collect();
+
+        let units_can_infer = evaluation.inferred_units.iter()
+            .map(|u| u.unit_id)
+            .collect();
+
+        let skipped_units = evaluation.total_units - evaluation.evaluated_units.len() - evaluation.inferred_units.len();
+
+        OptimizedLearningPath {
+            skill_area_id: *skill_area_id,
+            units_needing_evaluation,
+            units_can_infer,
+            skipped_units,
+            efficiency_gain: evaluation.evaluation_efficiency,
+            estimated_time_saved_minutes: (skipped_units as f64 * 15.0) as i32, // Assume 15 min per unit
+        }
+    }
+
+    /// Validate inference accuracy by spot-checking inferred units
+    pub fn validate_inferences(&self, skill_area_id: &Uuid, person_id: &Uuid, conn: &mut diesel::PgConnection) -> InferenceValidation {
+        let evaluation = self.evaluate_skill_path(skill_area_id, person_id, conn);
+        
+        // Sample some inferred units for validation
+        let inferred_units = &evaluation.inferred_units;
+        let sample_size = (inferred_units.len() as f64 * 0.2).round() as usize; // 20% sample
+        let sample_size = sample_size.max(1).min(inferred_units.len());
+        
+        let mut validation_results = Vec::new();
+        let mut total_accuracy = 0.0;
+        
+        for i in 0..sample_size {
+            let inferred_unit = &inferred_units[i];
+            let actual_score = self.evaluate_unit_directly(&inferred_unit.unit_id, person_id, conn).score;
+            let accuracy = 1.0 - ((inferred_unit.score - actual_score).abs() as f64 / 10000.0);
+            
+            validation_results.push(InferenceValidationResult {
+                unit_id: inferred_unit.unit_id,
+                inferred_score: inferred_unit.score,
+                actual_score,
+                accuracy,
+            });
+            
+            total_accuracy += accuracy;
+        }
+
+        let average_accuracy = if sample_size > 0 {
+            total_accuracy / sample_size as f64
+        } else {
+            0.0
+        };
+
+        InferenceValidation {
+            skill_area_id: *skill_area_id,
+            validation_results,
+            average_accuracy,
+            sample_size,
+            total_inferred_units: inferred_units.len(),
+        }
+    }
+}
+
+/// Result of binary search skill path evaluation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillPathEvaluation {
+    pub skill_area_id: Uuid,
+    pub evaluated_units: Vec<UnitEvaluation>,
+    pub inferred_units: Vec<UnitEvaluation>,
+    pub total_units: usize,
+    pub evaluation_efficiency: f64,
+    pub confidence_score: i32,
+    pub skill_mastery_percentage: i32,
+}
+
+/// Individual unit evaluation result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnitEvaluation {
+    pub unit_id: Uuid,
+    pub score: i32,
+    pub evaluation_type: String, // "direct", "inferred", "existing"
+    pub confidence: i32,
+    pub dependencies_verified: bool,
+}
+
+/// Result of recursive path evaluation
+#[derive(Debug, Clone)]
+struct PathEvaluationResult {
+    evaluated: Vec<UnitEvaluation>,
+    inferred: Vec<UnitEvaluation>,
+}
+
+/// Optimized learning path with redundant units identified
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizedLearningPath {
+    pub skill_area_id: Uuid,
+    pub units_needing_evaluation: Vec<Uuid>,
+    pub units_can_infer: Vec<Uuid>,
+    pub skipped_units: usize,
+    pub efficiency_gain: f64,
+    pub estimated_time_saved_minutes: i32,
+}
+
+/// Validation of inference accuracy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferenceValidation {
+    pub skill_area_id: Uuid,
+    pub validation_results: Vec<InferenceValidationResult>,
+    pub average_accuracy: f64,
+    pub sample_size: usize,
+    pub total_inferred_units: usize,
+}
+
+/// Individual inference validation result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferenceValidationResult {
+    pub unit_id: Uuid,
+    pub inferred_score: i32,
+    pub actual_score: i32,
+    pub accuracy: f64,
+}
