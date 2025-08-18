@@ -445,10 +445,11 @@ diesel::table! {
         #[max_length = 100]
         category -> Varchar,
         description -> Nullable<Text>,
-        difficulty_levels -> Jsonb,
         metadata -> Nullable<Jsonb>,
         created_at -> Nullable<Timestamptz>,
         updated_at -> Nullable<Timestamptz>,
+        skill_graph -> Jsonb,
+        learning_objectives -> Nullable<Jsonb>,
     }
 }
 
