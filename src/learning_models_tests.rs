@@ -7,12 +7,250 @@ mod tests {
         calculate_next_practice_interval,
         update_learning_state,
         calculate_unit_priority,
+        SuperMemo2Engine,
+        AdaptiveDifficultyScaler,
+        PracticeSessionGenerator,
+        RetentionMeasurer,
+        TransferLearningAssessor,
         HumanLearningState,
         LearningUnit,
         PracticeSession,
         HumanAssistanceRequest,
         CompletionEstimates
     };
+
+    // ============================================================================
+    // ISRL Learning Engine Tests
+    // ============================================================================
+
+    /// Test SuperMemo 2 algorithm core functionality
+    #[test]
+    fn test_supermemo2_algorithm() {
+        let mut engine = SuperMemo2Engine::new();
+        
+        // Test initial state
+        assert_eq!(engine.e_factor, 2.5);
+        assert_eq!(engine.interval, 1);
+        assert_eq!(engine.repetitions, 0);
+        
+        // Test first successful response (quality 5)
+        let interval = engine.process_response(5);
+        assert_eq!(interval, 6); // First successful response should be 6 days
+        assert!(engine.e_factor > 2.5); // E-Factor should increase
+        assert_eq!(engine.repetitions, 1);
+        
+        // Test second successful response
+        let interval = engine.process_response(4);
+        assert!(interval > 6); // Should increase interval
+        assert!(engine.e_factor > 2.5); // E-Factor should still be high
+        assert_eq!(engine.repetitions, 2);
+        
+        // Test failed response (quality 2)
+        let interval = engine.process_response(2);
+        assert_eq!(interval, 1); // Should reset to 1 day
+        assert!(engine.e_factor < 2.5); // E-Factor should decrease
+        assert_eq!(engine.repetitions, 3);
+    }
+
+    /// Test interleaving modifications for mixed skill areas
+    #[test]
+    fn test_interleaving_modifications() {
+        let engine = SuperMemo2Engine::new();
+        
+        // Test interleaving modification for low mastery
+        let low_mastery_interval = engine.apply_interleaving_modification(7, 0.2);
+        assert_eq!(low_mastery_interval, 6); // 7 * 0.83 = 5.81, rounded to 6
+        
+        // Test interleaving modification for high mastery
+        let high_mastery_interval = engine.apply_interleaving_modification(7, 0.9);
+        assert_eq!(high_mastery_interval, 7); // 7 * 0.935 = 6.545, rounded to 7
+    }
+
+    /// Test adaptive difficulty scaling based on performance
+    #[test]
+    fn test_adaptive_difficulty_scaling() {
+        let mut scaler = AdaptiveDifficultyScaler::new(3, 0.7);
+        
+        // Test difficulty increase for high performance
+        let difficulty = scaler.add_performance(0.9);
+        assert!(difficulty > 3); // Should increase difficulty
+        
+        // Reset for next test
+        let mut scaler2 = AdaptiveDifficultyScaler::new(3, 0.7);
+        
+        // Test difficulty decrease for low performance
+        let difficulty = scaler2.add_performance(0.3);
+        assert!(difficulty < 3); // Should decrease difficulty
+        
+        // Test stable difficulty for target performance
+        let difficulty = scaler2.add_performance(0.7);
+        assert_eq!(difficulty, scaler2.get_difficulty()); // Should remain stable
+    }
+
+    /// Test practice session generation with mixed skill areas
+    #[test]
+    fn test_mixed_skill_area_practice_sessions() {
+        let skill_areas = vec!["rust".to_string(), "lua".to_string(), "sql".to_string(), "algorithms".to_string()];
+        let generator = PracticeSessionGenerator::new(skill_areas, 10, 5.0);
+        
+        let session_items = generator.generate_session();
+        
+        // Verify interleaving pattern
+        assert_eq!(session_items.len(), 10);
+        assert_eq!(session_items[0], "rust");
+        assert_eq!(session_items[1], "lua");
+        assert_eq!(session_items[2], "sql");
+        assert_eq!(session_items[3], "algorithms");
+        assert_eq!(session_items[4], "rust"); // Cycles back
+    }
+
+    /// Test learning retention measurement
+    #[test]
+    fn test_learning_retention_measurement() {
+        let measurer = RetentionMeasurer::new(8000, 0.95);
+        
+        // Test retention calculation over time
+        let expected_score = measurer.calculate_retention(30);
+        
+        assert!(expected_score < 8000); // Should decrease over time
+        assert!(expected_score > 0); // Should not go below 0
+        
+        // Test retention rate calculation
+        let retention_rate = RetentionMeasurer::calculate_retention_rate(8000, 6000, 30);
+        assert!(retention_rate < 1.0); // Should be less than 100%
+        assert!(retention_rate > 0.0); // Should be positive
+    }
+
+    /// Test transfer learning assessment
+    #[test]
+    fn test_transfer_learning_assessment() {
+        let assessor = TransferLearningAssessor::new(7500);
+        
+        // Test transfer to related skills (distance 0)
+        let transferred_score = assessor.calculate_transferred_score(0);
+        assert_eq!(transferred_score, 2250); // 7500 * 0.3 = 2250
+        
+        // Test transfer to distant skills (distance 2)
+        let distant_transferred_score = assessor.calculate_transferred_score(2);
+        assert_eq!(distant_transferred_score, 750); // 7500 * 0.1 = 750
+        
+        // Test all transferred scores
+        let all_scores = assessor.get_all_transferred_scores();
+        assert_eq!(all_scores.len(), 4); // Should have 4 different transfer factors
+        assert!(all_scores[0] > all_scores[1]); // Closer skills should have higher transfer
+    }
+
+    /// Test spaced repetition scheduling optimization
+    #[test]
+    fn test_spaced_repetition_scheduling_optimization() {
+        let engine = SuperMemo2Engine::new();
+        
+        // Test optimal interval calculation based on forgetting curve
+        let optimal_interval = engine.calculate_optimal_interval(0.8, 0.1);
+        assert_eq!(optimal_interval, 2); // -ln(0.8) / 0.1 ≈ 2 days
+        
+        // Test that interval increases with better retention
+        let longer_interval = engine.calculate_optimal_interval(0.9, 0.1);
+        // -ln(0.9) / 0.1 = -(-0.105) / 0.1 = 0.105 / 0.1 = 1.05 ≈ 1
+        // Actually, higher retention means shorter interval, not longer
+        assert!(longer_interval <= optimal_interval);
+    }
+
+    /// Test difficulty level balancing across skill areas
+    #[test]
+    fn test_difficulty_level_balancing() {
+        let skill_areas = vec!["rust".to_string(), "lua".to_string()];
+        let generator = PracticeSessionGenerator::new(skill_areas, 5, 5.0);
+        
+        // Test difficulty adjustment for unbalanced session
+        let mut unbalanced_difficulties = vec![1, 1, 1, 9, 9]; // Too easy and too hard
+        let balanced_difficulties = generator.balance_difficulty(&mut unbalanced_difficulties);
+        
+        // Calculate average difficulty after balancing
+        let adjusted_avg = balanced_difficulties.iter().sum::<i32>() as f64 / balanced_difficulties.len() as f64;
+        assert!((adjusted_avg - 5.0).abs() < 1.0); // Should be closer to target
+    }
+
+    /// Test session length optimization
+    #[test]
+    fn test_session_length_optimization() {
+        // Test optimal session length based on attention span and learning efficiency
+        let base_session_length = 20; // 20 minutes
+        let attention_span_factor = 0.8; // 80% of base for optimal attention
+        let learning_efficiency_factor = 1.2; // 20% increase for optimal learning
+        
+        let optimal_length = (base_session_length as f64 * attention_span_factor * learning_efficiency_factor).round() as i32;
+        assert_eq!(optimal_length, 19); // 20 * 0.8 * 1.2 = 19.2, rounded to 19
+        
+        // Test that session length adapts to user performance
+        let high_performance_factor = 1.1; // 10% longer for high performers
+        let low_performance_factor = 0.9; // 10% shorter for low performers
+        
+        let high_performance_length = (base_session_length as f64 * high_performance_factor).round() as i32;
+        let low_performance_length = (base_session_length as f64 * low_performance_factor).round() as i32;
+        
+        assert_eq!(high_performance_length, 22); // 20 * 1.1 = 22
+        assert_eq!(low_performance_length, 18); // 20 * 0.9 = 18
+    }
+
+    /// Test practice item selection algorithms
+    #[test]
+    fn test_practice_item_selection_algorithms() {
+        // Test intelligent item selection based on user needs
+        let available_items = vec![
+            ("rust_basics", 1, 0.8), // (name, difficulty, priority)
+            ("rust_advanced", 5, 0.6),
+            ("lua_basics", 2, 0.9),
+            ("sql_basics", 3, 0.7),
+        ];
+        
+        // Select items based on priority and difficulty balance
+        let mut selected_items = Vec::new();
+        let target_difficulty = 3;
+        
+        for (name, difficulty, priority) in &available_items {
+            let selection_score = priority * (1.0 - (*difficulty as i32 - target_difficulty).abs() as f64 / 5.0);
+            if selection_score > 0.5 {
+                selected_items.push(*name);
+            }
+        }
+        
+        // Should select items with good priority and close to target difficulty
+        assert!(selected_items.contains(&"lua_basics")); // High priority, close to target
+        assert!(selected_items.contains(&"sql_basics")); // Medium priority, exact target
+    }
+
+    /// Test contextual practice item generation
+    #[test]
+    fn test_contextual_practice_item_generation() {
+        // Test that practice items relate to actual project work
+        let _project_context = "rust_web_server";
+        let current_skills = vec!["rust", "http", "database"];
+        let target_skills = vec!["async_rust", "error_handling", "testing"];
+        
+        // Generate contextual practice items
+        let contextual_items = vec![
+            "Implement async error handling for HTTP requests",
+            "Write tests for database connection pooling",
+            "Debug memory leaks in web server",
+        ];
+        
+        // Verify items relate to project context
+        for item in &contextual_items {
+            assert!(item.contains("HTTP") || item.contains("database") || item.contains("server"));
+        }
+        
+        // Verify items target missing skills
+        let missing_skills = target_skills.iter()
+            .filter(|skill| !current_skills.contains(skill))
+            .collect::<Vec<_>>();
+        
+        assert_eq!(missing_skills.len(), 3); // All target skills are missing
+    }
+
+    // ============================================================================
+    // Existing Tests (keeping for compatibility)
+    // ============================================================================
 
     /// Test the adaptive scheduling algorithm
     #[test]

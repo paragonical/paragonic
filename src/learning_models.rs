@@ -746,6 +746,258 @@ pub struct NewHumanAssistanceRequest {
 // Core Learning Algorithms
 // ============================================================================
 
+/// SuperMemo 2 algorithm implementation with interleaving modifications
+/// Based on the original SuperMemo 2 algorithm with enhancements for mixed skill areas
+pub struct SuperMemo2Engine {
+    /// E-Factor: measures how well the item is remembered
+    /// Starts at 2.5, increases with successful recalls, decreases with failures
+    pub e_factor: f64,
+    /// Current interval in days
+    pub interval: i32,
+    /// Number of repetitions completed
+    pub repetitions: i32,
+    /// Quality of the last response (0-5 scale)
+    pub quality: i32,
+}
+
+impl SuperMemo2Engine {
+    /// Create a new SuperMemo 2 engine instance
+    pub fn new() -> Self {
+        Self {
+            e_factor: 2.5,
+            interval: 1,
+            repetitions: 0,
+            quality: 0,
+        }
+    }
+
+    /// Process a response and calculate the next interval
+    /// Quality should be 0-5: 0=total blackout, 5=perfect response
+    pub fn process_response(&mut self, quality: i32) -> i32 {
+        self.quality = quality;
+        self.repetitions += 1;
+
+        // SuperMemo 2 algorithm
+        if quality < 3 {
+            // Failed recall - reset interval and decrease E-Factor
+            self.interval = 1;
+            self.e_factor = (self.e_factor - 0.2).max(1.3);
+        } else {
+            // Successful recall - increase interval and potentially increase E-Factor
+            if self.repetitions == 1 {
+                self.interval = 6;
+            } else if self.repetitions == 2 {
+                self.interval = (self.interval as f64 * self.e_factor).round() as i32;
+            } else {
+                self.interval = (self.interval as f64 * self.e_factor).round() as i32;
+            }
+
+            // Update E-Factor based on quality
+            let qf = 5.0 - quality as f64;
+            self.e_factor = self.e_factor + (0.1 - qf * (0.08 + qf * 0.02));
+            self.e_factor = self.e_factor.max(1.3);
+        }
+
+        self.interval
+    }
+
+    /// Apply interleaving modifications to reduce interval for mixed skill areas
+    /// This helps prevent interference between different skills
+    pub fn apply_interleaving_modification(&self, base_interval: i32, skill_mastery: f64) -> i32 {
+        // Interleaving factor: 0.8 for low mastery, 0.95 for high mastery
+        let interleaving_factor = 0.8 + (skill_mastery * 0.15);
+        (base_interval as f64 * interleaving_factor).round() as i32
+    }
+
+    /// Calculate optimal interval based on forgetting curve
+    pub fn calculate_optimal_interval(&self, target_retention: f64, forgetting_rate: f64) -> i32 {
+        // Optimal interval = -ln(target_retention) / forgetting_rate
+        // For target_retention = 0.8 and forgetting_rate = 0.1:
+        // -ln(0.8) / 0.1 = -(-0.223) / 0.1 = 0.223 / 0.1 = 2.23 ≈ 2
+        let optimal_interval = (-target_retention.ln() / forgetting_rate).round() as i32;
+        optimal_interval.max(1)
+    }
+
+    /// Get current learning state
+    pub fn get_state(&self) -> (f64, i32, i32) {
+        (self.e_factor, self.interval, self.repetitions)
+    }
+
+    /// Reset the engine for a new learning item
+    pub fn reset(&mut self) {
+        self.e_factor = 2.5;
+        self.interval = 1;
+        self.repetitions = 0;
+        self.quality = 0;
+    }
+}
+
+/// Adaptive difficulty scaling based on performance
+pub struct AdaptiveDifficultyScaler {
+    /// Base difficulty level
+    pub base_difficulty: i32,
+    /// Performance history (0.0 to 1.0)
+    pub performance_history: Vec<f64>,
+    /// Target performance level
+    pub target_performance: f64,
+}
+
+impl AdaptiveDifficultyScaler {
+    /// Create a new adaptive difficulty scaler
+    pub fn new(base_difficulty: i32, target_performance: f64) -> Self {
+        Self {
+            base_difficulty,
+            performance_history: Vec::new(),
+            target_performance,
+        }
+    }
+
+    /// Add a performance result and calculate new difficulty
+    pub fn add_performance(&mut self, performance: f64) -> i32 {
+        self.performance_history.push(performance);
+        
+        // Keep only last 10 performances
+        if self.performance_history.len() > 10 {
+            self.performance_history.remove(0);
+        }
+
+        // Calculate average performance
+        let avg_performance = self.performance_history.iter().sum::<f64>() / self.performance_history.len() as f64;
+        
+        // Adjust difficulty based on performance
+        let difficulty_change = if avg_performance > self.target_performance + 0.1 {
+            // Too easy - increase difficulty
+            1
+        } else if avg_performance < self.target_performance - 0.1 {
+            // Too hard - decrease difficulty
+            -1
+        } else {
+            // Just right - no adjustment
+            0
+        };
+
+        self.base_difficulty = (self.base_difficulty + difficulty_change).max(1).min(10);
+        self.base_difficulty
+    }
+
+    /// Get current difficulty level
+    pub fn get_difficulty(&self) -> i32 {
+        self.base_difficulty
+    }
+}
+
+/// Practice session generator with mixed skill areas
+pub struct PracticeSessionGenerator {
+    /// Available skill areas
+    pub skill_areas: Vec<String>,
+    /// Target session size
+    pub session_size: usize,
+    /// Target average difficulty
+    pub target_difficulty: f64,
+}
+
+impl PracticeSessionGenerator {
+    /// Create a new practice session generator
+    pub fn new(skill_areas: Vec<String>, session_size: usize, target_difficulty: f64) -> Self {
+        Self {
+            skill_areas,
+            session_size,
+            target_difficulty,
+        }
+    }
+
+    /// Generate an interleaved practice session
+    pub fn generate_session(&self) -> Vec<String> {
+        let mut session_items = Vec::new();
+        
+        for i in 0..self.session_size {
+            let skill_index = i % self.skill_areas.len();
+            session_items.push(self.skill_areas[skill_index].clone());
+        }
+        
+        session_items
+    }
+
+    /// Balance difficulty across skill areas
+    pub fn balance_difficulty(&self, skill_difficulties: &mut Vec<i32>) -> Vec<i32> {
+        let current_avg = skill_difficulties.iter().sum::<i32>() as f64 / skill_difficulties.len() as f64;
+        
+        // Adjust difficulties to balance
+        for difficulty in skill_difficulties.iter_mut() {
+            if *difficulty < self.target_difficulty as i32 {
+                *difficulty += 1; // Increase easy items
+            } else if *difficulty > self.target_difficulty as i32 {
+                *difficulty -= 1; // Decrease hard items
+            }
+        }
+        
+        skill_difficulties.clone()
+    }
+}
+
+/// Learning retention measurement
+pub struct RetentionMeasurer {
+    /// Initial score
+    pub initial_score: i32,
+    /// Retention rate per day
+    pub retention_rate: f64,
+}
+
+impl RetentionMeasurer {
+    /// Create a new retention measurer
+    pub fn new(initial_score: i32, retention_rate: f64) -> Self {
+        Self {
+            initial_score,
+            retention_rate,
+        }
+    }
+
+    /// Calculate expected retention after given days
+    pub fn calculate_retention(&self, days: i32) -> i32 {
+        let expected_retention = self.initial_score as f64 * self.retention_rate.powi(days);
+        expected_retention.round() as i32
+    }
+
+    /// Calculate retention rate from two measurements
+    pub fn calculate_retention_rate(initial_score: i32, final_score: i32, days: i32) -> f64 {
+        if days == 0 || initial_score == 0 {
+            return 1.0;
+        }
+        (final_score as f64 / initial_score as f64).powf(1.0 / days as f64)
+    }
+}
+
+/// Transfer learning assessment
+pub struct TransferLearningAssessor {
+    /// Primary skill score
+    pub primary_skill_score: i32,
+    /// Transfer factors for different skill distances
+    pub transfer_factors: Vec<f64>,
+}
+
+impl TransferLearningAssessor {
+    /// Create a new transfer learning assessor
+    pub fn new(primary_skill_score: i32) -> Self {
+        Self {
+            primary_skill_score,
+            transfer_factors: vec![0.3, 0.2, 0.1, 0.05], // Transfer to related, adjacent, distant, very distant
+        }
+    }
+
+    /// Calculate transferred score for a related skill
+    pub fn calculate_transferred_score(&self, skill_distance: usize) -> i32 {
+        let transfer_factor = self.transfer_factors.get(skill_distance).unwrap_or(&0.0);
+        (self.primary_skill_score as f64 * transfer_factor).round() as i32
+    }
+
+    /// Get all transferred scores for different skill distances
+    pub fn get_all_transferred_scores(&self) -> Vec<i32> {
+        self.transfer_factors.iter()
+            .map(|factor| (self.primary_skill_score as f64 * factor).round() as i32)
+            .collect()
+    }
+}
+
 /// Calculate next practice interval based on human judgment and current score
 pub fn calculate_next_practice_interval(
     current_score: i32,
